@@ -30,7 +30,7 @@ const Hero = () => {
             <div className="space-y-8 animate-slide-in-left">
               <div className="space-y-6">
                 <h1 className="text-5xl md:text-6xl font-bold text-foreground leading-tight">
-                  The Starter Bid Platform{" "}
+                  The Easiest Bid Platform{" "}
                   <span className="text-primary">Built for GCs</span> — Loved by
                   Subs.
                 </h1>
