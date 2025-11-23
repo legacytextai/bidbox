@@ -14,7 +14,156 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      bids: {
+        Row: {
+          bid_item: string | null
+          bidder_name: string | null
+          company_name: string | null
+          email: string | null
+          file_name: string
+          file_url: string
+          id: string
+          project_id: string
+          submitted_at: string
+        }
+        Insert: {
+          bid_item?: string | null
+          bidder_name?: string | null
+          company_name?: string | null
+          email?: string | null
+          file_name: string
+          file_url: string
+          id?: string
+          project_id: string
+          submitted_at?: string
+        }
+        Update: {
+          bid_item?: string | null
+          bidder_name?: string | null
+          company_name?: string | null
+          email?: string | null
+          file_name?: string
+          file_url?: string
+          id?: string
+          project_id?: string
+          submitted_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bids_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          company_name: string | null
+          created_at: string
+          email: string
+          id: string
+        }
+        Insert: {
+          company_name?: string | null
+          created_at?: string
+          email: string
+          id: string
+        }
+        Update: {
+          company_name?: string | null
+          created_at?: string
+          email?: string
+          id?: string
+        }
+        Relationships: []
+      }
+      project_files: {
+        Row: {
+          created_at: string
+          file_name: string
+          file_size: number | null
+          file_url: string
+          id: string
+          project_id: string
+        }
+        Insert: {
+          created_at?: string
+          file_name: string
+          file_size?: number | null
+          file_url: string
+          id?: string
+          project_id: string
+        }
+        Update: {
+          created_at?: string
+          file_name?: string
+          file_size?: number | null
+          file_url?: string
+          id?: string
+          project_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_files_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      projects: {
+        Row: {
+          agency: string
+          bid_due_at: string
+          created_at: string
+          gc_id: string
+          id: string
+          instructions: string | null
+          location: string
+          name: string
+          public_token: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          agency: string
+          bid_due_at: string
+          created_at?: string
+          gc_id: string
+          id?: string
+          instructions?: string | null
+          location: string
+          name: string
+          public_token?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          agency?: string
+          bid_due_at?: string
+          created_at?: string
+          gc_id?: string
+          id?: string
+          instructions?: string | null
+          location?: string
+          name?: string
+          public_token?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "projects_gc_id_fkey"
+            columns: ["gc_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
