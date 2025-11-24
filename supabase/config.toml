@@ -1,1 +1,4 @@
 project_id = "ztuyjlyuzasbceepezua"
+
+[functions.get-public-project]
+verify_jwt = false
