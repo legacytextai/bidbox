@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Download, Upload, CheckCircle2 } from "lucide-react";
+import { validateBidFile } from "@/lib/fileValidation";
 import {
   Dialog,
   DialogContent,
@@ -143,6 +144,17 @@ const BidRoom = () => {
       toast({
         title: "Error",
         description: "Please select a file to upload",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validate file
+    const validation = validateBidFile(bidFile);
+    if (!validation.valid) {
+      toast({
+        title: "Invalid File",
+        description: validation.error,
         variant: "destructive",
       });
       return;

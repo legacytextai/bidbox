@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Upload, X } from "lucide-react";
 import Sidebar from "@/components/Sidebar";
 import { z } from "zod";
+import { validateProjectFile } from "@/lib/fileValidation";
 
 const projectSchema = z.object({
   name: z.string().min(1, "Project name is required").max(200),
@@ -47,6 +48,20 @@ const NewProject = () => {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const newFiles = Array.from(e.target.files);
+      
+      // Validate each file
+      for (const file of newFiles) {
+        const validation = validateProjectFile(file);
+        if (!validation.valid) {
+          toast({
+            title: "Invalid File",
+            description: `${file.name}: ${validation.error}`,
+            variant: "destructive",
+          });
+          return;
+        }
+      }
+      
       setFiles([...files, ...newFiles]);
     }
   };
@@ -217,7 +232,7 @@ const NewProject = () => {
                     onChange={handleFileChange}
                     className="hidden"
                     id="file-upload"
-                    accept=".pdf,.doc,.docx"
+                    accept=".pdf,.dwg,.xls,.xlsx"
                   />
                   <label
                     htmlFor="file-upload"
@@ -228,7 +243,7 @@ const NewProject = () => {
                       Click to upload or drag and drop
                     </p>
                     <p className="text-xs text-muted-foreground mt-2">
-                      PDF, DOC, DOCX up to 20MB
+                      PDF, DWG, Excel up to 200MB
                     </p>
                   </label>
                 </div>
