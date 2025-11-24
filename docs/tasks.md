@@ -208,11 +208,12 @@ CREATE POLICY "Anyone can view projects by public token"
 
 ---
 
-### Task 0.5: Enable Leaked Password Protection
+### Task 0.5: Enable Leaked Password Protection [✅ COMPLETED]
 
-- [ ] 0.5.1 Update Supabase auth config
+- [x] 0.5.1 Update Supabase auth config
   - Use `supabase--configure-auth` tool
   - Enable breach password protection
+  - Verified via auth logs: "Pwned passwords cache is 292.77 KB"
 
 **References**: supabase-info docs
 
