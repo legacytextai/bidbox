@@ -139,7 +139,7 @@ CREATE POLICY "Anyone can view projects by public token"
 
 ---
 
-### Task 0.4: Add File Upload Validation [⚠️ HIGH]
+### Task 0.4: Add File Upload Validation [✅ COMPLETED]
 
 **Problem**: No validation allows malicious uploads and storage abuse.
 
@@ -149,7 +149,7 @@ CREATE POLICY "Anyone can view projects by public token"
 - Bid submissions: PDF, Excel, ZIP
 - Total per project: ~250 MB
 
-- [ ] 0.4.1 Create validation utility
+- [x] 0.4.1 Create validation utility
   - Location: `src/lib/fileValidation.ts`
   - Code:
   ```typescript
@@ -192,15 +192,15 @@ CREATE POLICY "Anyone can view projects by public token"
   }
   ```
 
-- [ ] 0.4.2 Apply validation in NewProject.tsx
+- [x] 0.4.2 Apply validation in NewProject.tsx
   - Before line 142 (file upload), call `validateProjectFile()`
   - Show toast error if invalid
 
-- [ ] 0.4.3 Apply validation in BidRoom.tsx
+- [x] 0.4.3 Apply validation in BidRoom.tsx
   - Before line 154 (bid upload), call `validateBidFile()`
   - Show toast error if invalid
 
-- [ ] 0.4.4 Apply validation in ProjectDetail.tsx
+- [x] 0.4.4 Apply validation in ProjectDetail.tsx
   - Before line 142 (add files), call `validateProjectFile()`
   - Show toast error if invalid
 

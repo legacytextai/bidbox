@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Copy, Download, Trash2, Upload, CheckCircle2 } from "lucide-react";
 import Sidebar from "@/components/Sidebar";
 import { format } from "date-fns";
+import { validateProjectFile } from "@/lib/fileValidation";
 import {
   Select,
   SelectContent,
@@ -136,6 +137,19 @@ const ProjectDetail = () => {
     
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
+
+    // Validate all files first
+    for (const file of newFiles) {
+      const validation = validateProjectFile(file);
+      if (!validation.valid) {
+        toast({
+          title: "Invalid File",
+          description: `${file.name}: ${validation.error}`,
+          variant: "destructive",
+        });
+        return;
+      }
+    }
 
     for (const file of newFiles) {
       const filePath = `${session.user.id}/${id}/${file.name}`;
