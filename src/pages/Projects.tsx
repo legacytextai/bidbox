@@ -1,0 +1,163 @@
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
+import { Plus, Copy, CheckCircle2 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { format } from "date-fns";
+import Sidebar from "@/components/Sidebar";
+
+interface Project {
+  id: string;
+  name: string;
+  status: string;
+  bid_due_at: string;
+  public_token: string;
+  bids: { count: number }[];
+}
+
+const Projects = () => {
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const { toast } = useToast();
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        navigate("/auth");
+        return;
+      }
+      loadProjects();
+    };
+    checkAuth();
+  }, [navigate]);
+
+  const loadProjects = async () => {
+    const { data, error } = await supabase
+      .from("projects")
+      .select(`
+        id,
+        name,
+        status,
+        bid_due_at,
+        public_token,
+        bids(count)
+      `)
+      .order("bid_due_at", { ascending: true });
+
+    if (error) {
+      toast({
+        title: "Error",
+        description: "Failed to load projects",
+        variant: "destructive",
+      });
+    } else {
+      setProjects(data || []);
+    }
+    setLoading(false);
+  };
+
+  const copyBidLink = (token: string, projectId: string) => {
+    const link = `${window.location.origin}/bid/${token}`;
+    navigator.clipboard.writeText(link);
+    setCopiedId(projectId);
+    setTimeout(() => setCopiedId(null), 2000);
+    toast({
+      title: "Copied!",
+      description: "Bid link copied to clipboard",
+    });
+  };
+
+  if (loading) {
+    return (
+      <div className="flex h-screen">
+        <Sidebar />
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-muted-foreground">Loading projects...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-screen w-full bg-background">
+      <Sidebar />
+      
+      <main className="flex-1 overflow-auto">
+        <div className="p-8">
+          <h1 className="text-3xl font-bold text-foreground mb-8">Projects</h1>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {projects.map((project) => (
+              <div
+                key={project.id}
+                onClick={() => navigate(`/projects/${project.id}`)}
+                className="bg-card border border-border rounded-lg p-6 hover:shadow-lg transition-all cursor-pointer"
+              >
+                <div className="flex items-start justify-between mb-4">
+                  <h3 className="font-semibold text-lg text-foreground">
+                    {project.name}
+                  </h3>
+                  <span
+                    className={`px-2 py-1 text-xs font-medium rounded ${
+                      project.status === "LIVE"
+                        ? "bg-green-500/10 text-green-600"
+                        : "bg-gray-500/10 text-gray-600"
+                    }`}
+                  >
+                    {project.status}
+                  </span>
+                </div>
+                
+                <p className="text-sm text-muted-foreground mb-2">
+                  Bid Date: {format(new Date(project.bid_due_at), "MMM d, yyyy h:mm a")}
+                </p>
+                
+                <p className="text-sm text-muted-foreground mb-4">
+                  Responses: {project.bids?.[0]?.count || 0}
+                </p>
+                
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      copyBidLink(project.public_token, project.id);
+                    }}
+                    className="flex-1"
+                  >
+                    {copiedId === project.id ? (
+                      <>
+                        <CheckCircle2 className="h-4 w-4 mr-2" />
+                        Copied
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="h-4 w-4 mr-2" />
+                        Copy Link
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            ))}
+            
+            <div
+              onClick={() => navigate("/projects/new")}
+              className="bg-card border-2 border-dashed border-border rounded-lg p-6 hover:border-primary hover:bg-accent/5 transition-all cursor-pointer flex flex-col items-center justify-center min-h-[200px]"
+            >
+              <Plus className="h-12 w-12 text-primary mb-2" />
+              <p className="text-lg font-semibold text-foreground">New Project</p>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+};
+
+export default Projects;

@@ -61,10 +61,10 @@ const Hero = () => {
               <div className="flex flex-col sm:flex-row gap-4">
                 <Button
                   size="lg"
-                  onClick={() => scrollToSection("cta")}
+                  onClick={() => window.location.href = "/auth"}
                   className="text-lg px-8 shadow-strong hover:shadow-soft transition-all"
                 >
-                  Start Free Trial
+                  Get Started
                 </Button>
                 <Button
                   size="lg"
