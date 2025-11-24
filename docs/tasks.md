@@ -108,18 +108,18 @@ CREATE POLICY "Anyone can view projects by public token"
 
 ---
 
-### Task 0.3: Fix Storage Bucket Policies [⚠️ CRITICAL]
+### Task 0.3: Fix Storage Bucket Policies [✅ COMPLETED]
 
 **Problem**: Database allows public file access but storage blocks downloads (bid room broken).
 
-- [ ] 0.3.1 Add public read policy for project-files bucket
+- [x] 0.3.1 Add public read policy for project-files bucket
   ```sql
   CREATE POLICY "Public can download project files"
     ON storage.objects FOR SELECT
     USING (bucket_id = 'project-files');
   ```
 
-- [ ] 0.3.2 Fix bid-submissions bucket to check project ownership
+- [x] 0.3.2 Fix bid-submissions bucket to check project ownership
   ```sql
   DROP POLICY "GCs can view bid submissions for their projects" ON storage.objects;
   
