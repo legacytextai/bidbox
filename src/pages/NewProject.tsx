@@ -1,0 +1,278 @@
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/hooks/use-toast";
+import { Upload, X } from "lucide-react";
+import Sidebar from "@/components/Sidebar";
+import { z } from "zod";
+
+const projectSchema = z.object({
+  name: z.string().min(1, "Project name is required").max(200),
+  location: z.string().min(1, "Location is required").max(200),
+  agency: z.string().min(1, "Agency is required").max(200),
+  bid_due_at: z.string().min(1, "Bid due date is required"),
+  instructions: z.string().max(2000).optional(),
+});
+
+const NewProject = () => {
+  const [formData, setFormData] = useState({
+    name: "",
+    location: "",
+    agency: "",
+    bid_due_at: "",
+    instructions: "",
+  });
+  const [files, setFiles] = useState<File[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const { toast } = useToast();
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        navigate("/auth");
+      } else {
+        setUserId(session.user.id);
+      }
+    };
+    checkAuth();
+  }, [navigate]);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const newFiles = Array.from(e.target.files);
+      setFiles([...files, ...newFiles]);
+    }
+  };
+
+  const removeFile = (index: number) => {
+    setFiles(files.filter((_, i) => i !== index));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userId) return;
+
+    setLoading(true);
+
+    try {
+      const validation = projectSchema.parse(formData);
+
+      const { data: project, error: projectError } = await supabase
+        .from("projects")
+        .insert({
+          gc_id: userId,
+          name: validation.name,
+          location: validation.location,
+          agency: validation.agency,
+          bid_due_at: validation.bid_due_at,
+          instructions: validation.instructions || null,
+        })
+        .select()
+        .single();
+
+      if (projectError) throw projectError;
+
+      // Upload files
+      for (const file of files) {
+        const filePath = `${userId}/${project.id}/${file.name}`;
+        const { error: uploadError } = await supabase.storage
+          .from("project-files")
+          .upload(filePath, file);
+
+        if (uploadError) throw uploadError;
+
+        const { data: { publicUrl } } = supabase.storage
+          .from("project-files")
+          .getPublicUrl(filePath);
+
+        const { error: fileError } = await supabase
+          .from("project_files")
+          .insert({
+            project_id: project.id,
+            file_name: file.name,
+            file_url: filePath,
+            file_size: file.size,
+          });
+
+        if (fileError) throw fileError;
+      }
+
+      toast({
+        title: "Success",
+        description: "Project created successfully",
+      });
+
+      navigate(`/projects/${project.id}`);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        toast({
+          title: "Validation Error",
+          description: error.errors[0].message,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Error",
+          description: error.message || "Failed to create project",
+          variant: "destructive",
+        });
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="flex h-screen w-full bg-background">
+      <Sidebar />
+
+      <main className="flex-1 overflow-auto">
+        <div className="p-8">
+          <h1 className="text-3xl font-bold text-foreground mb-8">New Project</h1>
+
+          <form onSubmit={handleSubmit} className="max-w-5xl">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <div className="space-y-6">
+                <h2 className="text-xl font-semibold text-foreground mb-4">
+                  Project Information
+                </h2>
+
+                <div className="space-y-2">
+                  <Label htmlFor="name">Project Name *</Label>
+                  <Input
+                    id="name"
+                    value={formData.name}
+                    onChange={(e) =>
+                      setFormData({ ...formData, name: e.target.value })
+                    }
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="location">Location *</Label>
+                  <Input
+                    id="location"
+                    value={formData.location}
+                    onChange={(e) =>
+                      setFormData({ ...formData, location: e.target.value })
+                    }
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="agency">Agency *</Label>
+                  <Input
+                    id="agency"
+                    value={formData.agency}
+                    onChange={(e) =>
+                      setFormData({ ...formData, agency: e.target.value })
+                    }
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="bid_due_at">Bid Due Date & Time *</Label>
+                  <Input
+                    id="bid_due_at"
+                    type="datetime-local"
+                    value={formData.bid_due_at}
+                    onChange={(e) =>
+                      setFormData({ ...formData, bid_due_at: e.target.value })
+                    }
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="instructions">Instructions for Bidders</Label>
+                  <Textarea
+                    id="instructions"
+                    value={formData.instructions}
+                    onChange={(e) =>
+                      setFormData({ ...formData, instructions: e.target.value })
+                    }
+                    rows={6}
+                    placeholder="Enter any special instructions or requirements..."
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-6">
+                <h2 className="text-xl font-semibold text-foreground mb-4">
+                  Upload Project Files
+                </h2>
+
+                <div className="border-2 border-dashed border-border rounded-lg p-8 text-center">
+                  <input
+                    type="file"
+                    multiple
+                    onChange={handleFileChange}
+                    className="hidden"
+                    id="file-upload"
+                    accept=".pdf,.doc,.docx"
+                  />
+                  <label
+                    htmlFor="file-upload"
+                    className="cursor-pointer flex flex-col items-center"
+                  >
+                    <Upload className="h-12 w-12 text-muted-foreground mb-4" />
+                    <p className="text-sm text-muted-foreground">
+                      Click to upload or drag and drop
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      PDF, DOC, DOCX up to 20MB
+                    </p>
+                  </label>
+                </div>
+
+                {files.length > 0 && (
+                  <div className="space-y-2">
+                    {files.map((file, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center justify-between p-3 bg-muted rounded"
+                      >
+                        <span className="text-sm truncate">{file.name}</span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeFile(index)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-8">
+              <Button
+                type="submit"
+                size="lg"
+                className="w-full lg:w-auto"
+                disabled={loading}
+              >
+                {loading ? "Creating..." : "Generate Project Bid Box Link"}
+              </Button>
+            </div>
+          </form>
+        </div>
+      </main>
+    </div>
+  );
+};
+
+export default NewProject;
