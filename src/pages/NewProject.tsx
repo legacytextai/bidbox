@@ -12,8 +12,8 @@ import { z } from "zod";
 
 const projectSchema = z.object({
   name: z.string().min(1, "Project name is required").max(200),
-  location: z.string().min(1, "Location is required").max(200),
-  agency: z.string().min(1, "Agency is required").max(200),
+  location: z.string().max(200).optional(),
+  agency: z.string().max(200).optional(),
   bid_due_at: z.string().min(1, "Bid due date is required"),
   instructions: z.string().max(2000).optional(),
 });
@@ -69,8 +69,8 @@ const NewProject = () => {
         .insert({
           gc_id: userId,
           name: validation.name,
-          location: validation.location,
-          agency: validation.agency,
+          location: validation.location || null,
+          agency: validation.agency || null,
           bid_due_at: validation.bid_due_at,
           instructions: validation.instructions || null,
         })
@@ -157,26 +157,24 @@ const NewProject = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="location">Location *</Label>
+                  <Label htmlFor="location">Location</Label>
                   <Input
                     id="location"
                     value={formData.location}
                     onChange={(e) =>
                       setFormData({ ...formData, location: e.target.value })
                     }
-                    required
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="agency">Agency *</Label>
+                  <Label htmlFor="agency">Agency</Label>
                   <Input
                     id="agency"
                     value={formData.agency}
                     onChange={(e) =>
                       setFormData({ ...formData, agency: e.target.value })
                     }
-                    required
                   />
                 </div>
 
