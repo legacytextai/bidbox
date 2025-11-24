@@ -6,6 +6,7 @@ import { Plus, Copy, CheckCircle2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import Sidebar from "@/components/Sidebar";
+import { getPublicBaseUrl } from "@/lib/getPublicBaseUrl";
 
 interface Project {
   id: string;
@@ -61,7 +62,7 @@ const Projects = () => {
   };
 
   const copyBidLink = (token: string, projectId: string) => {
-    const link = `${window.location.origin}/bid/${token}`;
+    const link = `${getPublicBaseUrl()}/bid/${token}`;
     navigator.clipboard.writeText(link);
     setCopiedId(projectId);
     setTimeout(() => setCopiedId(null), 2000);
