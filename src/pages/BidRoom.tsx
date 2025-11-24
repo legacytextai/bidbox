@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Download, Upload, CheckCircle2 } from "lucide-react";
+import { CountdownTimer } from "@/components/CountdownTimer";
 import { validateBidFile } from "@/lib/fileValidation";
 import {
   Dialog,
@@ -354,24 +355,14 @@ const BidRoom = () => {
                   </DialogContent>
                 </Dialog>
               )}
-            </div>
           </div>
+        </div>
 
-          <div className="text-center mb-8">
-            <p className="text-sm text-muted-foreground mb-2">Bid Due In:</p>
-            <p className={`text-4xl md:text-6xl font-bold ${
-              isExpired ? "text-destructive" : countdown.startsWith("00:") ? "text-destructive" : "text-primary"
-            }`}>
-              {countdown}
-            </p>
-            {!isExpired && (
-              <p className="text-xs text-muted-foreground mt-2">
-                DD:HH:MM:SS
-              </p>
-            )}
-          </div>
+        <div className="mb-8">
+          <CountdownTimer bidDueAt={project.bid_due_at} />
+        </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="bg-card border border-border rounded-lg p-6">
               <h3 className="font-semibold text-foreground mb-4">Download Project Files</h3>
               <div className="space-y-2">
