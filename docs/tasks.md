@@ -88,20 +88,20 @@ CREATE POLICY "Anyone can view projects by public token"
 
 ---
 
-### Task 0.2: Fix Project Files Table RLS Policy [⚠️ CRITICAL]
+### Task 0.2: Fix Project Files Table RLS Policy [✅ COMPLETED]
 
 **Problem**: `USING (true)` exposes all file metadata publicly.
 
-- [ ] 0.2.1 Remove the permissive policy
+- [x] 0.2.1 Remove the permissive policy
   ```sql
   DROP POLICY "Anyone can view project files" ON public.project_files;
   ```
 
-- [ ] 0.2.2 Extend `get-public-project` edge function to include files
+- [x] 0.2.2 Extend `get-public-project` edge function to include files
   - Add join to fetch project_files in same function
   - Return: `{ project: {...}, files: [...] }`
 
-- [ ] 0.2.3 Update BidRoom.tsx to use combined response
+- [x] 0.2.3 Update BidRoom.tsx to use combined response
   - Single function call gets project + files
 
 **References**: implementation-plan.md (Phase 1 - File Access)
