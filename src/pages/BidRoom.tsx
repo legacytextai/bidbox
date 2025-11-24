@@ -85,31 +85,33 @@ const BidRoom = () => {
   }, [project]);
 
   const loadProject = async () => {
-    const { data: projectData, error: projectError } = await supabase
-      .from("projects")
-      .select("*")
-      .eq("public_token", token)
-      .single();
+    try {
+      const { data, error } = await supabase.functions.invoke('get-public-project', {
+        body: { token }
+      });
 
-    if (projectError || !projectData) {
+      if (error || !data || !data.project) {
+        toast({
+          title: "Error",
+          description: "Project not found",
+          variant: "destructive",
+        });
+        setLoading(false);
+        return;
+      }
+
+      setProject(data.project);
+      setProjectFiles(data.files || []);
+      setLoading(false);
+    } catch (error) {
+      console.error('Error loading project:', error);
       toast({
         title: "Error",
-        description: "Project not found",
+        description: "Failed to load project",
         variant: "destructive",
       });
       setLoading(false);
-      return;
     }
-
-    setProject(projectData);
-
-    const { data: filesData } = await supabase
-      .from("project_files")
-      .select("*")
-      .eq("project_id", projectData.id);
-
-    setProjectFiles(filesData || []);
-    setLoading(false);
   };
 
   const downloadFile = async (filePath: string, fileName: string) => {

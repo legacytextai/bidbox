@@ -18,7 +18,7 @@ Last Updated: 2024-11-24
 
 > **BLOCKER**: These vulnerabilities expose ALL project data to the public internet. Must fix before any new features.
 
-### Task 0.1: Fix Projects Table RLS Policy [⚠️ CRITICAL]
+### Task 0.1: Fix Projects Table RLS Policy [✅ COMPLETED]
 
 **Problem**: `USING (true)` allows anyone to query ALL projects without token verification.
 
@@ -30,12 +30,12 @@ CREATE POLICY "Anyone can view projects by public token"
 ```
 
 **Implementation**:
-- [ ] 0.1.1 Remove the overly permissive policy
+- [x] 0.1.1 Remove the overly permissive policy
   ```sql
   DROP POLICY "Anyone can view projects by public token" ON public.projects;
   ```
 
-- [ ] 0.1.2 Create edge function `get-public-project`
+- [x] 0.1.2 Create edge function `get-public-project`
   - Location: `supabase/functions/get-public-project/index.ts`
   - Input: `{ token: string }`
   - Validate token, return single project or 404
@@ -81,7 +81,7 @@ CREATE POLICY "Anyone can view projects by public token"
   });
   ```
 
-- [ ] 0.1.3 Update `src/pages/BidRoom.tsx` to use edge function
+- [x] 0.1.3 Update `src/pages/BidRoom.tsx` to use edge function
   - Replace direct Supabase query (line ~91) with `supabase.functions.invoke('get-public-project', { body: { token } })`
 
 **References**: masterplan.md (Security), implementation-plan.md (Phase 1)
