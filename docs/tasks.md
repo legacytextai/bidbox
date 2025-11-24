@@ -297,13 +297,13 @@ Already implemented:
 
 ## 🎯 Phase 2: MVP Polish & Core Features
 
-### Task 2.1: Add Countdown Timer to Bid Room [MVP] [✅ COMPLETED]
+### Task 2.1: Add Countdown Timer to Bid Room [MVP]
 
 **User Decision**: MVP feature (not v1)
 
 **Location**: `src/pages/BidRoom.tsx`
 
-- [x] 2.1.1 Create CountdownTimer component
+- [ ] 2.1.1 Create CountdownTimer component
   - Location: `src/components/CountdownTimer.tsx`
   - Props: `bidDueAt: string`
   - Display format: "X days Y hours Z minutes" or "Expired"
@@ -354,7 +354,7 @@ Already implemented:
   }
   ```
 
-- [x] 2.1.2 Integrate into BidRoom.tsx
+- [ ] 2.1.2 Integrate into BidRoom.tsx
   - Add below project name/info
   - Pin to top on mobile
 
