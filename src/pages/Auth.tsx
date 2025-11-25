@@ -127,13 +127,11 @@ const Auth = () => {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <Link to="/" className="inline-block mb-4">
-            <img 
-              src={bidboxLogo} 
-              alt="BidBox Logo" 
-              className="h-72 mx-auto cursor-pointer hover:opacity-90 transition-opacity"
-            />
-          </Link>
+          <img 
+            src={bidboxLogo} 
+            alt="BidBox Logo" 
+            className="h-24 mx-auto mb-4"
+          />
           <Link 
             to="/" 
             className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors mb-4"
