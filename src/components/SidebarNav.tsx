@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { FolderOpen, Plus, Settings, LogOut } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import bidboxLogo from "@/assets/bidbox-logo.png";
 import {
   Sidebar,
   SidebarContent,
@@ -43,8 +44,8 @@ const AppSidebar = ({ onNavigate }: SidebarNavProps) => {
 
   return (
     <Sidebar>
-      <div className="p-6 border-b border-border">
-        <h2 className="text-2xl font-bold text-[hsl(var(--bidbox-blue))]">BB</h2>
+      <div className="px-6 py-3 border-b border-border flex items-center justify-start">
+        <img src={bidboxLogo} alt="BidBox" className="h-24 w-auto" />
       </div>
 
       <SidebarContent>
