@@ -172,7 +172,7 @@ const NewProject = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="location">Location</Label>
+                  <Label htmlFor="location">Location (optional)</Label>
                   <Input
                     id="location"
                     value={formData.location}
@@ -183,7 +183,7 @@ const NewProject = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="agency">Agency</Label>
+                  <Label htmlFor="agency">Agency (optional)</Label>
                   <Input
                     id="agency"
                     value={formData.agency}

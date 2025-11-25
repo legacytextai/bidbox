@@ -419,16 +419,16 @@ Already implemented:
 
 ---
 
-### Task 2.3: Make Location/Agency Fields Optional [MVP]
+### Task 2.3: Make Location/Agency Fields Optional [✅ COMPLETED]
 
 **User Decision**: Keep fields, mark as optional in UI
 
-- [ ] 2.3.1 Update NewProject.tsx form
+- [x] 2.3.1 Update NewProject.tsx form
   - Change labels: "Location (optional)" and "Agency (optional)"
   - Remove Zod `.nonempty()` requirement
-  - Keep fields in database (already nullable)
+  - Database columns made nullable via migration
 
-- [ ] 2.3.2 Update ProjectDetail.tsx display
+- [x] 2.3.2 Update ProjectDetail.tsx display
   - Show placeholder text if empty: "Not specified"
 
 **References**: masterplan.md (No-Fluff Philosophy)
