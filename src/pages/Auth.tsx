@@ -127,7 +127,7 @@ const Auth = () => {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <Link to="/" className="inline-block mx-auto mb-4">
+          <Link to="/" className="block mx-auto mb-4 w-fit">
             <img 
               src={bidboxLogo} 
               alt="BidBox Logo" 
@@ -137,7 +137,7 @@ const Auth = () => {
           </Link>
           <Link 
             to="/" 
-            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors mb-4"
+            className="flex items-center justify-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors mb-4 mx-auto w-fit"
           >
             <ArrowLeft className="h-4 w-4" />
             Back to Homepage
