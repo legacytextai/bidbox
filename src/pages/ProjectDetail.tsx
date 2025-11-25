@@ -9,7 +9,6 @@ import { ArrowLeft, Copy, Download, Trash2, Upload, CheckCircle2 } from "lucide-
 import Sidebar from "@/components/Sidebar";
 import { format } from "date-fns";
 import { validateProjectFile } from "@/lib/fileValidation";
-import { getPublicBaseUrl } from "@/lib/getPublicBaseUrl";
 import {
   Select,
   SelectContent,
@@ -102,7 +101,7 @@ const ProjectDetail = () => {
   };
 
   const copyBidLink = () => {
-    const link = `${getPublicBaseUrl()}/bid/${project.public_token}`;
+    const link = `${window.location.origin}/bid/${project.public_token}`;
     navigator.clipboard.writeText(link);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
