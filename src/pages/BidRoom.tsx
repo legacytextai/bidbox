@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import bidboxLogo from "@/assets/bidbox-logo.png";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -246,7 +245,9 @@ const BidRoom = () => {
       <div className="max-w-6xl mx-auto p-6 md:p-8">
         <div className="mb-8">
           <Link to="/" className="inline-block">
-            <img src={bidboxLogo} alt="BidBox" className="h-10 w-auto mb-2 cursor-pointer hover:opacity-80 transition-opacity" />
+            <h1 className="text-2xl font-bold text-[hsl(var(--bidbox-blue))] mb-2 cursor-pointer hover:opacity-80 transition-opacity">
+              BB
+            </h1>
           </Link>
         </div>
 
