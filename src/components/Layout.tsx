@@ -54,10 +54,10 @@ const AuthButtons = () => {
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
-            className="relative h-9 w-9 rounded-full bg-white text-primary hover:bg-white/90"
+            className="relative h-9 w-9 rounded-full bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90"
           >
             <Avatar className="h-9 w-9">
-              <AvatarFallback className="bg-white text-primary">
+              <AvatarFallback className="bg-[hsl(var(--bidbox-blue))] text-white">
                 {user.email?.charAt(0).toUpperCase() || "U"}
               </AvatarFallback>
             </Avatar>
