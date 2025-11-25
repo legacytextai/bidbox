@@ -455,6 +455,54 @@ Already implemented:
 
 ---
 
+### Task 2.3.6: Enhance Bid Room UI [✅ COMPLETED]
+
+**User Decision**: Implement comprehensive UI improvements based on design mockup
+
+- [x] 2.3.6.1 Orange drag-and-drop upload box
+  - Changed "SUBMIT YOUR QUOTE" button to large drag-and-drop zone
+  - Orange color (#F97316) with "+" icon and faint text
+  - Aligned with Project Information card
+  - Blue hover/focus border maintained
+
+- [x] 2.3.6.2 Add GC Info to Project Information card
+  - Added "GC:" field above Location
+  - Fetches company_name from profiles table via gc_id
+  - Shows "Add GC Info Here" in red if missing
+  - Updated get-public-project edge function to include GC data
+
+- [x] 2.3.6.3 Enhanced countdown timer
+  - Format changed to: 07d:20h:22m:12s (with unit suffixes)
+  - "BID DUE IN:" text made 2x larger, uppercase, bold
+  - Added border separators above/below
+  - Digits remain black as per design guidelines
+
+- [x] 2.3.6.4 Horizontal file download layout
+  - Files displayed in horizontal scroll container
+  - Pill-style containers with file icons, names, download buttons
+  - File type icons for PDF, Excel, and other formats
+  - Neat spacing with hover effects
+
+- [x] 2.3.6.5 Split-pane file preview
+  - Created FilePreview component with left/right layout
+  - Left: scrollable file list with file type icons
+  - Right: preview pane (iframe for PDFs, placeholder for others)
+  - Defaults to first file, shows "No files to preview" when empty
+
+- [x] 2.3.6.6 Clickable BB logo
+  - Made "BB" logo in top left clickable
+  - Links to landing page (/)
+  - Added hover opacity transition
+
+**Files Modified**:
+- src/pages/BidRoom.tsx (main UI changes)
+- src/components/FilePreview.tsx (new component)
+- supabase/functions/get-public-project/index.ts (GC company name)
+
+**References**: design-guidelines.md (Color System, UI Components)
+
+---
+
 ### Task 2.4: Token Regeneration Feature [MVP]
 
 **User Decision**: No expiration, YES to regeneration
