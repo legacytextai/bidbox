@@ -2,7 +2,6 @@ import { ReactNode } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
-import bidboxLogo from "@/assets/bidbox-logo.png";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
@@ -155,12 +154,11 @@ const PublicLayout = ({ children }: { children: ReactNode }) => {
     <div className="min-h-screen flex flex-col">
       <header className="sticky top-0 z-50 border-b border-border bg-background">
         <div className="container mx-auto flex h-16 items-center justify-between px-4 sm:px-6">
-          <Link to="/" className="flex items-center">
-            <img 
-              src={bidboxLogo} 
-              alt="BidBox" 
-              className="h-16 sm:h-20"
-            />
+          <Link
+            to="/"
+            className="text-xl sm:text-2xl font-bold text-foreground hover:text-[hsl(var(--bidbox-blue))] transition-colors"
+          >
+            BidBox
           </Link>
           
           <AuthButtons />
