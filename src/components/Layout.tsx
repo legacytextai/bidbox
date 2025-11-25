@@ -29,19 +29,29 @@ const AuthButtons = () => {
 
   const handleSignOut = async () => {
     const { error } = await supabase.auth.signOut();
+    
     if (error) {
+      console.error("Logout error:", error);
+      
+      // session_not_found means user is already logged out - treat as success
+      if (error.message?.includes("session_not_found") || 
+          error.message?.includes("Session from session_id")) {
+        // Clear any stale auth data from localStorage
+        localStorage.removeItem("sb-ztuyjlyuzasbceepezua-auth-token");
+        navigate("/auth");
+        return;
+      }
+      
+      // For other errors, show toast but still redirect
       toast({
         title: "Error",
-        description: "Failed to sign out",
+        description: "Failed to sign out. Redirecting anyway...",
         variant: "destructive",
       });
-    } else {
-      toast({
-        title: "Success",
-        description: "Signed out successfully",
-      });
-      navigate("/auth");
     }
+    
+    // Always navigate to auth page
+    navigate("/auth");
   };
 
   if (!authReady || loading) {

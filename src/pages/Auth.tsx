@@ -24,9 +24,35 @@ const Auth = () => {
 
   useEffect(() => {
     const checkUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        navigate("/projects");
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        // If there's an error getting the session, clear stale data
+        if (error) {
+          console.error("Session error:", error);
+          localStorage.removeItem("sb-ztuyjlyuzasbceepezua-auth-token");
+          return;
+        }
+        
+        // If we have a session, verify it's actually valid
+        if (session) {
+          // Try to get user data to verify session is not stale
+          const { error: userError } = await supabase.auth.getUser();
+          
+          if (userError) {
+            // Session is stale, clear it
+            console.error("Stale session detected:", userError);
+            localStorage.removeItem("sb-ztuyjlyuzasbceepezua-auth-token");
+            await supabase.auth.signOut();
+            return;
+          }
+          
+          // Session is valid, redirect to projects
+          navigate("/projects");
+        }
+      } catch (err) {
+        console.error("Auth check error:", err);
+        localStorage.removeItem("sb-ztuyjlyuzasbceepezua-auth-token");
       }
     };
     checkUser();
