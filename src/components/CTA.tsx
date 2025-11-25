@@ -20,7 +20,7 @@ const CTA = () => {
   };
 
   return (
-    <section id="cta" className="py-24 bg-gradient-to-br from-primary to-primary/90 relative overflow-hidden">
+    <section id="cta" className="py-24 bg-gradient-to-br from-[hsl(var(--bidbox-blue))] to-[hsl(var(--bidbox-blue))]/90 relative overflow-hidden">
       {/* Background Pattern */}
       <div className="absolute inset-0 bg-grid-pattern opacity-10"></div>
 

@@ -65,11 +65,11 @@ const Benefits = () => {
           {benefits.map((benefit, idx) => (
             <div
               key={idx}
-              className="group p-8 bg-card border border-border rounded-2xl hover:shadow-strong hover:border-primary/30 transition-all duration-300"
+              className="group p-8 bg-card border border-border rounded-2xl hover:shadow-strong hover:border-[hsl(var(--bidbox-blue))]/30 transition-all duration-300"
             >
               <div className="mb-6">
-                <div className="w-14 h-14 bg-primary/10 rounded-xl flex items-center justify-center group-hover:bg-primary/20 transition-colors">
-                  <benefit.icon className="w-7 h-7 text-primary" />
+                <div className="w-14 h-14 bg-[hsl(var(--bidbox-blue))]/10 rounded-xl flex items-center justify-center group-hover:bg-[hsl(var(--bidbox-blue))]/20 transition-colors">
+                  <benefit.icon className="w-7 h-7 text-[hsl(var(--bidbox-blue))]" />
                 </div>
               </div>
 

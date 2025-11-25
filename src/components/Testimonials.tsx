@@ -74,7 +74,7 @@ const Testimonials = () => {
               {/* Author Info */}
               <div className="flex items-center gap-4">
                 {/* Avatar Placeholder */}
-                <div className="w-12 h-12 bg-primary/20 rounded-full flex items-center justify-center text-primary font-bold text-lg">
+                <div className="w-12 h-12 bg-[hsl(var(--bidbox-blue))]/20 rounded-full flex items-center justify-center text-[hsl(var(--bidbox-blue))] font-bold text-lg">
                   {testimonial.author.charAt(0)}
                 </div>
 
