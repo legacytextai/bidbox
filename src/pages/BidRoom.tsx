@@ -229,7 +229,7 @@ const BidRoom = () => {
     <div className="min-h-screen bg-background">
       <div className="max-w-6xl mx-auto p-6 md:p-8">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-primary mb-2">BB</h1>
+          <h1 className="text-2xl font-bold text-[hsl(var(--bidbox-blue))] mb-2">BB</h1>
         </div>
 
         <div className="mb-8">
@@ -267,7 +267,7 @@ const BidRoom = () => {
                   <DialogTrigger asChild>
                     <Button
                       size="lg"
-                      className="w-full lg:w-auto text-lg py-6 px-8"
+                      className="w-full lg:w-auto text-lg py-6 px-8 bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90"
                       disabled={isExpired}
                     >
                       {isExpired ? "Bid Closed" : "SUBMIT YOUR QUOTE"}
@@ -345,7 +345,7 @@ const BidRoom = () => {
 
                       <Button
                         onClick={handleSubmitBid}
-                        className="w-full"
+                        className="w-full bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90"
                         disabled={submitting}
                       >
                         {submitting ? "Submitting..." : "Submit Bid"}
@@ -360,7 +360,7 @@ const BidRoom = () => {
           <div className="text-center mb-8">
             <p className="text-sm text-muted-foreground mb-2">Bid Due In:</p>
             <p className={`text-4xl md:text-6xl font-bold ${
-              isExpired ? "text-destructive" : countdown.startsWith("00:") ? "text-destructive" : "text-primary"
+              isExpired ? "text-destructive" : "text-primary"
             }`}>
               {countdown}
             </p>

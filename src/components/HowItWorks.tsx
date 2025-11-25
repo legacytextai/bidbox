@@ -50,8 +50,8 @@ const HowItWorks = () => {
 
               {/* Icon */}
               <div className="relative mb-6">
-                <div className="w-16 h-16 bg-gradient-to-br from-primary to-primary/80 rounded-xl flex items-center justify-center shadow-soft">
-                  <step.icon className="w-8 h-8 text-primary-foreground" />
+                <div className="w-16 h-16 bg-gradient-to-br from-[hsl(var(--bidbox-blue))] to-[hsl(var(--bidbox-blue))]/80 rounded-xl flex items-center justify-center shadow-soft">
+                  <step.icon className="w-8 h-8 text-white" />
                 </div>
               </div>
 

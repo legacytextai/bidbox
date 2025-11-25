@@ -31,7 +31,7 @@ const Hero = () => {
               <div className="space-y-6">
                 <h1 className="text-5xl md:text-6xl font-bold text-foreground leading-tight">
                   The Simple Bid Platform{" "}
-                  <span className="text-primary">Built for GCs</span> — Loved by
+                  <span className="text-[hsl(var(--bidbox-blue))]">Built for GCs</span> — Loved by
                   Subs.
                 </h1>
 
@@ -51,7 +51,7 @@ const Hero = () => {
                   "Priced for small GCs: starts at $49/month, no contracts",
                 ].map((benefit, idx) => (
                   <div key={idx} className="flex items-start gap-3">
-                    <CheckCircle2 className="w-5 h-5 text-primary shrink-0 mt-1" />
+                    <CheckCircle2 className="w-5 h-5 text-[hsl(var(--bidbox-blue))] shrink-0 mt-1" />
                     <span className="text-foreground/90">{benefit}</span>
                   </div>
                 ))}
@@ -62,7 +62,7 @@ const Hero = () => {
                 <Button
                   size="lg"
                   onClick={() => window.location.href = "/auth"}
-                  className="text-lg px-8 shadow-strong hover:shadow-soft transition-all"
+                  className="text-lg px-8 shadow-strong hover:shadow-soft transition-all bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90"
                 >
                   Get Started
                 </Button>

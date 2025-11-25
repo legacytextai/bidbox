@@ -79,7 +79,7 @@ const Pricing = () => {
               key={idx}
               className={`relative p-8 rounded-2xl border transition-all duration-300 ${
                 plan.popular
-                  ? "bg-primary text-primary-foreground border-primary shadow-strong scale-105"
+                  ? "bg-[hsl(var(--bidbox-blue))] text-white border-[hsl(var(--bidbox-blue))] shadow-strong scale-105"
                   : "bg-card text-card-foreground border-border hover:shadow-soft"
               }`}
             >
@@ -93,7 +93,7 @@ const Pricing = () => {
               {/* Plan Name */}
               <h3
                 className={`text-2xl font-bold mb-2 ${
-                  plan.popular ? "text-primary-foreground" : "text-foreground"
+                  plan.popular ? "text-white" : "text-foreground"
                 }`}
               >
                 {plan.name}
@@ -103,7 +103,7 @@ const Pricing = () => {
               <p
                 className={`text-sm mb-6 ${
                   plan.popular
-                    ? "text-primary-foreground/90"
+                    ? "text-white/90"
                     : "text-muted-foreground"
                 }`}
               >
@@ -116,7 +116,7 @@ const Pricing = () => {
                   <span
                     className={`text-5xl font-bold ${
                       plan.popular
-                        ? "text-primary-foreground"
+                        ? "text-white"
                         : "text-foreground"
                     }`}
                   >
@@ -125,7 +125,7 @@ const Pricing = () => {
                   <span
                     className={`text-lg ${
                       plan.popular
-                        ? "text-primary-foreground/80"
+                        ? "text-white/80"
                         : "text-muted-foreground"
                     }`}
                   >
@@ -137,8 +137,7 @@ const Pricing = () => {
               {/* CTA Button */}
               <Button
                 onClick={() => scrollToSection("cta")}
-                variant={plan.popular ? "secondary" : "default"}
-                className="w-full mb-8"
+                className={`w-full mb-8 ${plan.popular ? "bg-white text-[hsl(var(--bidbox-blue))] hover:bg-white/90" : "bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90"}`}
                 size="lg"
               >
                 {plan.cta}
@@ -151,14 +150,14 @@ const Pricing = () => {
                     <Check
                       className={`w-5 h-5 shrink-0 mt-0.5 ${
                         plan.popular
-                          ? "text-primary-foreground"
-                          : "text-primary"
+                          ? "text-white"
+                          : "text-[hsl(var(--bidbox-blue))]"
                       }`}
                     />
                     <span
                       className={
                         plan.popular
-                          ? "text-primary-foreground/90"
+                          ? "text-white/90"
                           : "text-foreground/90"
                       }
                     >

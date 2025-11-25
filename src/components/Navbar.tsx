@@ -64,7 +64,7 @@ const Navbar = () => {
             <Button variant="outline" onClick={() => navigate("/auth")}>
               Sign In
             </Button>
-            <Button onClick={() => navigate("/auth")}>
+            <Button onClick={() => navigate("/auth")} className="bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90">
               Start Free Trial
             </Button>
           </div>
@@ -100,7 +100,7 @@ const Navbar = () => {
               </Button>
               <Button
                 onClick={() => navigate("/auth")}
-                className="w-full"
+                className="w-full bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90"
               >
                 Start Free Trial
               </Button>

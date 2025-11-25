@@ -90,13 +90,12 @@ const AuthButtons = () => {
       <Button
         variant="ghost"
         onClick={() => navigate("/auth")}
-        className="text-white hover:bg-white/10"
       >
         Sign In
       </Button>
       <Button
         onClick={() => navigate("/auth")}
-        className="bg-accent hover:bg-accent/90"
+        className="bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90"
       >
         Start Free Trial
       </Button>
@@ -113,7 +112,7 @@ const SidebarLayout = ({ children }: { children: ReactNode }) => {
       <AppSidebar />
       
       <div className="flex-1 flex flex-col">
-        <header className="sticky top-0 z-50 border-b border-white/10 bg-primary">
+        <header className="sticky top-0 z-50 border-b border-border bg-background">
           <div className="flex h-16 items-center justify-between px-4 sm:px-6">
             <div className="flex items-center gap-3">
               {isMobile && (
@@ -121,17 +120,11 @@ const SidebarLayout = ({ children }: { children: ReactNode }) => {
                   variant="ghost"
                   size="sm"
                   onClick={toggleSidebar}
-                  className="lg:hidden text-white hover:bg-white/10"
+                  className="lg:hidden"
                 >
                   <Menu className="h-5 w-5" />
                 </Button>
               )}
-              <Link
-                to="/projects"
-                className="text-xl sm:text-2xl font-bold text-white hover:opacity-80 transition-opacity"
-              >
-                BidBox
-              </Link>
             </div>
             
             <AuthButtons />
@@ -149,11 +142,11 @@ const SidebarLayout = ({ children }: { children: ReactNode }) => {
 const PublicLayout = ({ children }: { children: ReactNode }) => {
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="sticky top-0 z-50 border-b border-white/10 bg-primary">
+      <header className="sticky top-0 z-50 border-b border-border bg-background">
         <div className="container mx-auto flex h-16 items-center justify-between px-4 sm:px-6">
           <Link
             to="/"
-            className="text-xl sm:text-2xl font-bold text-white hover:opacity-80 transition-opacity"
+            className="text-xl sm:text-2xl font-bold text-foreground hover:text-[hsl(var(--bidbox-blue))] transition-colors"
           >
             BidBox
           </Link>

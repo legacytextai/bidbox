@@ -44,7 +44,7 @@ const AppSidebar = ({ onNavigate }: SidebarNavProps) => {
   return (
     <Sidebar>
       <div className="p-6 border-b border-border">
-        <h2 className="text-2xl font-bold text-primary">BidBox</h2>
+        <h2 className="text-2xl font-bold text-[hsl(var(--bidbox-blue))]">BB</h2>
       </div>
 
       <SidebarContent>
