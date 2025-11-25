@@ -26,15 +26,27 @@ const AppSidebar = ({ onNavigate }: SidebarNavProps) => {
 
   const handleLogout = async () => {
     const { error } = await supabase.auth.signOut();
+    
     if (error) {
+      console.error("Logout error:", error);
+      
+      // session_not_found means user is already logged out - treat as success
+      if (error.message?.includes("session_not_found") || 
+          error.message?.includes("Session from session_id")) {
+        navigate("/auth");
+        return;
+      }
+      
+      // For other errors, show toast but still redirect
       toast({
         title: "Error",
-        description: "Failed to log out",
+        description: "Failed to log out. Redirecting anyway...",
         variant: "destructive",
       });
-    } else {
-      navigate("/auth");
     }
+    
+    // Always navigate to auth page
+    navigate("/auth");
   };
 
   const handleNavigation = (path: string) => {
