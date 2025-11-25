@@ -292,21 +292,23 @@ const BidRoom = () => {
               ) : (
                 <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
                   <DialogTrigger asChild>
-                    <div className="w-full lg:w-auto flex flex-col gap-3">
+                    <div className="w-full lg:w-auto flex flex-col gap-4">
                       <Button
-                        className="w-full bg-[#F97316] hover:bg-[#F97316]/90 text-white font-semibold py-6 text-base"
+                        className="w-full bg-[#F97316] hover:bg-[#EA580C] text-white font-bold py-5 text-lg uppercase tracking-wide rounded-xl shadow-md hover:shadow-lg transition-all"
                         disabled={isExpired}
                       >
                         SUBMIT YOUR QUOTE
                       </Button>
                       <div 
-                        className={`w-full min-h-[180px] border-2 border-dashed rounded-lg flex flex-col items-center justify-center gap-3 cursor-pointer transition-all ${
+                        className={`w-full min-h-[220px] border-2 border-dashed rounded-2xl flex flex-col items-center justify-center gap-4 p-6 cursor-pointer transition-all ${
                           isExpired 
-                            ? "border-muted bg-muted/20 cursor-not-allowed opacity-50" 
-                            : "border-[#F97316] bg-[#F97316]/5 hover:bg-[#F97316]/10 hover:border-[hsl(var(--bidbox-blue))]"
+                            ? "border-muted bg-muted/10 cursor-not-allowed opacity-50" 
+                            : "border-[#F97316]/60 bg-[#FFF7ED] hover:bg-[#FFEDD5] hover:border-[#F97316]"
                         }`}
                       >
-                        <Plus className="h-12 w-12 text-[#F97316]" strokeWidth={2.5} />
+                        <div className="w-16 h-16 rounded-full bg-[#F97316]/10 flex items-center justify-center">
+                          <Upload className="h-8 w-8 text-[#F97316]" />
+                        </div>
                         <p className="text-sm text-muted-foreground">
                           {isExpired ? "Bid Closed" : "Click or Drag & Drop Files"}
                         </p>
