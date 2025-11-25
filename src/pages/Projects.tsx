@@ -139,9 +139,9 @@ const Projects = () => {
             
             <div
               onClick={() => navigate("/projects/new")}
-              className="bg-card border-2 border-dashed border-border rounded-lg p-6 hover:border-primary hover:bg-accent/5 transition-all cursor-pointer flex flex-col items-center justify-center min-h-[200px]"
+              className="bg-card border-2 border-dashed border-border rounded-lg p-6 hover:border-[hsl(var(--bidbox-blue))] hover:bg-accent/5 transition-all cursor-pointer flex flex-col items-center justify-center min-h-[200px]"
             >
-              <Plus className="h-12 w-12 text-primary mb-2" />
+              <Plus className="h-12 w-12 text-[hsl(var(--bidbox-blue))] mb-2" />
               <p className="text-lg font-semibold text-foreground">New Project</p>
             </div>
           </div>
