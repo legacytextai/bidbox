@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Download, Upload, CheckCircle2 } from "lucide-react";
+import { Download, Upload, CheckCircle2, Plus, FileText, FileSpreadsheet, File as FileIcon } from "lucide-react";
 import { validateBidFile } from "@/lib/fileValidation";
 import {
   Dialog,
@@ -14,8 +14,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { format, differenceInDays, differenceInHours, differenceInMinutes, differenceInSeconds } from "date-fns";
+import { format } from "date-fns";
 import { z } from "zod";
+import FilePreview from "@/components/FilePreview";
 
 const bidSchema = z.object({
   bidder_name: z.string().max(100).optional(),
@@ -74,11 +75,11 @@ const BidRoom = () => {
       const seconds = Math.floor((diff % (1000 * 60)) / 1000);
 
       setCountdown(
-        `${days.toString().padStart(2, "0")}:${hours
+        `${days.toString().padStart(2, "0")}d:${hours
           .toString()
-          .padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${seconds
+          .padStart(2, "0")}h:${minutes.toString().padStart(2, "0")}m:${seconds
           .toString()
-          .padStart(2, "0")}`
+          .padStart(2, "0")}s`
       );
     }, 1000);
 
@@ -225,11 +226,29 @@ const BidRoom = () => {
     );
   }
 
+  const getFileIcon = (fileName: string) => {
+    const ext = fileName.split('.').pop()?.toLowerCase();
+    switch (ext) {
+      case 'pdf':
+        return <FileText className="h-5 w-5 text-red-500" />;
+      case 'xlsx':
+      case 'xls':
+      case 'csv':
+        return <FileSpreadsheet className="h-5 w-5 text-green-600" />;
+      default:
+        return <FileIcon className="h-5 w-5 text-muted-foreground" />;
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-6xl mx-auto p-6 md:p-8">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-[hsl(var(--bidbox-blue))] mb-2">BB</h1>
+          <Link to="/" className="inline-block">
+            <h1 className="text-2xl font-bold text-[hsl(var(--bidbox-blue))] mb-2 cursor-pointer hover:opacity-80 transition-opacity">
+              BB
+            </h1>
+          </Link>
         </div>
 
         <div className="mb-8">
@@ -241,6 +260,14 @@ const BidRoom = () => {
             <div className="lg:col-span-2 bg-card border border-border rounded-lg p-6">
               <h3 className="font-semibold text-foreground mb-4">Project Information</h3>
               <div className="space-y-2 text-sm">
+                <p>
+                  <span className="text-muted-foreground">GC:</span>{" "}
+                  {project.gc_company_name ? (
+                    <span className="text-foreground">{project.gc_company_name}</span>
+                  ) : (
+                    <span className="text-red-500 font-medium">Add GC Info Here</span>
+                  )}
+                </p>
                 <p><span className="text-muted-foreground">Location:</span> {project.location}</p>
                 <p><span className="text-muted-foreground">Agency:</span> {project.agency}</p>
                 <p><span className="text-muted-foreground">Bid Due:</span> {format(new Date(project.bid_due_at), "MMMM d, yyyy 'at' h:mm a")}</p>
@@ -265,13 +292,18 @@ const BidRoom = () => {
               ) : (
                 <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
                   <DialogTrigger asChild>
-                    <Button
-                      size="lg"
-                      className="w-full lg:w-auto text-lg py-6 px-8 bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90"
-                      disabled={isExpired}
+                    <div 
+                      className={`w-full lg:w-auto min-h-[200px] border-2 border-dashed rounded-lg flex flex-col items-center justify-center gap-3 cursor-pointer transition-all ${
+                        isExpired 
+                          ? "border-muted bg-muted/20 cursor-not-allowed opacity-50" 
+                          : "border-[#F97316] bg-[#F97316]/5 hover:bg-[#F97316]/10 hover:border-[#F97316]/80"
+                      }`}
                     >
-                      {isExpired ? "Bid Closed" : "SUBMIT YOUR QUOTE"}
-                    </Button>
+                      <Plus className="h-12 w-12 text-[#F97316]" strokeWidth={2.5} />
+                      <p className="text-sm text-muted-foreground">
+                        {isExpired ? "Bid Closed" : "Click or Drag & Drop Files"}
+                      </p>
+                    </div>
                   </DialogTrigger>
                   <DialogContent className="max-w-md">
                     <DialogHeader>
@@ -357,47 +389,44 @@ const BidRoom = () => {
             </div>
           </div>
 
-          <div className="text-center mb-8">
-            <p className="text-sm text-muted-foreground mb-2">Bid Due In:</p>
+          <div className="text-center mb-8 py-6 border-y border-border">
+            <p className="text-xl md:text-2xl font-bold uppercase mb-4 text-foreground">
+              BID DUE IN:
+            </p>
             <p className={`text-4xl md:text-6xl font-bold ${
               isExpired ? "text-destructive" : "text-primary"
             }`}>
               {countdown}
             </p>
-            {!isExpired && (
-              <p className="text-xs text-muted-foreground mt-2">
-                DD:HH:MM:SS
-              </p>
-            )}
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="space-y-6">
             <div className="bg-card border border-border rounded-lg p-6">
               <h3 className="font-semibold text-foreground mb-4">Download Project Files</h3>
-              <div className="space-y-2">
-                {projectFiles.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No files available</p>
-                ) : (
-                  projectFiles.map((file) => (
-                    <Button
+              {projectFiles.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No files available</p>
+              ) : (
+                <div className="flex gap-3 overflow-x-auto pb-2">
+                  {projectFiles.map((file) => (
+                    <div
                       key={file.id}
-                      variant="outline"
-                      className="w-full justify-start"
+                      className="flex items-center gap-3 px-4 py-3 bg-muted rounded-full border border-border hover:bg-muted/80 transition-colors cursor-pointer flex-shrink-0"
                       onClick={() => downloadFile(file.file_url, file.file_name)}
                     >
-                      <Download className="h-4 w-4 mr-2" />
-                      {file.file_name}
-                    </Button>
-                  ))
-                )}
-              </div>
+                      {getFileIcon(file.file_name)}
+                      <span className="text-sm font-medium text-foreground whitespace-nowrap">
+                        {file.file_name}
+                      </span>
+                      <Download className="h-4 w-4 text-[hsl(var(--bidbox-blue))]" />
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="bg-card border border-border rounded-lg p-6">
               <h3 className="font-semibold text-foreground mb-4">Preview Project Files</h3>
-              <div className="text-sm text-muted-foreground">
-                Download files to preview
-              </div>
+              <FilePreview files={projectFiles} />
             </div>
           </div>
         </div>
