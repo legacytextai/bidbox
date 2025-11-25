@@ -1,11 +1,13 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
+import { ArrowLeft } from "lucide-react";
+import bidboxLogo from "@/assets/bidbox-logo-auth.png";
 
 const authSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -125,8 +127,19 @@ const Auth = () => {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-primary mb-2">BidBox</h1>
-          <p className="text-muted-foreground">
+          <img 
+            src={bidboxLogo} 
+            alt="BidBox Logo" 
+            className="h-24 mx-auto mb-4"
+          />
+          <Link 
+            to="/" 
+            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors mb-4"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to Homepage
+          </Link>
+          <p className="text-muted-foreground mt-4">
             {isLogin ? "Welcome back" : "Create your account"}
           </p>
         </div>
