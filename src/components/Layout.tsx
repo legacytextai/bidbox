@@ -6,6 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import bidboxLogoHeader from "@/assets/bidbox-logo-header.png";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -156,8 +157,13 @@ const PublicLayout = ({ children }: { children: ReactNode }) => {
         <div className="container mx-auto flex h-16 items-center justify-between px-4 sm:px-6">
           <Link
             to="/"
-            className="text-xl sm:text-2xl font-bold text-foreground hover:text-[hsl(var(--bidbox-blue))] transition-colors"
+            className="flex items-center gap-2 text-xl sm:text-2xl font-bold text-foreground hover:text-[hsl(var(--bidbox-blue))] transition-colors"
           >
+            <img 
+              src={bidboxLogoHeader} 
+              alt="BidBox Logo" 
+              className="h-5 sm:h-6"
+            />
             BidBox
           </Link>
           
