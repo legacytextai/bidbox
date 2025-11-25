@@ -246,7 +246,7 @@ const BidRoom = () => {
       <div className="max-w-6xl mx-auto p-6 md:p-8">
         <div className="mb-8">
           <Link to="/" className="inline-block">
-            <img src={bidboxLogo} alt="BidBox" className="h-10 w-auto mb-2 cursor-pointer hover:opacity-80 transition-opacity" />
+            <img src={bidboxLogo} alt="BidBox" className="h-[120px] w-auto mb-2 cursor-pointer hover:opacity-80 transition-opacity" />
           </Link>
         </div>
 
