@@ -101,9 +101,11 @@ Fast to scaffold, secure by default, and matches Lovable's strengths.
 - Clarity first, then speed  
 - Public bid page: **minimal, deadline-driven, excruciatingly clear**  
 - GC dashboard: clean tile layout, clear status indicators  
-- No pastel colors — sharp, high-contrast UI  
-- Public form shows countdown + drag-and-drop upload + instant confirmation  
-- Layout follows an 8pt grid with generous white space
+- **Brand Color**: Vibrant blue (#1D4ED8) for all CTAs, buttons, links, and key accents  
+- Sharp, high-contrast UI with white headers and blue accents  
+- Public form shows countdown (black digits) + drag-and-drop upload + instant confirmation  
+- Layout follows an 8pt grid with generous white space  
+- Sidebar uses "BB" logo mark in blue — avoid duplicate "BidBox" text
 
 (Krug's law: "Don't make me think.")
 
