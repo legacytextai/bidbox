@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Upload, X } from "lucide-react";
-import Sidebar from "@/components/Sidebar";
+import { Layout } from "@/components/Layout";
 import { z } from "zod";
 import { validateProjectFile } from "@/lib/fileValidation";
 
@@ -145,11 +145,8 @@ const NewProject = () => {
   };
 
   return (
-    <div className="flex h-screen w-full bg-background">
-      <Sidebar />
-
-      <main className="flex-1 overflow-auto">
-        <div className="p-8">
+    <Layout showSidebar={true}>
+      <div className="p-8">
           <h1 className="text-3xl font-bold text-foreground mb-8">New Project</h1>
 
           <form onSubmit={handleSubmit} className="max-w-5xl">
@@ -283,8 +280,7 @@ const NewProject = () => {
             </div>
           </form>
         </div>
-      </main>
-    </div>
+    </Layout>
   );
 };
 

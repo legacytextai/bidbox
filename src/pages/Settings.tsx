@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import Sidebar from "@/components/Sidebar";
+import { Layout } from "@/components/Layout";
 
 const Settings = () => {
   const [profile, setProfile] = useState<any>(null);
@@ -64,21 +64,17 @@ const Settings = () => {
 
   if (loading) {
     return (
-      <div className="flex h-screen w-full">
-        <Sidebar />
-        <div className="flex-1 flex items-center justify-center">
+      <Layout showSidebar={true}>
+        <div className="flex items-center justify-center min-h-[calc(100vh-4rem)]">
           <p className="text-muted-foreground">Loading settings...</p>
         </div>
-      </div>
+      </Layout>
     );
   }
 
   return (
-    <div className="flex h-screen w-full bg-background">
-      <Sidebar />
-
-      <main className="flex-1 overflow-auto">
-        <div className="p-8">
+    <Layout showSidebar={true}>
+      <div className="p-8">
           <h1 className="text-3xl font-bold text-foreground mb-8">Settings</h1>
 
           <div className="max-w-2xl space-y-6">
@@ -107,8 +103,7 @@ const Settings = () => {
             </div>
           </div>
         </div>
-      </main>
-    </div>
+    </Layout>
   );
 };
 

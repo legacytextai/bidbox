@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Copy, Download, Trash2, Upload, CheckCircle2 } from "lucide-react";
-import Sidebar from "@/components/Sidebar";
+import { Layout } from "@/components/Layout";
 import { format } from "date-fns";
 import { validateProjectFile } from "@/lib/fileValidation";
 import {
@@ -297,32 +297,27 @@ const ProjectDetail = () => {
 
   if (loading) {
     return (
-      <div className="flex h-screen w-full">
-        <Sidebar />
-        <div className="flex-1 flex items-center justify-center">
+      <Layout showSidebar={true}>
+        <div className="flex items-center justify-center min-h-[calc(100vh-4rem)]">
           <p className="text-muted-foreground">Loading project...</p>
         </div>
-      </div>
+      </Layout>
     );
   }
 
   if (!project) {
     return (
-      <div className="flex h-screen w-full">
-        <Sidebar />
-        <div className="flex-1 flex items-center justify-center">
+      <Layout showSidebar={true}>
+        <div className="flex items-center justify-center min-h-[calc(100vh-4rem)]">
           <p className="text-muted-foreground">Project not found</p>
         </div>
-      </div>
+      </Layout>
     );
   }
 
   return (
-    <div className="flex h-screen w-full bg-background">
-      <Sidebar />
-
-      <main className="flex-1 overflow-auto">
-        <div className="p-8">
+    <Layout showSidebar={true}>
+      <div className="p-8">
           <Button
             variant="ghost"
             onClick={() => navigate("/projects")}
@@ -558,9 +553,8 @@ const ProjectDetail = () => {
             </AlertDialog>
           </div>
         </div>
-      </main>
-    </div>
-  );
-};
-
-export default ProjectDetail;
+      </Layout>
+    );
+  };
+  
+  export default ProjectDetail;
