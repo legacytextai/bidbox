@@ -6,7 +6,9 @@ import { Plus, Copy, CheckCircle2, Menu } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import Sidebar from "@/components/Sidebar";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import SidebarNav from "@/components/SidebarNav";
+import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
+import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 
 interface Project {
   id: string;
@@ -86,8 +88,11 @@ const Projects = () => {
               <Menu className="h-6 w-6" />
             </Button>
           </SheetTrigger>
-          <SheetContent side="left" className="p-0 w-64">
-            <Sidebar />
+          <SheetContent side="left" className="p-0 w-64 flex flex-col">
+            <VisuallyHidden>
+              <SheetTitle>Navigation Menu</SheetTitle>
+            </VisuallyHidden>
+            <SidebarNav onNavigate={() => setMobileMenuOpen(false)} />
           </SheetContent>
         </Sheet>
         <Sidebar />
@@ -111,8 +116,11 @@ const Projects = () => {
             <Menu className="h-6 w-6" />
           </Button>
         </SheetTrigger>
-        <SheetContent side="left" className="p-0 w-64">
-          <Sidebar />
+        <SheetContent side="left" className="p-0 w-64 flex flex-col">
+          <VisuallyHidden>
+            <SheetTitle>Navigation Menu</SheetTitle>
+          </VisuallyHidden>
+          <SidebarNav onNavigate={() => setMobileMenuOpen(false)} />
         </SheetContent>
       </Sheet>
 
