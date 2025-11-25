@@ -435,6 +435,26 @@ Already implemented:
 
 ---
 
+### Task 2.3.5: Update PRD with Final Branding [✅ COMPLETED]
+
+**User Decision**: Document finalized blue branding across all PRD files
+
+- [x] 2.3.5.1 Update design-guidelines.md
+  - Set BidBox Blue (#1D4ED8) as PRIMARY BRAND COLOR
+  - Document usage: CTAs, links, accents, icons, sidebar logo
+  - Clarify countdown digits remain black (not blue)
+  - Add header/branding section with "BB" logo specifications
+  - Remove duplicate "BidBox" text guidance
+
+- [x] 2.3.5.2 Update masterplan.md
+  - Add blue branding to UI Design Principles section
+  - Document "BB" logo strategy
+  - Specify white headers with blue accents
+
+**References**: design-guidelines.md (Color System, Header & Branding)
+
+---
+
 ### Task 2.4: Token Regeneration Feature [MVP]
 
 **User Decision**: No expiration, YES to regeneration
