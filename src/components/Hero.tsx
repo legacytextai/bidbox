@@ -11,14 +11,14 @@ const Hero = () => {
   };
 
   return (
-    <section className="relative pt-32 pb-20 overflow-hidden bg-gradient-to-b from-background to-secondary/30">
+    <section className="relative pt-16 pb-12 overflow-hidden bg-gradient-to-b from-background to-secondary/30">
       {/* Background decoration */}
       <div className="absolute inset-0 bg-grid-pattern opacity-5"></div>
 
       <div className="container mx-auto px-4">
         <div className="max-w-6xl mx-auto">
           {/* Social Proof Badge */}
-          <div className="flex justify-center mb-8 animate-fade-in">
+          <div className="flex justify-center mb-4 animate-fade-in">
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-primary/10 border border-primary/20 rounded-full text-sm font-medium text-primary">
               <Users className="w-4 h-4" />
               <span>1,000+ active users</span>
@@ -26,14 +26,14 @@ const Hero = () => {
           </div>
 
           {/* Main Content Grid */}
-          <div className="grid md:grid-cols-2 gap-12 items-center">
+          <div className="grid md:grid-cols-2 gap-8 items-center">
             {/* Left: Copy */}
-            <div className="space-y-8 animate-slide-in-left">
-              {/* Logo - left aligned */}
+            <div className="space-y-6 animate-slide-in-left">
+              {/* Logo - centered */}
               <img 
                 src={bidboxLogo} 
                 alt="BidBox Logo" 
-                className="w-48 md:w-64"
+                className="w-48 md:w-64 mx-auto block"
               />
               
               <div className="space-y-6">
