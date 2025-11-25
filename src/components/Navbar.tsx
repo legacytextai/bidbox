@@ -64,7 +64,7 @@ const Navbar = () => {
             <Button variant="outline" onClick={() => navigate("/auth")}>
               Sign In
             </Button>
-            <Button onClick={() => scrollToSection("cta")}>
+            <Button onClick={() => navigate("/auth")}>
               Start Free Trial
             </Button>
           </div>
@@ -99,7 +99,7 @@ const Navbar = () => {
                 Sign In
               </Button>
               <Button
-                onClick={() => scrollToSection("cta")}
+                onClick={() => navigate("/auth")}
                 className="w-full"
               >
                 Start Free Trial
