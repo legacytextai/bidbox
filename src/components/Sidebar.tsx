@@ -22,7 +22,7 @@ const Sidebar = () => {
   };
 
   return (
-    <aside className="w-64 bg-card border-r border-border flex flex-col">
+    <aside className="hidden md:flex w-64 bg-card border-r border-border flex-col">
       <div className="p-6">
         <h2 className="text-2xl font-bold text-primary">BB</h2>
       </div>
