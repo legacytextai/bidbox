@@ -159,7 +159,7 @@ const PublicLayout = ({ children }: { children: ReactNode }) => {
             <img 
               src={bidboxLogo} 
               alt="BidBox" 
-              className="h-8 sm:h-10"
+              className="h-16 sm:h-20"
             />
           </Link>
           
