@@ -292,34 +292,36 @@ const BidRoom = () => {
               ) : (
                 <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
                   <DialogTrigger asChild>
-                    <div className="w-full lg:w-auto flex flex-col gap-6">
-                      <Button
-                        className="w-full bg-[#F97316] hover:bg-[#EA580C] text-white font-bold py-4 px-8 text-lg uppercase tracking-wider rounded-full shadow-lg hover:shadow-xl transition-all"
-                        disabled={isExpired}
-                      >
-                        SUBMIT YOUR QUOTE
-                      </Button>
-                      <div 
-                        className={`w-full min-h-[200px] border-2 border-dashed rounded-2xl flex flex-col items-center justify-center gap-3 p-8 cursor-pointer transition-all ${
-                          isExpired 
-                            ? "border-muted bg-muted/10 cursor-not-allowed opacity-50" 
-                            : "bg-white border-gray-300 hover:border-gray-400 hover:bg-gray-50"
-                        }`}
-                      >
-                        <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center">
-                          <Upload className="h-6 w-6 text-gray-400" />
+                    <div className="w-full lg:w-auto bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+                      <div className="flex flex-col gap-4">
+                        <Button
+                          className="w-full bg-[#F97316] hover:bg-[#EA580C] text-white font-bold py-4 px-8 text-lg uppercase tracking-wider rounded-full shadow-lg hover:shadow-xl transition-all"
+                          disabled={isExpired}
+                        >
+                          SUBMIT YOUR QUOTE
+                        </Button>
+                        <div 
+                          className={`w-full min-h-[200px] border-2 border-dashed rounded-2xl flex flex-col items-center justify-center gap-3 p-8 cursor-pointer transition-all ${
+                            isExpired 
+                              ? "border-muted bg-muted/10 cursor-not-allowed opacity-50" 
+                              : "border-gray-200 bg-gray-50/50 hover:border-gray-300 hover:bg-gray-50"
+                          }`}
+                        >
+                          <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center">
+                            <Upload className="h-6 w-6 text-gray-400" />
+                          </div>
+                          <p className="text-base text-gray-500 font-medium">
+                            {isExpired ? "Bid Closed" : "Drag files to upload"}
+                          </p>
+                          {!isExpired && (
+                            <>
+                              <p className="text-sm text-gray-400">or</p>
+                              <span className="text-sm text-[#F97316] font-medium hover:underline">
+                                Browse Files
+                              </span>
+                            </>
+                          )}
                         </div>
-                        <p className="text-base text-gray-500 font-medium">
-                          {isExpired ? "Bid Closed" : "Drag files to upload"}
-                        </p>
-                        {!isExpired && (
-                          <>
-                            <p className="text-sm text-gray-400">or</p>
-                            <span className="text-sm text-[#F97316] font-medium hover:underline">
-                              Browse Files
-                            </span>
-                          </>
-                        )}
                       </div>
                     </div>
                   </DialogTrigger>
