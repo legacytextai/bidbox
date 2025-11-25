@@ -3,12 +3,23 @@ import { Button } from "@/components/ui/button";
 import { FolderOpen, Plus, Settings, LogOut } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarFooter,
+} from "@/components/ui/sidebar";
 
 interface SidebarNavProps {
   onNavigate?: () => void;
 }
 
-const SidebarNav = ({ onNavigate }: SidebarNavProps) => {
+const AppSidebar = ({ onNavigate }: SidebarNavProps) => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -31,55 +42,54 @@ const SidebarNav = ({ onNavigate }: SidebarNavProps) => {
   };
 
   return (
-    <>
-      <div className="p-6">
-        <h2 className="text-2xl font-bold text-primary">BB</h2>
+    <Sidebar>
+      <div className="p-6 border-b border-border">
+        <h2 className="text-2xl font-bold text-primary">BidBox</h2>
       </div>
 
-      <nav className="flex-1 px-4 space-y-2">
-        <div className="mb-4">
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-3">
-            Projects
-          </p>
-          <Button
-            variant="ghost"
-            className="w-full justify-start"
-            onClick={() => handleNavigation("/projects")}
-          >
-            <FolderOpen className="h-4 w-4 mr-3" />
-            View All
-          </Button>
-          <Button
-            variant="ghost"
-            className="w-full justify-start"
-            onClick={() => handleNavigation("/projects/new")}
-          >
-            <Plus className="h-4 w-4 mr-3" />
-            Add New
-          </Button>
-        </div>
-      </nav>
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupLabel>Projects</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton onClick={() => handleNavigation("/projects")}>
+                  <FolderOpen className="h-4 w-4 mr-3" />
+                  <span>View All</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton onClick={() => handleNavigation("/projects/new")}>
+                  <Plus className="h-4 w-4 mr-3" />
+                  <span>Add New</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
 
-      <div className="p-4 space-y-2 border-t border-border">
-        <Button
-          variant="ghost"
-          className="w-full justify-start"
-          onClick={() => handleNavigation("/settings")}
-        >
-          <Settings className="h-4 w-4 mr-3" />
-          Settings
-        </Button>
-        <Button
-          variant="ghost"
-          className="w-full justify-start text-destructive hover:text-destructive hover:bg-destructive/10"
-          onClick={handleLogout}
-        >
-          <LogOut className="h-4 w-4 mr-3" />
-          Logout
-        </Button>
-      </div>
-    </>
+      <SidebarFooter className="border-t border-border">
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton onClick={() => handleNavigation("/settings")}>
+              <Settings className="h-4 w-4 mr-3" />
+              <span>Settings</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton 
+              onClick={handleLogout}
+              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+            >
+              <LogOut className="h-4 w-4 mr-3" />
+              <span>Logout</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
+    </Sidebar>
   );
 };
 
-export default SidebarNav;
+export default AppSidebar;

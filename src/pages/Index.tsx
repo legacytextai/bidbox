@@ -1,3 +1,4 @@
+import { Layout } from "@/components/Layout";
 import Navbar from "@/components/Navbar";
 import Hero from "@/components/Hero";
 import Partners from "@/components/Partners";
@@ -11,8 +12,7 @@ import Footer from "@/components/Footer";
 
 const Index = () => {
   return (
-    <div className="min-h-screen">
-      <Navbar />
+    <Layout showSidebar={false}>
       <Hero />
       <Partners />
       <Benefits />
@@ -22,7 +22,7 @@ const Index = () => {
       <FAQ />
       <CTA />
       <Footer />
-    </div>
+    </Layout>
   );
 };
 

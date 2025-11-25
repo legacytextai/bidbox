@@ -1,14 +1,11 @@
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Plus, Copy, CheckCircle2, Menu } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { Plus, Copy, CheckCircle2 } from "lucide-react";
 import { format } from "date-fns";
-import Sidebar from "@/components/Sidebar";
-import SidebarNav from "@/components/SidebarNav";
-import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
-import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
+import { Layout } from "@/components/Layout";
 
 interface Project {
   id: string;
@@ -23,7 +20,6 @@ const Projects = () => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -75,59 +71,13 @@ const Projects = () => {
     });
   };
 
-  if (loading) {
-    return (
-      <div className="flex h-screen">
-        <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-          <SheetTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="md:hidden fixed top-4 left-4 z-50"
-            >
-              <Menu className="h-6 w-6" />
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="left" className="p-0 w-64 flex flex-col">
-            <VisuallyHidden>
-              <SheetTitle>Navigation Menu</SheetTitle>
-            </VisuallyHidden>
-            <SidebarNav onNavigate={() => setMobileMenuOpen(false)} />
-          </SheetContent>
-        </Sheet>
-        <Sidebar />
-        <div className="flex-1 flex items-center justify-center">
+  return (
+    <Layout showSidebar={true}>
+      {loading ? (
+        <div className="flex items-center justify-center min-h-[calc(100vh-4rem)]">
           <p className="text-muted-foreground">Loading projects...</p>
         </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex h-screen w-full bg-background">
-      {/* Mobile Menu Button */}
-      <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-        <SheetTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="md:hidden fixed top-4 left-4 z-50"
-          >
-            <Menu className="h-6 w-6" />
-          </Button>
-        </SheetTrigger>
-        <SheetContent side="left" className="p-0 w-64 flex flex-col">
-          <VisuallyHidden>
-            <SheetTitle>Navigation Menu</SheetTitle>
-          </VisuallyHidden>
-          <SidebarNav onNavigate={() => setMobileMenuOpen(false)} />
-        </SheetContent>
-      </Sheet>
-
-      {/* Desktop Sidebar */}
-      <Sidebar />
-      
-      <main className="flex-1 overflow-auto pt-16 md:pt-0">
+      ) : (
         <div className="p-8">
           <h1 className="text-3xl font-bold text-foreground mb-8">Projects</h1>
           
@@ -196,8 +146,8 @@ const Projects = () => {
             </div>
           </div>
         </div>
-      </main>
-    </div>
+      )}
+    </Layout>
   );
 };
 
