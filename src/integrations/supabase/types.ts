@@ -116,39 +116,39 @@ export type Database = {
       }
       projects: {
         Row: {
-          agency: string
+          agency: string | null
           bid_due_at: string
           created_at: string
           gc_id: string
           id: string
           instructions: string | null
-          location: string
+          location: string | null
           name: string
           public_token: string
           status: string
           updated_at: string
         }
         Insert: {
-          agency: string
+          agency?: string | null
           bid_due_at: string
           created_at?: string
           gc_id: string
           id?: string
           instructions?: string | null
-          location: string
+          location?: string | null
           name: string
           public_token?: string
           status?: string
           updated_at?: string
         }
         Update: {
-          agency?: string
+          agency?: string | null
           bid_due_at?: string
           created_at?: string
           gc_id?: string
           id?: string
           instructions?: string | null
-          location?: string
+          location?: string | null
           name?: string
           public_token?: string
           status?: string

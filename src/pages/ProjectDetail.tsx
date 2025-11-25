@@ -332,9 +332,20 @@ const ProjectDetail = () => {
             Back to Projects
           </Button>
 
-          <h1 className="text-3xl font-bold text-foreground mb-8">
+          <h1 className="text-3xl font-bold text-foreground mb-2">
             {project.name}
           </h1>
+          
+          <div className="flex gap-6 text-sm text-muted-foreground mb-8">
+            <div>
+              <span className="font-medium">Location:</span>{" "}
+              {project.location || "Not specified"}
+            </div>
+            <div>
+              <span className="font-medium">Agency:</span>{" "}
+              {project.agency || "Not specified"}
+            </div>
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
             <div className="space-y-2">
