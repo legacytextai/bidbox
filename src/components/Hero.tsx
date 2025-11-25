@@ -60,13 +60,20 @@ const Hero = () => {
             {/* Right: Product Preview */}
             <div className="relative animate-slide-in-right">
               <div className="relative rounded-2xl overflow-hidden shadow-strong border border-border bg-card">
-                <img src="/placeholder.svg" alt="BidBox Dashboard Preview" className="w-full h-auto" />
+                <video 
+                  src="/videos/bidbox-demo.mov" 
+                  autoPlay 
+                  loop 
+                  muted 
+                  playsInline
+                  className="w-full h-auto"
+                />
                 {/* Overlay gradient for depth */}
                 <div className="absolute inset-0 bg-gradient-to-tr from-primary/5 to-transparent pointer-events-none"></div>
               </div>
 
               {/* Floating badge */}
-              <div className="absolute -bottom-4 -left-4 bg-accent text-accent-foreground px-6 py-3 rounded-lg shadow-lg font-semibold">
+              <div className="absolute -bottom-4 -right-4 bg-accent text-accent-foreground px-6 py-3 rounded-lg shadow-lg font-semibold">
                 5-minute setup ⚡
               </div>
             </div>
