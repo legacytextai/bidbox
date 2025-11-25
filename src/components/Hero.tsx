@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, Users } from "lucide-react";
+import bidboxLogo from "@/assets/bidbox-logo.png";
 
 const Hero = () => {
   const scrollToSection = (id: string) => {
@@ -29,6 +30,14 @@ const Hero = () => {
             {/* Left: Copy */}
             <div className="space-y-8 animate-slide-in-left">
               <div className="space-y-6">
+                <div className="flex justify-center mb-8">
+                  <img 
+                    src={bidboxLogo} 
+                    alt="BidBox Logo" 
+                    className="w-48 md:w-64"
+                  />
+                </div>
+                
                 <h1 className="text-5xl md:text-6xl font-bold text-foreground leading-tight">
                   The Simple Bid Platform{" "}
                   <span className="text-[hsl(var(--bidbox-blue))]">Built for GCs</span> — Loved by
