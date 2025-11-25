@@ -57,7 +57,7 @@ const AppSidebar = ({ onNavigate }: SidebarNavProps) => {
   return (
     <Sidebar>
       <div className="px-6 py-3 border-b border-border flex items-center justify-start">
-        <img src={bidboxLogo} alt="BidBox" className="h-72 w-auto" />
+        <img src={bidboxLogo} alt="BidBox" className="h-24 w-auto" />
       </div>
 
       <SidebarContent>
