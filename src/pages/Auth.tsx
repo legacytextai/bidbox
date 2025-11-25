@@ -183,7 +183,7 @@ const Auth = () => {
               </div>
             )}
 
-            <Button type="submit" className="w-full" disabled={loading}>
+            <Button type="submit" className="w-full bg-bidbox-blue hover:bg-bidbox-blue/90 text-white" disabled={loading}>
               {loading ? "Loading..." : isLogin ? "Sign In" : "Sign Up"}
             </Button>
           </form>
