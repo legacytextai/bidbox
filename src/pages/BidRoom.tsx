@@ -243,19 +243,19 @@ const BidRoom = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="max-w-6xl mx-auto p-6 md:p-8">
-        <div className="mb-8">
+      <div className="max-w-6xl mx-auto p-4 md:p-6">
+        <div className="mb-2">
           <Link to="/" className="inline-block">
-            <img src={bidboxLogo} alt="BidBox" className="h-[120px] w-auto mb-2 cursor-pointer hover:opacity-80 transition-opacity" />
+            <img src={bidboxLogo} alt="BidBox" className="h-[120px] w-auto cursor-pointer hover:opacity-80 transition-opacity" />
           </Link>
         </div>
 
-        <div className="mb-8">
-          <h2 className="text-3xl font-bold text-foreground mb-6">
+        <div className="mb-4">
+          <h2 className="text-3xl font-bold text-foreground mb-3">
             {project.name} Bid Box
           </h2>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
             <div className="lg:col-span-2 bg-card border border-border rounded-lg p-6">
               <h3 className="font-semibold text-foreground mb-4">Project Information</h3>
               <div className="space-y-2 text-sm">
@@ -408,7 +408,7 @@ const BidRoom = () => {
             </div>
           </div>
 
-          <div className="text-center mb-8 py-6 border-y border-border">
+          <div className="text-center mb-4 py-4 border-y border-border">
             <p className="text-xl md:text-2xl font-bold uppercase mb-4 text-foreground">
               BID DUE IN:
             </p>
