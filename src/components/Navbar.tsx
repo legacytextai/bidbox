@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Menu, X } from "lucide-react";
 
 const Navbar = () => {
+  const navigate = useNavigate();
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -59,6 +61,9 @@ const Navbar = () => {
                 {link.label}
               </button>
             ))}
+            <Button variant="outline" onClick={() => navigate("/auth")}>
+              Sign In
+            </Button>
             <Button onClick={() => scrollToSection("cta")}>
               Start Free Trial
             </Button>
@@ -86,6 +91,13 @@ const Navbar = () => {
                   {link.label}
                 </button>
               ))}
+              <Button
+                variant="outline"
+                onClick={() => navigate("/auth")}
+                className="w-full"
+              >
+                Sign In
+              </Button>
               <Button
                 onClick={() => scrollToSection("cta")}
                 className="w-full"
