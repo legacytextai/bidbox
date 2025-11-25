@@ -2,10 +2,11 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Plus, Copy, CheckCircle2 } from "lucide-react";
+import { Plus, Copy, CheckCircle2, Menu } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import Sidebar from "@/components/Sidebar";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
 interface Project {
   id: string;
@@ -20,6 +21,7 @@ const Projects = () => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -74,6 +76,20 @@ const Projects = () => {
   if (loading) {
     return (
       <div className="flex h-screen">
+        <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+          <SheetTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="md:hidden fixed top-4 left-4 z-50"
+            >
+              <Menu className="h-6 w-6" />
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="left" className="p-0 w-64">
+            <Sidebar />
+          </SheetContent>
+        </Sheet>
         <Sidebar />
         <div className="flex-1 flex items-center justify-center">
           <p className="text-muted-foreground">Loading projects...</p>
@@ -84,9 +100,26 @@ const Projects = () => {
 
   return (
     <div className="flex h-screen w-full bg-background">
+      {/* Mobile Menu Button */}
+      <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+        <SheetTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="md:hidden fixed top-4 left-4 z-50"
+          >
+            <Menu className="h-6 w-6" />
+          </Button>
+        </SheetTrigger>
+        <SheetContent side="left" className="p-0 w-64">
+          <Sidebar />
+        </SheetContent>
+      </Sheet>
+
+      {/* Desktop Sidebar */}
       <Sidebar />
       
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-auto pt-16 md:pt-0">
         <div className="p-8">
           <h1 className="text-3xl font-bold text-foreground mb-8">Projects</h1>
           
