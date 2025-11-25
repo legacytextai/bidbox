@@ -29,15 +29,14 @@ const Hero = () => {
           <div className="grid md:grid-cols-2 gap-12 items-center">
             {/* Left: Copy */}
             <div className="space-y-8 animate-slide-in-left">
+              {/* Logo - left aligned */}
+              <img 
+                src={bidboxLogo} 
+                alt="BidBox Logo" 
+                className="w-48 md:w-64"
+              />
+              
               <div className="space-y-6">
-                <div className="flex justify-center mb-8">
-                  <img 
-                    src={bidboxLogo} 
-                    alt="BidBox Logo" 
-                    className="w-48 md:w-64"
-                  />
-                </div>
-                
                 <h1 className="text-5xl md:text-6xl font-bold text-foreground leading-tight">
                   The Simple Bid Platform{" "}
                   <span className="text-[hsl(var(--bidbox-blue))]">Built for GCs</span> — Loved by
