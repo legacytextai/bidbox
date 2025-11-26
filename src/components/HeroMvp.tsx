@@ -27,7 +27,7 @@ const HeroMvp = () => {
             <div className="space-y-4 animate-slide-in-left">
               <div className="space-y-4">
                 <h1 className="text-4xl md:text-5xl font-bold text-foreground leading-tight">
-                  <span className="text-[hsl(var(--bidbox-blue))]">The Simple Bid Room</span> That Gets You More Quotes.{" "}
+                  The <span className="text-[hsl(var(--bidbox-blue))]">Simple Bid Room</span> That Gets You More Quotes.{" "}
                   <span className="text-[hsl(var(--bidbox-blue))]">Built for GCs</span> — Loved by
                   Subs.
                 </h1>
