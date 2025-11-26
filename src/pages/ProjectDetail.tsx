@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Copy, Download, Trash2, Upload, CheckCircle2 } from "lucide-react";
 import { Layout } from "@/components/Layout";
+import { Progress } from "@/components/ui/progress";
 import { format } from "date-fns";
 import { validateProjectFile } from "@/lib/fileValidation";
 import {
@@ -54,6 +55,8 @@ const ProjectDetail = () => {
   const [bids, setBids] = useState<Bid[]>([]);
   const [copied, setCopied] = useState(false);
   const [newFiles, setNewFiles] = useState<File[]>([]);
+  const [currentUpload, setCurrentUpload] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   useEffect(() => {
     loadProject();
@@ -151,8 +154,12 @@ const ProjectDetail = () => {
       }
     }
 
+    setIsUploading(true);
+
     for (const file of newFiles) {
+      setCurrentUpload(file.name);
       const filePath = `${session.user.id}/${id}/${file.name}`;
+      
       const { error: uploadError } = await supabase.storage
         .from("project-files")
         .upload(filePath, file);
@@ -163,6 +170,8 @@ const ProjectDetail = () => {
           description: `Failed to upload ${file.name}`,
           variant: "destructive",
         });
+        setIsUploading(false);
+        setCurrentUpload(null);
         continue;
       }
 
@@ -181,15 +190,18 @@ const ProjectDetail = () => {
           description: `Failed to save ${file.name}`,
           variant: "destructive",
         });
+      } else {
+        toast({
+          title: "File Uploaded",
+          description: `${file.name} uploaded successfully`,
+        });
       }
     }
 
     setNewFiles([]);
+    setIsUploading(false);
+    setCurrentUpload(null);
     loadProject();
-    toast({
-      title: "Success",
-      description: "Files uploaded successfully",
-    });
   };
 
   const deleteFile = async (fileId: string, filePath: string) => {
@@ -446,7 +458,7 @@ const ProjectDetail = () => {
                 ))}
               </div>
 
-              <div className="border-2 border-dashed border-border rounded-lg p-4">
+              <div className={`border-2 border-dashed border-border rounded-lg p-4 ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}>
                 <input
                   type="file"
                   multiple
@@ -455,20 +467,31 @@ const ProjectDetail = () => {
                   }
                   className="hidden"
                   id="new-file-upload"
+                  disabled={isUploading}
                 />
                 <label
                   htmlFor="new-file-upload"
-                  className="cursor-pointer flex items-center justify-center text-sm text-muted-foreground"
+                  className={`flex items-center justify-center text-sm text-muted-foreground ${isUploading ? 'cursor-not-allowed' : 'cursor-pointer'}`}
                 >
                   <Upload className="h-4 w-4 mr-2" />
-                  Add New Files
+                  {isUploading ? "Uploading..." : "Add New Files"}
                 </label>
                 {newFiles.length > 0 && (
-                  <div className="mt-4 space-y-2">
+                  <div className="mt-4 space-y-3">
                     {newFiles.map((file, i) => (
-                      <p key={i} className="text-sm">{file.name}</p>
+                      <div key={i} className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm">{file.name}</p>
+                          {currentUpload === file.name && (
+                            <span className="text-xs text-muted-foreground">(Uploading...)</span>
+                          )}
+                        </div>
+                        {currentUpload === file.name && (
+                          <Progress value={undefined} className="h-1" />
+                        )}
+                      </div>
                     ))}
-                    <Button onClick={handleFileUpload} size="sm">
+                    <Button onClick={handleFileUpload} size="sm" disabled={isUploading}>
                       Upload Files
                     </Button>
                   </div>
