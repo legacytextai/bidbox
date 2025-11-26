@@ -522,28 +522,6 @@ const ProjectDetail = () => {
             />
           </div>
 
-          {/* Save Changes Button */}
-          <div className="flex gap-3 mb-8">
-            <Button 
-              onClick={saveAllChanges} 
-              disabled={!hasChanges || isSaving}
-              size="lg"
-            >
-              {isSaving ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                "Save Changes"
-              )}
-            </Button>
-            {hasChanges && (
-              <p className="text-sm text-muted-foreground self-center">
-                You have unsaved changes
-              </p>
-            )}
-          </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <div className="space-y-4">
@@ -686,7 +664,29 @@ const ProjectDetail = () => {
             </div>
           </div>
 
-          <div className="mt-8 flex justify-end">
+          <div className="mt-8 flex justify-between items-center">
+            <div className="flex gap-3 items-center">
+              <Button 
+                onClick={saveAllChanges} 
+                disabled={!hasChanges || isSaving}
+                size="lg"
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  "Save Changes"
+                )}
+              </Button>
+              {hasChanges && (
+                <p className="text-sm text-muted-foreground">
+                  You have unsaved changes
+                </p>
+              )}
+            </div>
+            
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button variant="destructive">
