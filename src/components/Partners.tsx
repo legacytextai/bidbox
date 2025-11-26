@@ -1,5 +1,4 @@
 import partnerLogos from "@/assets/partner-logos.png";
-
 const Partners = () => {
   return <section className="py-16 bg-secondary/30 border-y border-border">
       <div className="container mx-auto px-4">
@@ -10,11 +9,7 @@ const Partners = () => {
         </div>
 
         <div className="flex justify-center">
-          <img 
-            src={partnerLogos} 
-            alt="Partner company logos" 
-            className="max-w-[50%] h-auto"
-          />
+          
         </div>
       </div>
     </section>;
