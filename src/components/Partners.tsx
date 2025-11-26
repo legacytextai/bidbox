@@ -14,11 +14,11 @@ const Partners = () => {
         </div>
 
         <div className="flex justify-center items-center gap-12">
-          <img src={logoNorthworks} alt="Northworks" className="h-12 grayscale opacity-60 hover:grayscale-0 hover:opacity-100 transition-all" />
-          <img src={logoWestbuild} alt="Westbuild" className="h-12 grayscale opacity-60 hover:grayscale-0 hover:opacity-100 transition-all" />
-          <img src={logoMetroworks} alt="Metroworks" className="h-12 grayscale opacity-60 hover:grayscale-0 hover:opacity-100 transition-all" />
-          <img src={logoPrimesite} alt="Primesite" className="h-12 grayscale opacity-60 hover:grayscale-0 hover:opacity-100 transition-all" />
-          <img src={logoBluepeak} alt="Bluepeak" className="h-12 grayscale opacity-60 hover:grayscale-0 hover:opacity-100 transition-all" />
+          <img src={logoNorthworks} alt="Northworks" className="h-6 grayscale opacity-60 hover:grayscale-0 hover:opacity-100 transition-all" />
+          <img src={logoWestbuild} alt="Westbuild" className="h-6 grayscale opacity-60 hover:grayscale-0 hover:opacity-100 transition-all" />
+          <img src={logoMetroworks} alt="Metroworks" className="h-6 grayscale opacity-60 hover:grayscale-0 hover:opacity-100 transition-all" />
+          <img src={logoPrimesite} alt="Primesite" className="h-6 grayscale opacity-60 hover:grayscale-0 hover:opacity-100 transition-all" />
+          <img src={logoBluepeak} alt="Bluepeak" className="h-6 grayscale opacity-60 hover:grayscale-0 hover:opacity-100 transition-all" />
         </div>
       </div>
     </section>;
