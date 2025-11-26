@@ -8,9 +8,9 @@ import {
 const FAQ = () => {
   const faqs = [
     {
-      question: "Do I really not need a credit card for the free trial?",
+      question: "Do I really not need a credit card for the free tier?",
       answer:
-        "Correct. Start your 14-day free trial with just your email. We'll only ask for payment details when you're ready to continue after the trial.",
+        "Correct. Start your Free Tier Bid Room with just your email. We'll only ask for payment details when you're ready to upgrade.",
     },
     {
       question: "Do subcontractors need to create accounts?",
