@@ -13,7 +13,7 @@ const Partners = () => {
           <img 
             src={partnerLogos} 
             alt="Partner company logos" 
-            className="max-w-full h-auto"
+            className="max-w-[50%] h-auto"
           />
         </div>
       </div>
