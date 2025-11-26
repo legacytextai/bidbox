@@ -316,20 +316,22 @@ const BidRoom = () => {
                               : "border-gray-200 bg-gray-50/50 hover:border-gray-300 hover:bg-gray-50"
                           }`}
                         >
-                          <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center">
-                            <Upload className="h-6 w-6 text-gray-400" />
+                          <div className="flex flex-col items-center justify-center gap-2 py-4">
+                            <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center">
+                              <Upload className="h-6 w-6 text-gray-400" />
+                            </div>
+                            <p className="text-base text-gray-500 font-medium">
+                              {isExpired ? "Bid Closed" : "Drag files to upload"}
+                            </p>
+                            {!isExpired && (
+                              <>
+                                <p className="text-sm text-gray-400">or</p>
+                                <span className="text-sm text-[#F97316] font-medium hover:underline">
+                                  Browse Files
+                                </span>
+                              </>
+                            )}
                           </div>
-                          <p className="text-base text-gray-500 font-medium">
-                            {isExpired ? "Bid Closed" : "Drag files to upload"}
-                          </p>
-                          {!isExpired && (
-                            <>
-                              <p className="text-sm text-gray-400">or</p>
-                              <span className="text-sm text-[#F97316] font-medium hover:underline">
-                                Browse Files
-                              </span>
-                            </>
-                          )}
                         </FileDropzone>
                       </div>
                     </div>
