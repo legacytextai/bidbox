@@ -23,11 +23,6 @@ const FAQ = () => {
         "Absolutely. No contracts, no commitments. Cancel anytime from your account settings. We're confident you'll love it, but if not, no hard feelings.",
     },
     {
-      question: "What if I go over my invite limit?",
-      answer:
-        "We'll send you a notification when you're getting close. You can either upgrade to the next tier or purchase additional invites à la carte at $0.50 each.",
-    },
-    {
       question: "Is my data secure and backed up?",
       answer:
         "Yes. All data is encrypted in transit and at rest. We use enterprise-grade cloud infrastructure with automatic daily backups. Your bid documents and quotes are safe with us.",
