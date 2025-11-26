@@ -5,6 +5,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
 import Index from "./pages/Index";
+import LandingFull from "./pages/LandingFull";
+import LandingMvp from "./pages/LandingMvp";
 import Auth from "./pages/Auth";
 import Projects from "./pages/Projects";
 import NewProject from "./pages/NewProject";
@@ -23,7 +25,9 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <Routes>
-            <Route path="/" element={<Index />} />
+            <Route path="/" element={<LandingMvp />} />
+            <Route path="/landing-mvp" element={<LandingMvp />} />
+            <Route path="/landing-full" element={<LandingFull />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/projects" element={<Projects />} />
             <Route path="/projects/new" element={<NewProject />} />
