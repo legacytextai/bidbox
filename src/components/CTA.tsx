@@ -23,7 +23,7 @@ const CTA = () => {
             Ready to Simplify Your Next Bid?
           </h2>
 
-          <p className="text-xl text-primary-foreground/90 mb-10">Join the top GCs who are spending less time chasing subs and more time winning projects. Start your free 14-day trial — no credit card required.</p>
+          <p className="text-xl text-primary-foreground/90 mb-10">Join the top GCs who are spending less time chasing subs and more time winning projects. Start your Free Tier today — no credit card required.</p>
 
           {/* Email Capture Form */}
           <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-4 max-w-2xl mx-auto mb-8">
@@ -38,7 +38,7 @@ const CTA = () => {
           <div className="flex flex-wrap justify-center gap-6 text-primary-foreground/80 text-sm">
             <div className="flex items-center gap-2">
               <span className="text-2xl">✓</span>
-              <span>14-day free trial</span>
+              <span>100% Free Tier</span>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-2xl">✓</span>
