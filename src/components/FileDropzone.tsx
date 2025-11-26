@@ -66,7 +66,7 @@ export function FileDropzone({
       onDragOver={handleDragOver}
       onDrop={handleDrop}
       className={cn(
-        "transition-all duration-150",
+        "h-full transition-all duration-150",
         isDragging && !disabled && "border-primary bg-primary/5",
         className
       )}
