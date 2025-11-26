@@ -6,8 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Upload, X } from "lucide-react";
+import { Upload, X, Loader2 } from "lucide-react";
 import { Layout } from "@/components/Layout";
+import { Progress } from "@/components/ui/progress";
 import { z } from "zod";
 import { validateProjectFile } from "@/lib/fileValidation";
 
@@ -29,6 +30,8 @@ const NewProject = () => {
   });
   const [files, setFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
+  const [currentUpload, setCurrentUpload] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -75,6 +78,7 @@ const NewProject = () => {
     if (!userId) return;
 
     setLoading(true);
+    setIsUploading(true);
 
     try {
       const validation = projectSchema.parse(formData);
@@ -94,18 +98,17 @@ const NewProject = () => {
 
       if (projectError) throw projectError;
 
-      // Upload files
-      for (const file of files) {
+      // Upload files with progress tracking
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        setCurrentUpload(file.name);
         const filePath = `${userId}/${project.id}/${file.name}`;
+        
         const { error: uploadError } = await supabase.storage
           .from("project-files")
           .upload(filePath, file);
 
         if (uploadError) throw uploadError;
-
-        const { data: { publicUrl } } = supabase.storage
-          .from("project-files")
-          .getPublicUrl(filePath);
 
         const { error: fileError } = await supabase
           .from("project_files")
@@ -117,11 +120,20 @@ const NewProject = () => {
           });
 
         if (fileError) throw fileError;
+
+        toast({
+          title: "File Uploaded",
+          description: `${file.name} uploaded successfully`,
+        });
       }
+      setCurrentUpload(null);
+
+      const bidLink = `${window.location.origin}/bid/${project.public_token}`;
+      await navigator.clipboard.writeText(bidLink);
 
       toast({
         title: "Success",
-        description: "Project created successfully",
+        description: "Project Link Generated & Copied to Clipboard",
       });
 
       navigate(`/projects/${project.id}`);
@@ -141,6 +153,8 @@ const NewProject = () => {
       }
     } finally {
       setLoading(false);
+      setIsUploading(false);
+      setCurrentUpload(null);
     }
   };
 
@@ -222,7 +236,7 @@ const NewProject = () => {
                   Upload Project Files
                 </h2>
 
-                <div className="border-2 border-dashed border-border rounded-lg p-8 text-center">
+                <div className={`border-2 border-dashed border-border rounded-lg p-8 text-center ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}>
                   <input
                     type="file"
                     multiple
@@ -230,14 +244,15 @@ const NewProject = () => {
                     className="hidden"
                     id="file-upload"
                     accept=".pdf,.dwg,.xls,.xlsx"
+                    disabled={isUploading}
                   />
                   <label
                     htmlFor="file-upload"
-                    className="cursor-pointer flex flex-col items-center"
+                    className={`flex flex-col items-center ${isUploading ? 'cursor-not-allowed' : 'cursor-pointer'}`}
                   >
                     <Upload className="h-12 w-12 text-muted-foreground mb-4" />
                     <p className="text-sm text-muted-foreground">
-                      Click to upload or drag and drop
+                      {isUploading ? "Uploading files..." : "Click to upload or drag and drop"}
                     </p>
                     <p className="text-xs text-muted-foreground mt-2">
                       PDF, DWG, Excel up to 200MB
@@ -246,21 +261,32 @@ const NewProject = () => {
                 </div>
 
                 {files.length > 0 && (
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     {files.map((file, index) => (
-                      <div
-                        key={index}
-                        className="flex items-center justify-between p-3 bg-muted rounded"
-                      >
-                        <span className="text-sm truncate">{file.name}</span>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => removeFile(index)}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
+                      <div key={index} className="space-y-2">
+                        <div className="flex items-center justify-between p-3 bg-muted rounded">
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <span className="text-sm truncate">{file.name}</span>
+                            {currentUpload === file.name && (
+                              <Loader2 className="h-4 w-4 animate-spin text-primary flex-shrink-0" />
+                            )}
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removeFile(index)}
+                            disabled={isUploading}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        {currentUpload === file.name && (
+                          <div className="px-3">
+                            <Progress value={undefined} className="h-1" />
+                            <p className="text-xs text-muted-foreground mt-1">Uploading...</p>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -275,7 +301,14 @@ const NewProject = () => {
                 className="w-full lg:w-auto"
                 disabled={loading}
               >
-                {loading ? "Creating..." : "Generate Project Bid Box Link"}
+                {loading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  "Generate Project Bid Box Link"
+                )}
               </Button>
             </div>
           </form>
