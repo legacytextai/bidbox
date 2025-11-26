@@ -113,7 +113,7 @@ const PricingMvp = () => {
                 className={`w-full mb-8 ${
                   plan.popular
                     ? "bg-background text-foreground hover:bg-background/90"
-                    : ""
+                    : "bg-bidbox-blue text-white hover:bg-bidbox-blue/90"
                 }`}
                 size="lg"
                 onClick={() => scrollToSection("cta")}
