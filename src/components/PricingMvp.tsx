@@ -89,7 +89,7 @@ const PricingMvp = () => {
                 <h3 className="text-2xl font-bold mb-2">{plan.name}</h3>
                 <p
                   className={
-                    plan.popular ? "text-primary-foreground" : "text-muted-foreground"
+                    plan.popular ? "text-primary-foreground" : "text-foreground"
                   }
                 >
                   {plan.description}
