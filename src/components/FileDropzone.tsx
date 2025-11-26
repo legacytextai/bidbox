@@ -83,7 +83,7 @@ export function FileDropzone({
       <label
         htmlFor="file-dropzone-input"
         className={cn(
-          "flex flex-col items-center",
+          "flex flex-col items-center justify-center h-full",
           disabled ? "cursor-not-allowed" : "cursor-pointer"
         )}
       >
