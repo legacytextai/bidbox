@@ -40,7 +40,7 @@ const Footer = () => {
           <div className="md:col-span-1">
             <h3 className="text-2xl font-bold mb-4">BidBox</h3>
             <p className="text-background/80 text-sm leading-relaxed">
-              The starter bid platform built for small GCs. Simple, fast, and
+              The simple bid platform built for small GCs. Simple, fast, and
               loved by subcontractors.
             </p>
           </div>
