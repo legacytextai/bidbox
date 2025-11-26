@@ -10,7 +10,7 @@ const Partners = () => {
             Trusted by GCs, estimators, and subcontractors nationwide
           </p>
           <div className="flex justify-center mt-4">
-            <img src={usaMap} alt="United States" className="w-24 h-24 object-contain" />
+            <img src={usaMap} alt="United States" className="w-48 h-48 object-contain" />
           </div>
         </div>
 
