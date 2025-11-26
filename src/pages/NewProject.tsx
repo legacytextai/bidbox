@@ -330,7 +330,7 @@ const NewProject = () => {
               <Button
                 type="submit"
                 size="lg"
-                className="w-full lg:w-auto"
+                className="w-full lg:w-auto bg-[hsl(var(--bidbox-blue))] hover:bg-[hsl(var(--bidbox-blue))]/90 text-white"
                 disabled={loading}
               >
                 {loading ? (
