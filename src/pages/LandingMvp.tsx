@@ -1,5 +1,5 @@
 import { Layout } from "@/components/Layout";
-import Hero from "@/components/Hero";
+import HeroMvp from "@/components/HeroMvp";
 import Partners from "@/components/Partners";
 import Benefits from "@/components/Benefits";
 import HowItWorks from "@/components/HowItWorks";
@@ -12,7 +12,7 @@ import Footer from "@/components/Footer";
 const LandingMvp = () => {
   return (
     <Layout showSidebar={false}>
-      <Hero />
+      <HeroMvp />
       <Partners />
       <Benefits />
       <HowItWorks />
