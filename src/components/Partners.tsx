@@ -20,7 +20,7 @@ const Partners = () => {
           <div className="absolute right-0 top-0 bottom-0 w-32 bg-gradient-to-l from-secondary/30 to-transparent z-10 pointer-events-none" />
           
           {/* Scrolling logos container */}
-          <div className="flex animate-marquee gap-12 items-center">
+          <div className="flex animate-marquee gap-20 items-center">
             {/* First set of logos */}
             <img src={logoNorthworks} alt="Northworks" className="h-6 flex-shrink-0" />
             <img src={logoWestbuild} alt="Westbuild" className="h-6 flex-shrink-0" />
