@@ -680,6 +680,7 @@ const ProjectDetail = () => {
                 onClick={saveAllChanges} 
                 disabled={!hasChanges || isSaving}
                 size="lg"
+                className={hasChanges ? "bg-bidbox-blue hover:bg-bidbox-blue/90 text-white" : ""}
               >
                 {isSaving ? (
                   <>
