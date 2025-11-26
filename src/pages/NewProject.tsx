@@ -330,7 +330,7 @@ const NewProject = () => {
               <Button
                 type="submit"
                 size="lg"
-                className="w-full lg:w-auto bg-[hsl(var(--bidbox-blue))] hover:bg-[hsl(var(--bidbox-blue))]/90 text-white"
+                className="w-full lg:w-auto bg-[hsl(var(--bidbox-blue))] hover:bg-[hsl(var(--bidbox-blue))]/90 text-white font-bold"
                 disabled={loading}
               >
                 {loading ? (
@@ -339,7 +339,7 @@ const NewProject = () => {
                     Generating...
                   </>
                 ) : (
-                  "Generate Project Bid Box Link"
+                  "Generate Project BidBox Link"
                 )}
               </Button>
             </div>
