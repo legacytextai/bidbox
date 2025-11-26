@@ -10,13 +10,7 @@ const CTA = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (email) {
-      toast({
-        title: "Success!",
-        description: "We'll be in touch soon to set up your free trial.",
-      });
-      setEmail("");
-    }
+    window.location.href = "/auth";
   };
 
   return (
