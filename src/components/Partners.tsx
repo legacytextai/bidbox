@@ -1,4 +1,4 @@
-import { Flag } from "lucide-react";
+import usaMap from "@/assets/usa-map.png";
 
 const Partners = () => {
   // Placeholder partner logos - in production these would be real company logos
@@ -10,7 +10,7 @@ const Partners = () => {
             Trusted by GCs, estimators, and subcontractors nationwide
           </p>
           <div className="flex justify-center mt-4">
-            <Flag className="w-8 h-8 text-[hsl(var(--bidbox-blue))]" />
+            <img src={usaMap} alt="United States" className="w-16 h-16 object-contain" />
           </div>
         </div>
 
