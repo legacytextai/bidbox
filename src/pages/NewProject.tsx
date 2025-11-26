@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Upload, X, Loader2 } from "lucide-react";
+import { Upload, X, Loader2, CheckCircle2 } from "lucide-react";
 import { Layout } from "@/components/Layout";
 import { Progress } from "@/components/ui/progress";
 import { z } from "zod";
@@ -128,11 +128,6 @@ const NewProject = () => {
           });
 
         if (fileError) throw fileError;
-
-        toast({
-          title: "File Uploaded",
-          description: `${file.name} uploaded successfully`,
-        });
       }
       setCurrentUpload(null);
 
@@ -287,10 +282,12 @@ const NewProject = () => {
                       <div key={index} className="space-y-2">
                         <div className="flex items-center justify-between p-3 bg-muted rounded">
                           <div className="flex items-center gap-2 flex-1 min-w-0">
-                            <span className="text-sm truncate">{file.name}</span>
-                            {currentUpload === file.name && (
+                            {currentUpload === file.name ? (
                               <Loader2 className="h-4 w-4 animate-spin text-primary flex-shrink-0" />
+                            ) : (
+                              <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />
                             )}
+                            <span className="text-sm truncate">{file.name}</span>
                           </div>
                           <Button
                             type="button"
