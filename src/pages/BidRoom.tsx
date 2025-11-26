@@ -18,6 +18,7 @@ import {
 import { z } from "zod";
 import FilePreview from "@/components/FilePreview";
 import { formatInProjectTimezone } from "@/lib/timezoneUtils";
+import { FileDropzone } from "@/components/FileDropzone";
 
 const bidSchema = z.object({
   bidder_name: z.string().max(100).optional(),
@@ -299,8 +300,17 @@ const BidRoom = () => {
                         >
                           SUBMIT YOUR QUOTE
                         </Button>
-                        <div 
-                          className={`w-full min-h-[200px] border-2 border-dashed rounded-2xl flex flex-col items-center justify-center gap-3 p-8 cursor-pointer transition-all ${
+                        <FileDropzone
+                          onFilesSelected={(files) => {
+                            if (files.length > 0) {
+                              setBidFile(files[0]);
+                              setDialogOpen(true);
+                            }
+                          }}
+                          accept=".pdf,.xls,.xlsx,.zip"
+                          multiple={false}
+                          disabled={isExpired}
+                          className={`w-full min-h-[200px] border-2 border-dashed rounded-2xl transition-all ${
                             isExpired 
                               ? "border-muted bg-muted/10 cursor-not-allowed opacity-50" 
                               : "border-gray-200 bg-gray-50/50 hover:border-gray-300 hover:bg-gray-50"
@@ -320,7 +330,7 @@ const BidRoom = () => {
                               </span>
                             </>
                           )}
-                        </div>
+                        </FileDropzone>
                       </div>
                     </div>
                   </DialogTrigger>
@@ -331,22 +341,23 @@ const BidRoom = () => {
                     <div className="space-y-4">
                       <div className="space-y-2">
                         <Label htmlFor="file">Upload Your Bid File *</Label>
-                        <div className="border-2 border-dashed border-border rounded-lg p-4">
-                          <input
-                            type="file"
-                            id="file"
-                            onChange={(e) => e.target.files && setBidFile(e.target.files[0])}
-                            className="hidden"
-                          />
-                          <label htmlFor="file" className="cursor-pointer flex flex-col items-center">
-                            <Upload className="h-8 w-8 text-muted-foreground mb-2" />
-                            {bidFile ? (
-                              <p className="text-sm text-foreground">{bidFile.name}</p>
-                            ) : (
-                              <p className="text-sm text-muted-foreground">Click to upload</p>
-                            )}
-                          </label>
-                        </div>
+                        <FileDropzone
+                          onFilesSelected={(files) => {
+                            if (files.length > 0) {
+                              setBidFile(files[0]);
+                            }
+                          }}
+                          accept=".pdf,.xls,.xlsx,.zip"
+                          multiple={false}
+                          className="border-2 border-dashed border-border rounded-lg p-4"
+                        >
+                          <Upload className="h-8 w-8 text-muted-foreground mb-2" />
+                          {bidFile ? (
+                            <p className="text-sm text-foreground">{bidFile.name}</p>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">Click to upload or drag and drop</p>
+                          )}
+                        </FileDropzone>
                       </div>
 
                       <div className="space-y-2">
