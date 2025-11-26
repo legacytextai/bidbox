@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Download, Upload, CheckCircle2, Plus, FileText, FileSpreadsheet, File as FileIcon } from "lucide-react";
+import { Download, Upload, CheckCircle2, Plus, FileText, FileSpreadsheet, File as FileIcon, Loader2, AlertCircle, X } from "lucide-react";
 import { validateBidFile } from "@/lib/fileValidation";
 import {
   Dialog,
@@ -33,6 +33,13 @@ interface ProjectFile {
   file_url: string;
 }
 
+interface UploadFile {
+  file: File;
+  status: 'pending' | 'uploading' | 'uploaded' | 'error';
+  storagePath?: string;
+  error?: string;
+}
+
 const BidRoom = () => {
   const { token } = useParams();
   const { toast } = useToast();
@@ -41,7 +48,7 @@ const BidRoom = () => {
   const [projectFiles, setProjectFiles] = useState<ProjectFile[]>([]);
   const [countdown, setCountdown] = useState("");
   const [isExpired, setIsExpired] = useState(false);
-  const [bidFile, setBidFile] = useState<File | null>(null);
+  const [uploadFiles, setUploadFiles] = useState<UploadFile[]>([]);
   const [bidData, setBidData] = useState({
     bidder_name: "",
     company_name: "",
@@ -142,22 +149,84 @@ const BidRoom = () => {
     URL.revokeObjectURL(url);
   };
 
+  const handleFilesSelected = async (files: File[]) => {
+    const validFiles: UploadFile[] = [];
+    
+    for (const file of files) {
+      const validation = validateBidFile(file);
+      if (!validation.valid) {
+        toast({
+          title: "Invalid File",
+          description: `${file.name}: ${validation.error}`,
+          variant: "destructive",
+        });
+        continue;
+      }
+      validFiles.push({ file, status: 'pending' });
+    }
+    
+    if (validFiles.length === 0) return;
+    
+    setUploadFiles(prev => [...prev, ...validFiles]);
+    setDialogOpen(true);
+    
+    for (const uploadFile of validFiles) {
+      uploadSingleFile(uploadFile);
+    }
+  };
+
+  const uploadSingleFile = async (uploadFile: UploadFile) => {
+    setUploadFiles(prev => prev.map(f => 
+      f.file.name === uploadFile.file.name && f.status === 'pending'
+        ? { ...f, status: 'uploading' }
+        : f
+    ));
+    
+    try {
+      const storagePath = `${project.id}/${Date.now()}_${uploadFile.file.name}`;
+      const { error } = await supabase.storage
+        .from("bid-submissions")
+        .upload(storagePath, uploadFile.file);
+      
+      if (error) throw error;
+      
+      setUploadFiles(prev => prev.map(f => 
+        f.file.name === uploadFile.file.name && f.status === 'uploading'
+          ? { ...f, status: 'uploaded', storagePath }
+          : f
+      ));
+    } catch (error: any) {
+      setUploadFiles(prev => prev.map(f => 
+        f.file.name === uploadFile.file.name && f.status === 'uploading'
+          ? { ...f, status: 'error', error: error.message }
+          : f
+      ));
+    }
+  };
+
+  const retryUpload = (fileName: string) => {
+    const fileToRetry = uploadFiles.find(f => f.file.name === fileName && f.status === 'error');
+    if (fileToRetry) {
+      setUploadFiles(prev => prev.map(f => 
+        f.file.name === fileName && f.status === 'error'
+          ? { ...f, status: 'pending', error: undefined }
+          : f
+      ));
+      uploadSingleFile(fileToRetry);
+    }
+  };
+
+  const removeFile = (fileName: string) => {
+    setUploadFiles(prev => prev.filter(f => f.file.name !== fileName));
+  };
+
   const handleSubmitBid = async () => {
-    if (!bidFile) {
+    const successfulUploads = uploadFiles.filter(f => f.status === 'uploaded');
+    
+    if (successfulUploads.length === 0) {
       toast({
         title: "Error",
-        description: "Please select a file to upload",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // Validate file
-    const validation = validateBidFile(bidFile);
-    if (!validation.valid) {
-      toast({
-        title: "Invalid File",
-        description: validation.error,
+        description: "Please upload at least one file",
         variant: "destructive",
       });
       return;
@@ -168,30 +237,26 @@ const BidRoom = () => {
     try {
       const validation = bidSchema.parse(bidData);
 
-      const filePath = `${project.id}/${Date.now()}_${bidFile.name}`;
-      const { error: uploadError } = await supabase.storage
-        .from("bid-submissions")
-        .upload(filePath, bidFile);
+      for (const uploadFile of successfulUploads) {
+        const { error: bidError } = await supabase.from("bids").insert({
+          project_id: project.id,
+          file_url: uploadFile.storagePath!,
+          file_name: uploadFile.file.name,
+          bidder_name: validation.bidder_name || null,
+          company_name: validation.company_name || null,
+          email: validation.email || null,
+          bid_item: validation.bid_item || null,
+        });
 
-      if (uploadError) throw uploadError;
-
-      const { error: bidError } = await supabase.from("bids").insert({
-        project_id: project.id,
-        file_url: filePath,
-        file_name: bidFile.name,
-        bidder_name: validation.bidder_name || null,
-        company_name: validation.company_name || null,
-        email: validation.email || null,
-        bid_item: validation.bid_item || null,
-      });
-
-      if (bidError) throw bidError;
+        if (bidError) throw bidError;
+      }
 
       setSubmitted(true);
       setDialogOpen(false);
+      setUploadFiles([]);
       toast({
         title: "Success!",
-        description: "Your bid has been submitted successfully",
+        description: `${successfulUploads.length} file(s) submitted successfully`,
       });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
@@ -290,7 +355,12 @@ const BidRoom = () => {
                   </p>
                 </div>
               ) : (
-                <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                <Dialog open={dialogOpen} onOpenChange={(open) => {
+                  setDialogOpen(open);
+                  if (!open && !submitted) {
+                    setUploadFiles([]);
+                  }
+                }}>
                   <DialogTrigger asChild>
                     <div className="w-full lg:w-auto bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
                       <div className="flex flex-col gap-4">
@@ -301,14 +371,9 @@ const BidRoom = () => {
                           SUBMIT YOUR QUOTE
                         </Button>
                         <FileDropzone
-                          onFilesSelected={(files) => {
-                            if (files.length > 0) {
-                              setBidFile(files[0]);
-                              setDialogOpen(true);
-                            }
-                          }}
+                          onFilesSelected={handleFilesSelected}
                           accept=".pdf,.xls,.xlsx,.zip"
-                          multiple={false}
+                          multiple={true}
                           disabled={isExpired}
                           className={`w-full min-h-[200px] border-2 border-dashed rounded-2xl transition-all ${
                             isExpired 
@@ -342,25 +407,66 @@ const BidRoom = () => {
                     </DialogHeader>
                     <div className="space-y-4">
                       <div className="space-y-2">
-                        <Label htmlFor="file">Upload Your Bid File *</Label>
+                        <Label htmlFor="file">Upload Your Bid Files *</Label>
                         <FileDropzone
-                          onFilesSelected={(files) => {
-                            if (files.length > 0) {
-                              setBidFile(files[0]);
-                            }
-                          }}
+                          onFilesSelected={handleFilesSelected}
                           accept=".pdf,.xls,.xlsx,.zip"
-                          multiple={false}
+                          multiple={true}
                           className="border-2 border-dashed border-border rounded-lg p-4"
                         >
                           <Upload className="h-8 w-8 text-muted-foreground mb-2" />
-                          {bidFile ? (
-                            <p className="text-sm text-foreground">{bidFile.name}</p>
-                          ) : (
-                            <p className="text-sm text-muted-foreground">Click to upload or drag and drop</p>
-                          )}
+                          <p className="text-sm text-muted-foreground">Click to upload or drag and drop</p>
+                          <p className="text-xs text-muted-foreground mt-1">PDF, Excel, or ZIP files</p>
                         </FileDropzone>
                       </div>
+
+                      {uploadFiles.length > 0 && (
+                        <div className="space-y-2 max-h-48 overflow-y-auto">
+                          {uploadFiles.map((uploadFile, index) => (
+                            <div key={`${uploadFile.file.name}-${index}`} className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                              <div className="flex items-center gap-3 flex-1 min-w-0">
+                                {uploadFile.status === 'uploading' && (
+                                  <Loader2 className="h-4 w-4 animate-spin text-primary flex-shrink-0" />
+                                )}
+                                {uploadFile.status === 'uploaded' && (
+                                  <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />
+                                )}
+                                {uploadFile.status === 'error' && (
+                                  <AlertCircle className="h-4 w-4 text-red-500 flex-shrink-0" />
+                                )}
+                                {uploadFile.status === 'pending' && (
+                                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground flex-shrink-0" />
+                                )}
+                                
+                                <span className="text-sm truncate">{uploadFile.file.name}</span>
+                              </div>
+                              
+                              <div className="flex items-center gap-2">
+                                {uploadFile.status === 'error' && (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => retryUpload(uploadFile.file.name)}
+                                    className="text-xs text-primary hover:text-primary/80"
+                                  >
+                                    Retry
+                                  </Button>
+                                )}
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => removeFile(uploadFile.file.name)}
+                                  className="h-6 w-6"
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
 
                       <div className="space-y-2">
                         <Label htmlFor="name">Name (Optional)</Label>
@@ -410,7 +516,7 @@ const BidRoom = () => {
                       <Button
                         onClick={handleSubmitBid}
                         className="w-full bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90"
-                        disabled={submitting}
+                        disabled={submitting || !uploadFiles.some(f => f.status === 'uploaded')}
                       >
                         {submitting ? "Submitting..." : "Submit Bid"}
                       </Button>
