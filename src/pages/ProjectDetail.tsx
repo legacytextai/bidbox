@@ -5,8 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Copy, Download, Trash2, Upload, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, Copy, Download, Trash2, Upload, CheckCircle2, Loader2 } from "lucide-react";
 import { Layout } from "@/components/Layout";
+import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { format } from "date-fns";
 import { validateProjectFile } from "@/lib/fileValidation";
@@ -57,10 +58,43 @@ const ProjectDetail = () => {
   const [newFiles, setNewFiles] = useState<File[]>([]);
   const [currentUpload, setCurrentUpload] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  
+  // Editable field states
+  const [editedName, setEditedName] = useState("");
+  const [editedLocation, setEditedLocation] = useState("");
+  const [editedAgency, setEditedAgency] = useState("");
+  const [editedInstructions, setEditedInstructions] = useState("");
+  const [editedBidDueAt, setEditedBidDueAt] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
 
   useEffect(() => {
     loadProject();
   }, [id]);
+
+  // Track changes to editable fields
+  useEffect(() => {
+    if (project) {
+      const originalBidDue = project.bid_due_at ? formatDateForInput(project.bid_due_at) : "";
+      const changed = 
+        editedName !== project.name ||
+        editedLocation !== (project.location || "") ||
+        editedAgency !== (project.agency || "") ||
+        editedInstructions !== (project.instructions || "") ||
+        editedBidDueAt !== originalBidDue;
+      setHasChanges(changed);
+    }
+  }, [editedName, editedLocation, editedAgency, editedInstructions, editedBidDueAt, project]);
+
+  const formatDateForInput = (dateString: string) => {
+    const date = new Date(dateString);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  };
 
   const loadProject = async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -85,6 +119,13 @@ const ProjectDetail = () => {
     }
 
     setProject(projectData);
+    
+    // Initialize editable fields
+    setEditedName(projectData.name);
+    setEditedLocation(projectData.location || "");
+    setEditedAgency(projectData.agency || "");
+    setEditedInstructions(projectData.instructions || "");
+    setEditedBidDueAt(projectData.bid_due_at ? formatDateForInput(projectData.bid_due_at) : "");
 
     const { data: filesData } = await supabase
       .from("project_files")
@@ -133,6 +174,49 @@ const ProjectDetail = () => {
       });
       loadProject();
     }
+  };
+
+  const saveAllChanges = async () => {
+    if (!editedName.trim()) {
+      toast({
+        title: "Error",
+        description: "Project name cannot be empty",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSaving(true);
+    
+    const updates = {
+      name: editedName,
+      location: editedLocation || null,
+      agency: editedAgency || null,
+      instructions: editedInstructions || null,
+      bid_due_at: editedBidDueAt ? new Date(editedBidDueAt).toISOString() : project.bid_due_at,
+    };
+
+    const { error } = await supabase
+      .from("projects")
+      .update(updates)
+      .eq("id", id);
+
+    if (error) {
+      toast({
+        title: "Error",
+        description: "Failed to save changes",
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "Success",
+        description: "Project updated successfully",
+      });
+      setHasChanges(false);
+      loadProject();
+    }
+    
+    setIsSaving(false);
   };
 
   const handleFileUpload = async () => {
@@ -333,28 +417,47 @@ const ProjectDetail = () => {
           <Button
             variant="ghost"
             onClick={() => navigate("/projects")}
-            className="mb-4"
+            className="mb-6"
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Projects
           </Button>
 
-          <h1 className="text-3xl font-bold text-foreground mb-2">
-            {project.name}
-          </h1>
-          
-          <div className="flex gap-6 text-sm text-muted-foreground mb-8">
-            <div>
-              <span className="font-medium">Location:</span>{" "}
-              {project.location || "Not specified"}
+          {/* Editable Project Information */}
+          <div className="space-y-6 mb-8">
+            <div className="space-y-2">
+              <Label htmlFor="project-name">Project Name</Label>
+              <Input
+                id="project-name"
+                value={editedName}
+                onChange={(e) => setEditedName(e.target.value)}
+                className="text-2xl font-bold h-auto py-2"
+              />
             </div>
-            <div>
-              <span className="font-medium">Agency:</span>{" "}
-              {project.agency || "Not specified"}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="location">Location</Label>
+                <Input
+                  id="location"
+                  value={editedLocation}
+                  onChange={(e) => setEditedLocation(e.target.value)}
+                  placeholder="Enter location"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="agency">Agency</Label>
+                <Input
+                  id="agency"
+                  value={editedAgency}
+                  onChange={(e) => setEditedAgency(e.target.value)}
+                  placeholder="Enter agency"
+                />
+              </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
             <div className="space-y-2">
               <Label>Status</Label>
               <Select
@@ -375,10 +478,8 @@ const ProjectDetail = () => {
               <Label>Bid Due Date</Label>
               <Input
                 type="datetime-local"
-                value={project.bid_due_at ? new Date(project.bid_due_at).toISOString().slice(0, 16) : ""}
-                onChange={(e) =>
-                  updateProject({ bid_due_at: new Date(e.target.value).toISOString() })
-                }
+                value={editedBidDueAt}
+                onChange={(e) => setEditedBidDueAt(e.target.value)}
               />
             </div>
 
@@ -407,6 +508,41 @@ const ProjectDetail = () => {
                 )}
               </Button>
             </div>
+          </div>
+
+          {/* Instructions Section */}
+          <div className="space-y-2 mb-6">
+            <Label htmlFor="instructions">Instructions for Bidders</Label>
+            <Textarea
+              id="instructions"
+              value={editedInstructions}
+              onChange={(e) => setEditedInstructions(e.target.value)}
+              placeholder="Enter any special instructions, requirements, or notes for bidders"
+              className="min-h-[100px]"
+            />
+          </div>
+
+          {/* Save Changes Button */}
+          <div className="flex gap-3 mb-8">
+            <Button 
+              onClick={saveAllChanges} 
+              disabled={!hasChanges || isSaving}
+              size="lg"
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                "Save Changes"
+              )}
+            </Button>
+            {hasChanges && (
+              <p className="text-sm text-muted-foreground self-center">
+                You have unsaved changes
+              </p>
+            )}
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
