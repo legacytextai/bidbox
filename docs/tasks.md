@@ -503,6 +503,69 @@ Already implemented:
 
 ---
 
+### Task 2.3.7: Fix Datetime Timezone Bug [✅ COMPLETED]
+
+**Problem**: Datetime inputs were being interpreted in the user's browser timezone, causing inconsistent times across GCs in different locations. A GC selecting 10:00 AM might see it change to 1:00 PM or different dates due to automatic timezone conversions.
+
+**User Decision**: Add explicit timezone selection so GCs intentionally choose their timezone, with consistent display everywhere.
+
+- [x] 2.3.7.1 Database migration
+  - Added `timezone` column to projects table (default: 'America/Los_Angeles')
+  - Backfilled existing projects with PST
+
+- [x] 2.3.7.2 Install date-fns-tz package
+  - Added date-fns-tz@latest for proper timezone-aware date handling
+
+- [x] 2.3.7.3 Create timezone utilities
+  - Created `src/lib/timezoneUtils.ts` with:
+    - `TIMEZONE_OPTIONS`: 6 US timezones (EST, CST, MST, PST, AKST, HST)
+    - `localDateTimeToUtc()`: Convert local datetime + timezone → UTC for storage
+    - `utcToLocalDateTime()`: Convert UTC from DB → local datetime for input
+    - `formatInProjectTimezone()`: Format UTC for display in project's timezone
+
+- [x] 2.3.7.4 Update NewProject.tsx
+  - Added timezone dropdown with Select component
+  - Default timezone: America/Los_Angeles (PST)
+  - Convert datetime to UTC using selected timezone before saving
+  - Updated Zod schema to require timezone
+
+- [x] 2.3.7.5 Update ProjectDetail.tsx
+  - Added timezone dropdown to edit section
+  - Convert stored UTC to local datetime for editing
+  - Track timezone changes in hasChanges detection
+  - Convert edited datetime back to UTC with selected timezone on save
+
+- [x] 2.3.7.6 Update Projects.tsx dashboard
+  - Display bid due dates in project's timezone with zzz format
+  - Shows "Dec 5, 2024 10:00 AM PST" correctly
+  - Added timezone to Project interface and query
+
+- [x] 2.3.7.7 Update BidRoom.tsx
+  - Display bid due date in project's timezone
+  - Shows "December 5, 2024 at 10:00 AM PST"
+  - Countdown logic unchanged (uses UTC correctly)
+
+- [x] 2.3.7.8 Edge function compatibility
+  - Verified get-public-project automatically includes timezone (uses SELECT *)
+
+**Expected Behavior**:
+- GC in NYC selects 10:00 AM EST → stored as UTC → displayed as "10:00 AM EST" everywhere
+- GC in LA selects 10:00 AM PST → stored as UTC → displayed as "10:00 AM PST" everywhere
+- No browser timezone drift or date jumping
+- Countdowns universally correct (based on UTC)
+
+**Files Modified**:
+- supabase/migrations/[timestamp]_add_timezone_column.sql (new)
+- src/lib/timezoneUtils.ts (new)
+- src/pages/NewProject.tsx
+- src/pages/ProjectDetail.tsx
+- src/pages/Projects.tsx
+- src/pages/BidRoom.tsx
+
+**References**: Custom knowledge (datetime bug fix), date-fns-tz documentation
+
+---
+
 ### Task 2.4: Token Regeneration Feature [MVP]
 
 **User Decision**: No expiration, YES to regeneration

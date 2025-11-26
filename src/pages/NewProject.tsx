@@ -11,6 +11,14 @@ import { Layout } from "@/components/Layout";
 import { Progress } from "@/components/ui/progress";
 import { z } from "zod";
 import { validateProjectFile } from "@/lib/fileValidation";
+import { TIMEZONE_OPTIONS, localDateTimeToUtc } from "@/lib/timezoneUtils";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const projectSchema = z.object({
   name: z.string().min(1, "Project name is required").max(200),
@@ -18,6 +26,7 @@ const projectSchema = z.object({
   agency: z.string().max(200).optional(),
   bid_due_at: z.string().min(1, "Bid due date is required"),
   instructions: z.string().max(2000).optional(),
+  timezone: z.string().min(1, "Time zone is required"),
 });
 
 const NewProject = () => {
@@ -27,6 +36,7 @@ const NewProject = () => {
     agency: "",
     bid_due_at: "",
     instructions: "",
+    timezone: "America/Los_Angeles",
   });
   const [files, setFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
@@ -90,8 +100,9 @@ const NewProject = () => {
           name: validation.name,
           location: validation.location || null,
           agency: validation.agency || null,
-          bid_due_at: validation.bid_due_at,
+          bid_due_at: localDateTimeToUtc(validation.bid_due_at, validation.timezone),
           instructions: validation.instructions || null,
+          timezone: validation.timezone,
         })
         .select()
         .single();
@@ -215,6 +226,27 @@ const NewProject = () => {
                     }
                     required
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="timezone">Time Zone *</Label>
+                  <Select
+                    value={formData.timezone}
+                    onValueChange={(value) =>
+                      setFormData({ ...formData, timezone: value })
+                    }
+                  >
+                    <SelectTrigger className="bg-background">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-background z-50">
+                      {TIMEZONE_OPTIONS.map((tz) => (
+                        <SelectItem key={tz.value} value={tz.value}>
+                          {tz.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="space-y-2">

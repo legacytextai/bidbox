@@ -4,8 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Copy, CheckCircle2 } from "lucide-react";
-import { format } from "date-fns";
 import { Layout } from "@/components/Layout";
+import { formatInProjectTimezone } from "@/lib/timezoneUtils";
 
 interface Project {
   id: string;
@@ -13,6 +13,7 @@ interface Project {
   status: string;
   bid_due_at: string;
   public_token: string;
+  timezone: string;
   bids: { count: number }[];
 }
 
@@ -44,6 +45,7 @@ const Projects = () => {
         status,
         bid_due_at,
         public_token,
+        timezone,
         bids(count)
       `)
       .order("bid_due_at", { ascending: true });
@@ -104,7 +106,7 @@ const Projects = () => {
                 </div>
                 
                 <p className="text-sm text-muted-foreground mb-2">
-                  Bid Date: {format(new Date(project.bid_due_at), "MMM d, yyyy h:mm a")}
+                  Bid Date: {formatInProjectTimezone(project.bid_due_at, project.timezone || "America/Los_Angeles", "MMM d, yyyy h:mm a zzz")}
                 </p>
                 
                 <p className="text-sm text-muted-foreground mb-4">
