@@ -75,7 +75,7 @@ const PricingMvp = () => {
               key={index}
               className={`relative rounded-2xl p-8 ${
                 plan.popular
-                  ? "bg-primary text-primary-foreground shadow-xl scale-105"
+                  ? "bg-bidbox-blue text-white shadow-xl scale-105"
                   : "bg-card border border-border"
               }`}
             >
@@ -89,7 +89,7 @@ const PricingMvp = () => {
                 <h3 className="text-2xl font-bold mb-2">{plan.name}</h3>
                 <p
                   className={
-                    plan.popular ? "text-primary-foreground/80" : "text-muted-foreground"
+                    plan.popular ? "text-white/80" : "text-muted-foreground"
                   }
                 >
                   {plan.description}
@@ -101,7 +101,7 @@ const PricingMvp = () => {
                   <span className="text-5xl font-bold">{plan.price}</span>
                   <span
                     className={
-                      plan.popular ? "text-primary-foreground/80" : "text-muted-foreground"
+                      plan.popular ? "text-white/80" : "text-muted-foreground"
                     }
                   >
                     {plan.period}
@@ -126,12 +126,12 @@ const PricingMvp = () => {
                   <li key={featureIndex} className="flex items-start gap-3">
                     <Check
                       className={`h-5 w-5 mt-0.5 flex-shrink-0 ${
-                        plan.popular ? "text-primary-foreground" : "text-primary"
+                        plan.popular ? "text-white" : "text-primary"
                       }`}
                     />
                     <span
                       className={
-                        plan.popular ? "text-primary-foreground" : "text-foreground"
+                        plan.popular ? "text-white" : "text-foreground"
                       }
                     >
                       {feature}
