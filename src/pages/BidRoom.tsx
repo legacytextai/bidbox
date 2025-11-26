@@ -15,9 +15,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { format } from "date-fns";
 import { z } from "zod";
 import FilePreview from "@/components/FilePreview";
+import { formatInProjectTimezone } from "@/lib/timezoneUtils";
 
 const bidSchema = z.object({
   bidder_name: z.string().max(100).optional(),
@@ -269,7 +269,7 @@ const BidRoom = () => {
                 </p>
                 <p><span className="text-muted-foreground">Location:</span> {project.location}</p>
                 <p><span className="text-muted-foreground">Agency:</span> {project.agency}</p>
-                <p><span className="text-muted-foreground">Bid Due:</span> {format(new Date(project.bid_due_at), "MMMM d, yyyy 'at' h:mm a")}</p>
+                <p><span className="text-muted-foreground">Bid Due:</span> {formatInProjectTimezone(project.bid_due_at, project.timezone || "America/Los_Angeles", "MMMM d, yyyy 'at' h:mm a zzz")}</p>
                 {project.instructions && (
                   <div className="mt-4">
                     <p className="text-muted-foreground mb-2">Instructions:</p>

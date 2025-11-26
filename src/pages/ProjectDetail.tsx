@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { format } from "date-fns";
 import { validateProjectFile } from "@/lib/fileValidation";
+import { TIMEZONE_OPTIONS, localDateTimeToUtc, utcToLocalDateTime } from "@/lib/timezoneUtils";
 import {
   Select,
   SelectContent,
@@ -65,6 +66,7 @@ const ProjectDetail = () => {
   const [editedAgency, setEditedAgency] = useState("");
   const [editedInstructions, setEditedInstructions] = useState("");
   const [editedBidDueAt, setEditedBidDueAt] = useState("");
+  const [editedTimezone, setEditedTimezone] = useState("America/Los_Angeles");
   const [isSaving, setIsSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
 
@@ -75,26 +77,18 @@ const ProjectDetail = () => {
   // Track changes to editable fields
   useEffect(() => {
     if (project) {
-      const originalBidDue = project.bid_due_at ? formatDateForInput(project.bid_due_at) : "";
+      const projectTimezone = project.timezone || "America/Los_Angeles";
+      const originalBidDue = project.bid_due_at ? utcToLocalDateTime(project.bid_due_at, projectTimezone) : "";
       const changed = 
         editedName !== project.name ||
         editedLocation !== (project.location || "") ||
         editedAgency !== (project.agency || "") ||
         editedInstructions !== (project.instructions || "") ||
-        editedBidDueAt !== originalBidDue;
+        editedBidDueAt !== originalBidDue ||
+        editedTimezone !== projectTimezone;
       setHasChanges(changed);
     }
-  }, [editedName, editedLocation, editedAgency, editedInstructions, editedBidDueAt, project]);
-
-  const formatDateForInput = (dateString: string) => {
-    const date = new Date(dateString);
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    return `${year}-${month}-${day}T${hours}:${minutes}`;
-  };
+  }, [editedName, editedLocation, editedAgency, editedInstructions, editedBidDueAt, editedTimezone, project]);
 
   const loadProject = async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -121,11 +115,13 @@ const ProjectDetail = () => {
     setProject(projectData);
     
     // Initialize editable fields
+    const projectTimezone = projectData.timezone || "America/Los_Angeles";
     setEditedName(projectData.name);
     setEditedLocation(projectData.location || "");
     setEditedAgency(projectData.agency || "");
     setEditedInstructions(projectData.instructions || "");
-    setEditedBidDueAt(projectData.bid_due_at ? formatDateForInput(projectData.bid_due_at) : "");
+    setEditedBidDueAt(projectData.bid_due_at ? utcToLocalDateTime(projectData.bid_due_at, projectTimezone) : "");
+    setEditedTimezone(projectTimezone);
 
     const { data: filesData } = await supabase
       .from("project_files")
@@ -193,7 +189,8 @@ const ProjectDetail = () => {
       location: editedLocation || null,
       agency: editedAgency || null,
       instructions: editedInstructions || null,
-      bid_due_at: editedBidDueAt ? new Date(editedBidDueAt).toISOString() : project.bid_due_at,
+      bid_due_at: editedBidDueAt ? localDateTimeToUtc(editedBidDueAt, editedTimezone) : project.bid_due_at,
+      timezone: editedTimezone,
     };
 
     const { error } = await supabase
@@ -481,6 +478,25 @@ const ProjectDetail = () => {
                 value={editedBidDueAt}
                 onChange={(e) => setEditedBidDueAt(e.target.value)}
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Time Zone</Label>
+              <Select
+                value={editedTimezone}
+                onValueChange={(value) => setEditedTimezone(value)}
+              >
+                <SelectTrigger className="bg-background">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-background z-50">
+                  {TIMEZONE_OPTIONS.map((tz) => (
+                    <SelectItem key={tz.value} value={tz.value}>
+                      {tz.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">
