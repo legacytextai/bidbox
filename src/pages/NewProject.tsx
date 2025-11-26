@@ -12,6 +12,7 @@ import { Progress } from "@/components/ui/progress";
 import { z } from "zod";
 import { validateProjectFile } from "@/lib/fileValidation";
 import { TIMEZONE_OPTIONS, localDateTimeToUtc } from "@/lib/timezoneUtils";
+import { FileDropzone } from "@/components/FileDropzone";
 import {
   Select,
   SelectContent,
@@ -58,25 +59,21 @@ const NewProject = () => {
     checkAuth();
   }, [navigate]);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      const newFiles = Array.from(e.target.files);
-      
-      // Validate each file
-      for (const file of newFiles) {
-        const validation = validateProjectFile(file);
-        if (!validation.valid) {
-          toast({
-            title: "Invalid File",
-            description: `${file.name}: ${validation.error}`,
-            variant: "destructive",
-          });
-          return;
-        }
+  const handleFileChange = (newFiles: File[]) => {
+    // Validate each file
+    for (const file of newFiles) {
+      const validation = validateProjectFile(file);
+      if (!validation.valid) {
+        toast({
+          title: "Invalid File",
+          description: `${file.name}: ${validation.error}`,
+          variant: "destructive",
+        });
+        return;
       }
-      
-      setFiles([...files, ...newFiles]);
     }
+    
+    setFiles([...files, ...newFiles]);
   };
 
   const removeFile = (index: number) => {
@@ -268,29 +265,21 @@ const NewProject = () => {
                   Upload Project Files
                 </h2>
 
-                <div className={`border-2 border-dashed border-border rounded-lg p-8 text-center ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}>
-                  <input
-                    type="file"
-                    multiple
-                    onChange={handleFileChange}
-                    className="hidden"
-                    id="file-upload"
-                    accept=".pdf,.dwg,.xls,.xlsx"
-                    disabled={isUploading}
-                  />
-                  <label
-                    htmlFor="file-upload"
-                    className={`flex flex-col items-center ${isUploading ? 'cursor-not-allowed' : 'cursor-pointer'}`}
-                  >
-                    <Upload className="h-12 w-12 text-muted-foreground mb-4" />
-                    <p className="text-sm text-muted-foreground">
-                      {isUploading ? "Uploading files..." : "Click to upload or drag and drop"}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      PDF, DWG, Excel up to 200MB
-                    </p>
-                  </label>
-                </div>
+                <FileDropzone
+                  onFilesSelected={handleFileChange}
+                  accept=".pdf,.dwg,.xls,.xlsx"
+                  multiple={true}
+                  disabled={isUploading}
+                  className={`border-2 border-dashed border-border rounded-lg p-8 text-center ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}
+                >
+                  <Upload className="h-12 w-12 text-muted-foreground mb-4" />
+                  <p className="text-sm text-muted-foreground">
+                    {isUploading ? "Uploading files..." : "Click to upload or drag and drop"}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    PDF, DWG, Excel up to 200MB
+                  </p>
+                </FileDropzone>
 
                 {files.length > 0 && (
                   <div className="space-y-3">

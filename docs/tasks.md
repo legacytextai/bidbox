@@ -150,61 +150,51 @@ CREATE POLICY "Anyone can view projects by public token"
 - Total per project: ~250 MB
 
 - [x] 0.4.1 Create validation utility
-  - Location: `src/lib/fileValidation.ts`
-  - Code:
-  ```typescript
-  export const PROJECT_FILE_TYPES = [
-    'application/pdf',
-    'image/vnd.dwg', // DWG
-    'application/vnd.ms-excel',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-  ];
-
-  export const BID_FILE_TYPES = [
-    'application/pdf',
-    'application/vnd.ms-excel',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    'application/zip',
-    'application/x-zip-compressed'
-  ];
-
-  export const MAX_FILE_SIZE_MB = 200;
-  export const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
-
-  export function validateProjectFile(file: File): { valid: boolean; error?: string } {
-    if (!PROJECT_FILE_TYPES.includes(file.type)) {
-      return { valid: false, error: 'Only PDF, DWG, and Excel files allowed' };
-    }
-    if (file.size > MAX_FILE_SIZE_BYTES) {
-      return { valid: false, error: `File must be under ${MAX_FILE_SIZE_MB}MB` };
-    }
-    return { valid: true };
-  }
-
-  export function validateBidFile(file: File): { valid: boolean; error?: string } {
-    if (!BID_FILE_TYPES.includes(file.type)) {
-      return { valid: false, error: 'Only PDF, Excel, and ZIP files allowed' };
-    }
-    if (file.size > MAX_FILE_SIZE_BYTES) {
-      return { valid: false, error: `File must be under ${MAX_FILE_SIZE_MB}MB` };
-    }
-    return { valid: true };
-  }
-  ```
-
 - [x] 0.4.2 Apply validation in NewProject.tsx
-  - Before line 142 (file upload), call `validateProjectFile()`
-  - Show toast error if invalid
-
 - [x] 0.4.3 Apply validation in BidRoom.tsx
-  - Before line 154 (bid upload), call `validateBidFile()`
-  - Show toast error if invalid
-
 - [x] 0.4.4 Apply validation in ProjectDetail.tsx
-  - Before line 142 (add files), call `validateProjectFile()`
-  - Show toast error if invalid
 
 **References**: design-guidelines.md (Error Handling), input-validation-security docs
+
+---
+
+### Task 0.6: Implement Drag-and-Drop File Upload [✅ COMPLETED]
+
+**Problem**: Drag-and-drop was not working despite UI text indicating it should.
+
+**Implementation**:
+- [x] 0.6.1 Create reusable FileDropzone component
+  - Location: `src/components/FileDropzone.tsx`
+  - Features: drag events, visual feedback, click-to-upload fallback
+  - Supports single/multiple files, custom accept types, disabled state
+
+- [x] 0.6.2 Update NewProject.tsx to use FileDropzone
+  - Replaced static div with FileDropzone component
+  - Visual feedback during drag (border-primary, bg-primary/5)
+  - Maintains file validation
+
+- [x] 0.6.3 Update ProjectDetail.tsx to use FileDropzone
+  - Updated "Add New Files" section with FileDropzone
+  - Connected to existing upload workflow
+
+- [x] 0.6.4 Update BidRoom.tsx main dropzone
+  - Made outer dropzone functional with drag-and-drop
+  - On file drop: sets bidFile and opens dialog
+  - Visual feedback during drag
+
+- [x] 0.6.5 Update BidRoom.tsx dialog dropzone
+  - Added drag-and-drop to dialog's file upload area
+  - Connected to setBidFile state
+
+**Testing**:
+- ✅ Drag PDF onto /projects/new → file appears in list
+- ✅ Drag Excel onto /projects/:id → file ready for upload
+- ✅ Drag file onto /bid/:token → dialog opens with file pre-selected
+- ✅ Drag file into open dialog → file selected
+- ✅ Click-to-upload still works on all pages
+- ✅ Visual feedback (border and background changes) during drag
+
+**References**: design-guidelines.md, bug-report-sign-out-failure.md
 
 ---
 

@@ -12,6 +12,7 @@ import { Progress } from "@/components/ui/progress";
 import { format } from "date-fns";
 import { validateProjectFile } from "@/lib/fileValidation";
 import { TIMEZONE_OPTIONS, localDateTimeToUtc, utcToLocalDateTime } from "@/lib/timezoneUtils";
+import { FileDropzone } from "@/components/FileDropzone";
 import {
   Select,
   SelectContent,
@@ -588,45 +589,38 @@ const ProjectDetail = () => {
                 ))}
               </div>
 
-              <div className={`border-2 border-dashed border-border rounded-lg p-4 ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}>
-                <input
-                  type="file"
-                  multiple
-                  onChange={(e) =>
-                    e.target.files && setNewFiles(Array.from(e.target.files))
-                  }
-                  className="hidden"
-                  id="new-file-upload"
-                  disabled={isUploading}
-                />
-                <label
-                  htmlFor="new-file-upload"
-                  className={`flex items-center justify-center text-sm text-muted-foreground ${isUploading ? 'cursor-not-allowed' : 'cursor-pointer'}`}
-                >
-                  <Upload className="h-4 w-4 mr-2" />
-                  {isUploading ? "Uploading..." : "Add New Files"}
-                </label>
-                {newFiles.length > 0 && (
-                  <div className="mt-4 space-y-3">
-                    {newFiles.map((file, i) => (
-                      <div key={i} className="space-y-2">
-                        <div className="flex items-center gap-2">
-                          <p className="text-sm">{file.name}</p>
-                          {currentUpload === file.name && (
-                            <span className="text-xs text-muted-foreground">(Uploading...)</span>
-                          )}
-                        </div>
+              <FileDropzone
+                onFilesSelected={(files) => setNewFiles(files)}
+                accept=".pdf,.dwg,.xls,.xlsx"
+                multiple={true}
+                disabled={isUploading}
+                className={`border-2 border-dashed border-border rounded-lg p-4 ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}
+              >
+                <Upload className="h-4 w-4 mr-2 inline" />
+                <span className="text-sm text-muted-foreground">
+                  {isUploading ? "Uploading..." : "Click to upload or drag and drop"}
+                </span>
+              </FileDropzone>
+              {newFiles.length > 0 && (
+                <div className="mt-4 space-y-3">
+                  {newFiles.map((file, i) => (
+                    <div key={i} className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm">{file.name}</p>
                         {currentUpload === file.name && (
-                          <Progress value={undefined} className="h-1" />
+                          <span className="text-xs text-muted-foreground">(Uploading...)</span>
                         )}
                       </div>
-                    ))}
-                    <Button onClick={handleFileUpload} size="sm" disabled={isUploading}>
-                      Upload Files
-                    </Button>
-                  </div>
-                )}
-              </div>
+                      {currentUpload === file.name && (
+                        <Progress value={undefined} className="h-1" />
+                      )}
+                    </div>
+                  ))}
+                  <Button onClick={handleFileUpload} size="sm" disabled={isUploading}>
+                    Upload Files
+                  </Button>
+                </div>
+              )}
             </div>
 
             <div className="space-y-4">
