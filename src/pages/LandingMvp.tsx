@@ -3,7 +3,7 @@ import Hero from "@/components/Hero";
 import Partners from "@/components/Partners";
 import Benefits from "@/components/Benefits";
 import HowItWorks from "@/components/HowItWorks";
-import Pricing from "@/components/Pricing";
+import PricingMvp from "@/components/PricingMvp";
 import Testimonials from "@/components/Testimonials";
 import FAQ from "@/components/FAQ";
 import CTA from "@/components/CTA";
@@ -16,7 +16,7 @@ const LandingMvp = () => {
       <Partners />
       <Benefits />
       <HowItWorks />
-      <Pricing />
+      <PricingMvp />
       <Testimonials />
       <FAQ />
       <CTA />
