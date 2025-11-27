@@ -17,22 +17,24 @@ const PricingMvp = () => {
       ],
       cta: "Start Free",
       popular: false,
+      featured: false,
     },
-    {
-      name: "Tier 1",
-      price: "$49",
-      period: "/month",
-      description: "Best for growing estimators who need more flexibility",
-      features: [
-        "Unlimited bid rooms",
-        "Unlimited file uploads",
-        "Unlimited subcontractor submissions",
-        "Basic admin dashboard",
-        "Simple, fast workflow",
-      ],
-      cta: "Start Free Trial",
-      popular: true,
-    },
+    // SAVED FOR LATER - Tier 1 subscription plan
+    // {
+    //   name: "Tier 1",
+    //   price: "$49",
+    //   period: "/month",
+    //   description: "Best for growing estimators who need more flexibility",
+    //   features: [
+    //     "Unlimited bid rooms",
+    //     "Unlimited file uploads",
+    //     "Unlimited subcontractor submissions",
+    //     "Basic admin dashboard",
+    //     "Simple, fast workflow",
+    //   ],
+    //   cta: "Start Free Trial",
+    //   popular: true,
+    // },
     {
       name: "Early Access Lifetime — $199",
       price: "$199",
@@ -47,6 +49,7 @@ const PricingMvp = () => {
       ],
       cta: "Claim Lifetime Access",
       popular: false,
+      featured: true,
     },
   ];
 
@@ -69,13 +72,13 @@ const PricingMvp = () => {
           </p>
         </div>
 
-        <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+        <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
           {plans.map((plan, index) => (
             <div
               key={index}
               className={`relative rounded-2xl p-8 ${
-                plan.popular
-                  ? "bg-primary text-primary-foreground shadow-xl scale-105"
+                plan.featured
+                  ? "bg-black text-white shadow-xl scale-105"
                   : "bg-card border border-border"
               }`}
             >
@@ -89,7 +92,7 @@ const PricingMvp = () => {
                 <h3 className="text-2xl font-bold mb-2">{plan.name}</h3>
                 <p
                   className={
-                    plan.popular ? "text-primary-foreground font-light" : "text-foreground font-light"
+                    plan.featured ? "text-white/80 font-light" : "text-foreground font-light"
                   }
                 >
                   {plan.description}
@@ -101,7 +104,7 @@ const PricingMvp = () => {
                   <span className="text-5xl font-bold">{plan.price}</span>
                   <span
                     className={
-                      plan.popular ? "text-primary-foreground/80" : "text-muted-foreground"
+                      plan.featured ? "text-white/70" : "text-muted-foreground"
                     }
                   >
                     {plan.period}
@@ -111,8 +114,8 @@ const PricingMvp = () => {
 
               <Button
                 className={`w-full mb-8 ${
-                  plan.popular
-                    ? "bg-background text-foreground hover:bg-background/90"
+                  plan.featured
+                    ? "bg-white text-black hover:bg-white/90"
                     : ""
                 }`}
                 size="lg"
@@ -126,12 +129,12 @@ const PricingMvp = () => {
                   <li key={featureIndex} className="flex items-start gap-3">
                     <Check
                       className={`h-5 w-5 mt-0.5 flex-shrink-0 ${
-                        plan.popular ? "text-primary-foreground" : "text-primary"
+                        plan.featured ? "text-white" : "text-primary"
                       }`}
                     />
                     <span
                       className={
-                        plan.popular ? "text-primary-foreground" : "text-foreground"
+                        plan.featured ? "text-white" : "text-foreground"
                       }
                     >
                       {feature}
