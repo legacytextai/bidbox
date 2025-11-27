@@ -590,23 +590,25 @@ const ProjectDetail = () => {
           {/* Bid Box Link Section */}
           <div className="space-y-2 mb-6">
             <Label>Bid Box Link</Label>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={copyBidLink}
-            >
-              {copied ? (
-                <>
-                  <CheckCircle2 className="h-4 w-4 mr-2" />
-                  Copied
-                </>
-              ) : (
-                <>
-                  <Copy className="h-4 w-4 mr-2" />
-                  Copy Link
-                </>
-              )}
-            </Button>
+            <div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={copyBidLink}
+              >
+                {copied ? (
+                  <>
+                    <CheckCircle2 className="h-4 w-4 mr-2" />
+                    Copied
+                  </>
+                ) : (
+                  <>
+                    <Copy className="h-4 w-4 mr-2" />
+                    Copy Link
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
 
 
