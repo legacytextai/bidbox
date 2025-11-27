@@ -39,7 +39,7 @@ const PricingMvp = () => {
       name: "Early Access Lifetime — $199",
       price: "$199",
       period: "/one-time",
-      description: "Limited offer — first 50 GCs only",
+      description: "Limited offer",
       features: [
         "Lifetime unlimited bid rooms",
         "Lifetime unlimited uploads",
