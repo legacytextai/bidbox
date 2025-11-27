@@ -592,8 +592,8 @@ const ProjectDetail = () => {
             <Label>Bid Box Link</Label>
             <Button
               variant="outline"
+              size="sm"
               onClick={copyBidLink}
-              className="w-full"
             >
               {copied ? (
                 <>
