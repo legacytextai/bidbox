@@ -175,7 +175,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_submission_count: { Args: { p_project_id: string }; Returns: number }
     }
     Enums: {
       [_ in never]: never
