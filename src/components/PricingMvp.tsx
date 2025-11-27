@@ -78,7 +78,7 @@ const PricingMvp = () => {
               key={index}
               className={`relative rounded-2xl p-8 ${
                 plan.featured
-                  ? "bg-black text-white shadow-xl scale-105"
+                  ? "bg-black text-white shadow-xl"
                   : "bg-card border border-border"
               }`}
             >
