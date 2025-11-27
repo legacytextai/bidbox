@@ -10,7 +10,8 @@ const CTA = () => {
   } = useToast();
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    window.location.href = "/auth";
+    const params = email ? `?email=${encodeURIComponent(email)}` : "";
+    window.location.href = `/auth${params}`;
   };
   return <section id="cta" className="py-24 bg-gradient-to-br from-[hsl(var(--bidbox-blue))] to-[hsl(var(--bidbox-blue))]/90 relative overflow-hidden">
       {/* Background Pattern */}
@@ -29,7 +30,7 @@ const CTA = () => {
           <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-4 max-w-2xl mx-auto mb-8">
             <Input type="email" placeholder="Enter your work email" value={email} onChange={e => setEmail(e.target.value)} required className="flex-1 h-14 px-6 text-lg bg-white/95 border-white/20 text-foreground placeholder:text-muted-foreground" />
             <Button type="submit" size="lg" variant="secondary" className="h-14 px-8 text-lg font-semibold shadow-lg hover:shadow-xl transition-all group">
-              Start Free Trial
+              Create Account
               <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
             </Button>
           </form>
