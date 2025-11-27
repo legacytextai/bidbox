@@ -8,14 +8,17 @@ This guide documents a full Stripe integration using React as the frontend and S
 ## ✅ Step 1: Stripe Dashboard Setup
 
 1. Go to [Stripe Dashboard – Products](https://dashboard.stripe.com/products).
-2. **Create One-Time Product**:
-   - Example: “Lifetime Access”
-   - Pricing: One-time ($49.00)
+2. **Create One-Time Product** (BidBox Early Access):
+   - Product name: "Early Access Lifetime"
+   - Pricing: One-time ($199.00)
    - Save and copy the **Price ID**
-3. **Create Subscription Product**:
-   - Example: “Pro Monthly”
-   - Pricing: Recurring → Monthly ($9.99)
+3. **Create Subscription Product** (Future - Tier 1):
+   - Product name: "Tier 1"
+   - Pricing: Recurring → Monthly ($49.00)
+   - Status: Currently disabled in code
    - Save and copy the **Price ID**
+
+**Note**: The Free tier (3 bid rooms) does not require a Stripe product.
 
 ---
 
