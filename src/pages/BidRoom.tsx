@@ -237,8 +237,12 @@ const BidRoom = () => {
     try {
       const validation = bidSchema.parse(bidData);
 
+      // Generate ONE submission ID for all files in this submission
+      const submissionId = crypto.randomUUID();
+
       for (const uploadFile of successfulUploads) {
         const { error: bidError } = await supabase.from("bids").insert({
+          submission_id: submissionId,
           project_id: project.id,
           file_url: uploadFile.storagePath!,
           file_name: uploadFile.file.name,
