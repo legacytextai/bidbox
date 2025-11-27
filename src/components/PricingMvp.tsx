@@ -76,7 +76,7 @@ const PricingMvp = () => {
           {plans.map((plan, index) => (
             <div
               key={index}
-              className={`relative rounded-2xl p-8 ${
+              className={`relative rounded-2xl p-8 flex flex-col ${
                 plan.featured
                   ? "bg-black text-white shadow-xl"
                   : "bg-card border border-border"
@@ -101,7 +101,7 @@ const PricingMvp = () => {
                 </p>
               </div>
 
-              <div className="mb-8">
+              <div className="mb-8 flex-1">
                 <div className="flex items-baseline gap-1">
                   <span className="text-5xl font-bold">{plan.price}</span>
                   <span
