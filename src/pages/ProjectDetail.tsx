@@ -614,7 +614,7 @@ const ProjectDetail = () => {
 
             <div className="space-y-2">
               <Label className="opacity-0">Actions</Label>
-              <div className="flex gap-3 items-center">
+              <div className="flex flex-col gap-2 items-start">
                 <Button 
                   onClick={saveAllChanges} 
                   disabled={!hasChanges || isSaving}
