@@ -587,27 +587,55 @@ const ProjectDetail = () => {
             />
           </div>
 
-          {/* Bid Box Link Section */}
-          <div className="space-y-2 mb-6">
-            <Label>Bid Box Link</Label>
-            <div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={copyBidLink}
-              >
-                {copied ? (
-                  <>
-                    <CheckCircle2 className="h-4 w-4 mr-2" />
-                    Copied
-                  </>
-                ) : (
-                  <>
-                    <Copy className="h-4 w-4 mr-2" />
-                    Copy Link
-                  </>
+          {/* Bid Box Link and Save Changes Section */}
+          <div className="flex justify-between items-start mb-6 gap-4">
+            <div className="space-y-2">
+              <Label>Bid Box Link</Label>
+              <div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={copyBidLink}
+                >
+                  {copied ? (
+                    <>
+                      <CheckCircle2 className="h-4 w-4 mr-2" />
+                      Copied
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-4 w-4 mr-2" />
+                      Copy Link
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="opacity-0">Actions</Label>
+              <div className="flex gap-3 items-center">
+                <Button 
+                  onClick={saveAllChanges} 
+                  disabled={!hasChanges || isSaving}
+                  size="lg"
+                  className={hasChanges ? "bg-bidbox-blue hover:bg-bidbox-blue/90 text-white" : ""}
+                >
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    "Save Changes"
+                  )}
+                </Button>
+                {hasChanges && (
+                  <p className="text-sm text-muted-foreground">
+                    You have unsaved changes
+                  </p>
                 )}
-              </Button>
+              </div>
             </div>
           </div>
 
@@ -783,30 +811,7 @@ const ProjectDetail = () => {
             </div>
           </div>
 
-          <div className="mt-8 flex justify-between items-center">
-            <div className="flex gap-3 items-center">
-              <Button 
-                onClick={saveAllChanges} 
-                disabled={!hasChanges || isSaving}
-                size="lg"
-                className={hasChanges ? "bg-bidbox-blue hover:bg-bidbox-blue/90 text-white" : ""}
-              >
-                {isSaving ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  "Save Changes"
-                )}
-              </Button>
-              {hasChanges && (
-                <p className="text-sm text-muted-foreground">
-                  You have unsaved changes
-                </p>
-              )}
-            </div>
-            
+          <div className="mt-8 flex justify-end items-center">
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button variant="destructive">
