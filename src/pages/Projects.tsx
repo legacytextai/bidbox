@@ -14,7 +14,7 @@ interface Project {
   bid_due_at: string;
   public_token: string;
   timezone: string;
-  bids: { count: number }[];
+  submission_count?: number;
 }
 
 const Projects = () => {
@@ -45,8 +45,7 @@ const Projects = () => {
         status,
         bid_due_at,
         public_token,
-        timezone,
-        bids(count)
+        timezone
       `)
       .order("bid_due_at", { ascending: true });
 
@@ -56,9 +55,24 @@ const Projects = () => {
         description: "Failed to load projects",
         variant: "destructive",
       });
-    } else {
-      setProjects(data || []);
+      setLoading(false);
+      return;
     }
+
+    // Get submission counts for all projects
+    const projectsWithCounts = await Promise.all(
+      (data || []).map(async (project) => {
+        const { data: count } = await supabase.rpc('get_submission_count', {
+          p_project_id: project.id
+        });
+        return {
+          ...project,
+          submission_count: count || 0
+        };
+      })
+    );
+
+    setProjects(projectsWithCounts);
     setLoading(false);
   };
 
@@ -110,7 +124,7 @@ const Projects = () => {
                 </p>
                 
                 <p className="text-sm text-muted-foreground mb-4">
-                  Responses: {project.bids?.[0]?.count || 0}
+                  Responses: {project.submission_count || 0}
                 </p>
                 
                 <div className="flex items-center gap-2">
