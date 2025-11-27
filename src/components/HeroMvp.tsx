@@ -15,7 +15,7 @@ const HeroMvp = () => {
   };
   return <section className="relative pt-6 pb-8 overflow-hidden bg-gradient-to-b from-background to-secondary/30">
       {/* Background decoration */}
-      <div className="absolute inset-0 bg-grid-pattern opacity-5"></div>
+      <div className="absolute inset-0 bg-grid-pattern opacity-5 pointer-events-none"></div>
 
       <div className="container mx-auto px-4">
         <div className="max-w-6xl mx-auto">
