@@ -531,12 +531,12 @@ const ProjectDetail = () => {
                 value={project.status}
                 onValueChange={(value) => updateProject({ status: value })}
               >
-                <SelectTrigger>
+                <SelectTrigger className={project.status === "LIVE" ? "text-green-600 font-semibold" : "text-muted-foreground"}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="LIVE">LIVE</SelectItem>
-                  <SelectItem value="DEAD">DEAD</SelectItem>
+                  <SelectItem value="LIVE" className="text-green-600 font-semibold">LIVE</SelectItem>
+                  <SelectItem value="DEAD" className="text-muted-foreground">DEAD</SelectItem>
                 </SelectContent>
               </Select>
             </div>
