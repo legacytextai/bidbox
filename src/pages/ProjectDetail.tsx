@@ -571,7 +571,7 @@ const ProjectDetail = () => {
 
             <div className="space-y-2">
               <Label>Responses</Label>
-              <p className="text-2xl font-bold text-primary">{bids.length}</p>
+              <p className="text-2xl font-bold text-primary">{submissions.length}</p>
             </div>
 
             <div className="space-y-2">
