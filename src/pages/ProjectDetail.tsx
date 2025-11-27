@@ -480,18 +480,18 @@ const ProjectDetail = () => {
 
   return (
     <Layout showSidebar={true}>
-      <div className="p-8">
+      <div className="p-6">
           <Button
             variant="ghost"
             onClick={() => navigate("/projects")}
-            className="mb-6"
+            className="mb-3"
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Projects
           </Button>
 
           {/* Editable Project Information */}
-          <div className="space-y-6 mb-8">
+          <div className="space-y-3 mb-4">
             <div className="space-y-2">
               <Label htmlFor="project-name">Project Name</Label>
               <Input
@@ -524,7 +524,7 @@ const ProjectDetail = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
             <div className="space-y-2">
               <Label>Status</Label>
               <Select
@@ -576,7 +576,7 @@ const ProjectDetail = () => {
           </div>
 
           {/* Instructions Section */}
-          <div className="space-y-2 mb-6">
+          <div className="space-y-2 mb-4">
             <Label htmlFor="instructions">Instructions for Bidders</Label>
             <Textarea
               id="instructions"
