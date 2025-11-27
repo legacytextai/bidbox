@@ -590,21 +590,23 @@ const ProjectDetail = () => {
           {/* Bid Box Link Section */}
           <div className="space-y-2 mb-6">
             <Label>Bid Box Link</Label>
-            <div className="flex gap-2">
-              <Input
-                value={`${window.location.origin}/bid/${project.public_token}`}
-                readOnly
-                className="flex-1 bg-muted"
-              />
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={copyBidLink}
-                title="Copy link"
-              >
-                <Copy className="h-4 w-4" />
-              </Button>
-            </div>
+            <Button
+              variant="outline"
+              onClick={copyBidLink}
+              className="w-full"
+            >
+              {copied ? (
+                <>
+                  <CheckCircle2 className="h-4 w-4 mr-2" />
+                  Copied
+                </>
+              ) : (
+                <>
+                  <Copy className="h-4 w-4 mr-2" />
+                  Copy Link
+                </>
+              )}
+            </Button>
           </div>
 
 
