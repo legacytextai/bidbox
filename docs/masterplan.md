@@ -165,7 +165,8 @@ Fast to scaffold, secure by default, and matches Lovable's strengths.
 - Integrate bid forms by division    
 - Optional contractor registry    
 - Public works bid log export format    
-- Stripe-based pricing plans ($49 / $99)
+- Pricing: Free tier (3 bid rooms) + Early Access Lifetime ($199 one-time)
+- Future: Tier 1 subscription ($49/month) - commented out in code
 
 ---
 

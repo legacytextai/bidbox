@@ -805,6 +805,42 @@ See `design-guidelines.md` for full details.
 
 ---
 
+## 💰 Pricing Structure Reference
+
+**Current Pricing Tiers:**
+
+| Tier | Price | Bid Rooms | Status |
+|------|-------|-----------|--------|
+| Free | $0 | 3 projects | Active |
+| Early Access Lifetime | $199 (one-time) | Unlimited | Active (Featured) |
+| Tier 1 | $49/month | Unlimited | Future (Commented out) |
+
+**Features per Tier:**
+- **Free Plan**:
+  - Up to 3 bid rooms
+  - File sharing & uploads
+  - Public bid pages
+  - Basic support
+  
+- **Early Access Lifetime**:
+  - Unlimited bid rooms
+  - Priority support
+  - Early access to new features
+  - One-time payment, lifetime access
+  - **Limited offer** banner/badge
+
+**CTA Copy:**
+- Free: "Start Free"
+- Lifetime: "Claim Lifetime Access"
+
+**Notes:**
+- Free tier requires no Stripe product
+- Early Access is the featured/highlighted plan
+- Tier 1 ($49/month) exists in code but is commented out for future use
+- Pricing displayed in `src/components/PricingMvp.tsx`
+
+---
+
 ## ✅ Testing Checklist
 
 Before marking MVP complete:
