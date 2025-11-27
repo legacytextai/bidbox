@@ -54,7 +54,7 @@ const HeroMvp = () => {
               {/* CTAs */}
               <div className="flex flex-col sm:flex-row gap-4">
                 <Button size="lg" onClick={() => window.location.href = "/auth"} className="text-lg px-8 shadow-strong hover:shadow-soft transition-all bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90">
-                  Try It Free
+                  Create Account
                 </Button>
                 <Button size="lg" variant="outline" onClick={() => scrollToSection("how-it-works")} className="text-lg px-8">
                   See How It Works
