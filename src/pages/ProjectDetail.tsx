@@ -573,27 +573,6 @@ const ProjectDetail = () => {
               <Label>Responses</Label>
               <p className="text-2xl font-bold text-primary">{submissions.length}</p>
             </div>
-
-            <div className="space-y-2">
-              <Label>Bid Box Link</Label>
-              <Button
-                variant="outline"
-                onClick={copyBidLink}
-                className="w-full"
-              >
-                {copied ? (
-                  <>
-                    <CheckCircle2 className="h-4 w-4 mr-2" />
-                    Copied
-                  </>
-                ) : (
-                  <>
-                    <Copy className="h-4 w-4 mr-2" />
-                    Copy Link
-                  </>
-                )}
-              </Button>
-            </div>
           </div>
 
           {/* Instructions Section */}
@@ -606,6 +585,26 @@ const ProjectDetail = () => {
               placeholder="Enter any special instructions, requirements, or notes for bidders"
               className="min-h-[100px]"
             />
+          </div>
+
+          {/* Bid Box Link Section */}
+          <div className="space-y-2 mb-6">
+            <Label>Bid Box Link</Label>
+            <div className="flex gap-2">
+              <Input
+                value={`${window.location.origin}/bid/${project.public_token}`}
+                readOnly
+                className="flex-1 bg-muted"
+              />
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={copyBidLink}
+                title="Copy link"
+              >
+                <Copy className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
 
 
