@@ -401,6 +401,42 @@ const ProjectDetail = () => {
     URL.revokeObjectURL(url);
   };
 
+  const deleteSubmission = async (submissionId: string) => {
+    // Get all bids for this submission to find file paths
+    const bidsToDelete = bids.filter(bid => (bid.submission_id || bid.id) === submissionId);
+    
+    // Delete files from storage
+    for (const bid of bidsToDelete) {
+      const { error: storageError } = await supabase.storage
+        .from("bid-submissions")
+        .remove([bid.file_url]);
+      
+      if (storageError) {
+        console.error("Failed to delete file:", storageError);
+      }
+    }
+
+    // Delete bid records from database
+    const { error: dbError } = await supabase
+      .from("bids")
+      .delete()
+      .eq("submission_id", submissionId);
+
+    if (dbError) {
+      toast({
+        title: "Error",
+        description: "Failed to delete submission",
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "Success",
+        description: "Submission deleted",
+      });
+      loadProject();
+    }
+  };
+
   const deleteProject = async () => {
     const { error } = await supabase
       .from("projects")
@@ -698,6 +734,29 @@ const ProjectDetail = () => {
                             {format(new Date(submission.submitted_at), "MMM d, yyyy h:mm a")}
                           </p>
                         </div>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="sm">
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete Submission</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Are you sure you want to delete this bid submission? This will delete all files associated with it. This action cannot be undone.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => deleteSubmission(submission.submission_id)}
+                              >
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                       </div>
                       
                       <div className="space-y-2">
