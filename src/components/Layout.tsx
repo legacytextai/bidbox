@@ -108,7 +108,7 @@ const AuthButtons = () => {
         onClick={() => navigate("/auth")}
         className="bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90"
       >
-        Start Free Trial
+        Create Account
       </Button>
     </div>
   );
