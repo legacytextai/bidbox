@@ -92,7 +92,9 @@ const PricingMvp = () => {
                 <h3 className="text-2xl font-bold mb-2">{plan.name}</h3>
                 <p
                   className={
-                    plan.featured ? "text-white font-extralight" : "text-foreground font-light"
+                    plan.featured 
+                      ? "bg-white text-black font-extralight px-4 py-2 rounded-full inline-block" 
+                      : "text-foreground font-light"
                   }
                 >
                   {plan.description}
