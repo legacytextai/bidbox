@@ -24,6 +24,7 @@ export type Database = {
           file_url: string
           id: string
           project_id: string
+          submission_id: string | null
           submitted_at: string
         }
         Insert: {
@@ -35,6 +36,7 @@ export type Database = {
           file_url: string
           id?: string
           project_id: string
+          submission_id?: string | null
           submitted_at?: string
         }
         Update: {
@@ -46,6 +48,7 @@ export type Database = {
           file_url?: string
           id?: string
           project_id?: string
+          submission_id?: string | null
           submitted_at?: string
         }
         Relationships: [

@@ -46,6 +46,18 @@ interface Bid {
   bidder_name?: string;
   company_name?: string;
   email?: string;
+  bid_item?: string;
+  submission_id?: string;
+}
+
+interface Submission {
+  submission_id: string;
+  submitted_at: string;
+  bidder_name?: string;
+  company_name?: string;
+  email?: string;
+  bid_item?: string;
+  files: { file_name: string; file_url: string }[];
 }
 
 const ProjectDetail = () => {
@@ -56,6 +68,7 @@ const ProjectDetail = () => {
   const [project, setProject] = useState<any>(null);
   const [projectFiles, setProjectFiles] = useState<ProjectFile[]>([]);
   const [bids, setBids] = useState<Bid[]>([]);
+  const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [copied, setCopied] = useState(false);
   const [newFiles, setNewFiles] = useState<File[]>([]);
   const [currentUpload, setCurrentUpload] = useState<string | null>(null);
@@ -138,6 +151,26 @@ const ProjectDetail = () => {
       .order("submitted_at", { ascending: false });
 
     setBids(bidsData || []);
+    
+    // Group bids by submission_id
+    const groupedSubmissions = (bidsData || []).reduce((acc: Record<string, Submission>, bid: Bid) => {
+      const key = bid.submission_id || bid.id; // Fallback for legacy bids
+      if (!acc[key]) {
+        acc[key] = {
+          submission_id: key,
+          submitted_at: bid.submitted_at,
+          bidder_name: bid.bidder_name,
+          company_name: bid.company_name,
+          email: bid.email,
+          bid_item: bid.bid_item,
+          files: []
+        };
+      }
+      acc[key].files.push({ file_name: bid.file_name, file_url: bid.file_url });
+      return acc;
+    }, {});
+
+    setSubmissions(Object.values(groupedSubmissions));
     setLoading(false);
   };
 
@@ -626,46 +659,60 @@ const ProjectDetail = () => {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-xl font-semibold text-foreground">
-                  Bids Received: {bids.length}
+                  Bids Received: {submissions.length}
                 </h2>
               </div>
 
               <div className="border border-border rounded-lg p-4 space-y-3">
-                {bids.length === 0 ? (
+                {submissions.length === 0 ? (
                   <p className="text-sm text-muted-foreground text-center py-8">
                     No bids received yet
                   </p>
                 ) : (
-                  bids.map((bid) => (
+                  submissions.map((submission) => (
                     <div
-                      key={bid.id}
+                      key={submission.submission_id}
                       className="bg-muted rounded-lg p-4 space-y-2"
                     >
                       <div className="flex items-start justify-between">
                         <div>
                           <p className="font-semibold text-foreground">
-                            {bid.bidder_name || "Unknown Bidder"}
+                            {submission.bidder_name || "Unknown Bidder"}
                           </p>
-                          {bid.company_name && (
+                          {submission.company_name && (
                             <p className="text-sm text-muted-foreground">
-                              {bid.company_name}
+                              {submission.company_name}
+                            </p>
+                          )}
+                          {submission.email && (
+                            <p className="text-sm text-muted-foreground">
+                              {submission.email}
+                            </p>
+                          )}
+                          {submission.bid_item && (
+                            <p className="text-sm text-muted-foreground">
+                              Division: {submission.bid_item}
                             </p>
                           )}
                           <p className="text-xs text-muted-foreground mt-1">
-                            {format(new Date(bid.submitted_at), "MMM d, yyyy h:mm a")}
+                            {format(new Date(submission.submitted_at), "MMM d, yyyy h:mm a")}
                           </p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => downloadBid(bid.file_url, bid.file_name)}
-                          className="flex-1"
-                        >
-                          <Download className="h-4 w-4 mr-2" />
-                          {bid.file_name}
-                        </Button>
+                      
+                      <div className="space-y-2">
+                        {submission.files.map((file, idx) => (
+                          <Button
+                            key={idx}
+                            variant="outline"
+                            size="sm"
+                            onClick={() => downloadBid(file.file_url, file.file_name)}
+                            className="w-full justify-start"
+                          >
+                            <Download className="h-4 w-4 mr-2" />
+                            {file.file_name}
+                          </Button>
+                        ))}
                       </div>
                     </div>
                   ))
