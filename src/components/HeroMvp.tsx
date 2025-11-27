@@ -3,7 +3,6 @@ import { CheckCircle2, Users } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 const HeroMvp = () => {
   const navigate = useNavigate();
-  
   const scrollToSection = (id: string) => {
     const element = document.getElementById(id);
     if (element) {
@@ -42,13 +41,7 @@ const HeroMvp = () => {
 
               {/* Key Benefits */}
               <div className="space-y-3">
-                {[
-                  "Create a bid room in seconds",
-                  "Share one link with all your subs",
-                  "Subs open your bid room instantly — no accounts",
-                  "They view/download your project files",
-                  "They upload their quote back to you"
-                ].map((benefit, idx) => <div key={idx} className="flex items-start gap-3">
+                {["Create a bid room in seconds", "Share one link with all your subs", "Subs open your bid room instantly — no accounts", "They view/download your project files", "They upload their quote back to you"].map((benefit, idx) => <div key={idx} className="flex items-start gap-3">
                     <CheckCircle2 className="w-5 h-5 text-[hsl(var(--bidbox-blue))] shrink-0 mt-1" />
                     <span className="text-foreground/90">{benefit}</span>
                   </div>)}
@@ -68,22 +61,13 @@ const HeroMvp = () => {
             {/* Right: Product Preview */}
             <div className="relative animate-slide-in-right">
               <div className="relative rounded-2xl overflow-hidden shadow-strong border border-border bg-card">
-                <video 
-                  src="/videos/bidbox-demo.mov" 
-                  autoPlay 
-                  loop 
-                  muted 
-                  playsInline
-                  className="w-full h-auto"
-                />
+                <video src="/videos/bidbox-demo.mov" autoPlay loop muted playsInline className="w-full h-auto" />
                 {/* Overlay gradient for depth */}
                 <div className="absolute inset-0 bg-gradient-to-tr from-primary/5 to-transparent pointer-events-none"></div>
               </div>
 
               {/* Floating badge */}
-              <div className="absolute -bottom-4 -right-4 bg-accent text-accent-foreground px-6 py-3 rounded-lg shadow-lg font-semibold">
-                5-minute setup ⚡
-              </div>
+              <div className="absolute -bottom-4 -right-4 bg-accent text-accent-foreground px-6 py-3 rounded-lg shadow-lg font-semibold">2-minute setup ⚡</div>
             </div>
           </div>
         </div>
