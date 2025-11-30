@@ -1,7 +1,7 @@
 # BidBox Implementation Tasks
 
 **Source of Truth for Feature Implementation**  
-Last Updated: 2024-11-24
+Last Updated: 2025-11-30
 
 ---
 
@@ -780,12 +780,17 @@ Already implemented:
 - [x] 4.7.3 Create `useSubscription` hook
 - [x] 4.7.4 Display subscription status in Settings page
 - [x] 4.7.5 Implement free tier limit (3 projects)
+- [ ] 4.7.6 Add "X of 3 bid rooms used" display for free users (Not Started)
+- [ ] 4.7.7 Add "Lifetime" badge for paid users on dashboard (Optional)
 
 **Files Created/Modified**:
 - `src/hooks/useSubscription.tsx` (new)
 - `src/components/PricingMvp.tsx` (updated with checkout)
 - `src/pages/Projects.tsx` (payment params + project limit)
 - `src/pages/Settings.tsx` (subscription status display)
+- `src/pages/NewProject.tsx` (upgrade prompt when limit reached)
+- `supabase/functions/create-checkout/index.ts` (new)
+- `supabase/functions/stripe-webhook/index.ts` (new)
 
 ---
 
