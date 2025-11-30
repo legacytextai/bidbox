@@ -34,7 +34,8 @@ const HeroMvp = () => {
                   <span className="text-2xl md:text-3xl font-medium mt-2 block">BidBox is the <span className="text-foreground">Simple Bid Room Built For GCs</span> <span className="text-foreground">— Loved By Subs.</span></span>
                 </h1>
 
-              <p className="text-xl leading-relaxed text-foreground">Save hours on bid day. <span className="font-semibold">Send one link and watch the quotes roll in.</span></p>
+              <p className="text-xl leading-relaxed text-foreground">Save hours on bid day.
+Send one link and watch the quotes roll in.<span className="font-semibold">Send one link and watch the quotes roll in.</span></p>
               </div>
 
               {/* Key Benefits */}
