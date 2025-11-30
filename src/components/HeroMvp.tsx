@@ -39,7 +39,7 @@ const HeroMvp = () => {
 
               {/* Key Benefits */}
               <div className="space-y-3">
-                {["Share plans, receive quotes, one link", "No logins for subs — they actually respond", "All quotes in one clean dashboard", "Faster coverage for every trade", "Set up a bid room in under 2 minutes"].map((benefit, idx) => <div key={idx} className="flex items-start gap-3">
+                {["Share plans + Receive quotes", "No logins for subs — they actually respond", "All quotes in one clean dashboard", "Faster coverage for every trade", "Set up a bid room in under 2 minutes"].map((benefit, idx) => <div key={idx} className="flex items-start gap-3">
                     <CheckCircle2 className="w-5 h-5 text-[hsl(var(--bidbox-blue))] shrink-0 mt-1" />
                     <span className="text-foreground/90">{benefit}</span>
                   </div>)}
