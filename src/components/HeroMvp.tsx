@@ -31,7 +31,7 @@ const HeroMvp = () => {
               <h1 className="text-4xl md:text-5xl font-bold text-foreground leading-tight">
                   <span className="text-[hsl(var(--bidbox-blue))]">Send One Link.</span> Get More Quotes.
                   <br />
-                  <span className="text-muted-foreground text-2xl md:text-3xl font-medium mt-2 block">BidBox is the Simple Bid Room Built For GCs — Loved By Subs.</span>
+                  <span className="text-2xl md:text-3xl font-medium mt-2 block">BidBox is the <span className="text-foreground">Simple Bid Room Built For GCs</span> <span className="text-muted-foreground">— Loved By Subs.</span></span>
                 </h1>
 
                 <p className="text-xl text-muted-foreground leading-relaxed">
