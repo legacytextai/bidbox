@@ -9,6 +9,7 @@ export interface KPISummary {
   avg_projects_per_gc: number;
   total_bids: number;
   avg_bids_per_project: number;
+  projects_with_bids: number;
   conversion_rate: number;
   total_views: number;
 }
