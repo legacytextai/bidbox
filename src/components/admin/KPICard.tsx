@@ -1,6 +1,12 @@
 import { LucideIcon } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface KPICardProps {
   title: string;
@@ -8,9 +14,10 @@ interface KPICardProps {
   icon: LucideIcon;
   format?: "number" | "percentage" | "decimal";
   isLoading?: boolean;
+  tooltip?: string;
 }
 
-export function KPICard({ title, value, icon: Icon, format = "number", isLoading }: KPICardProps) {
+export function KPICard({ title, value, icon: Icon, format = "number", isLoading, tooltip }: KPICardProps) {
   const formatValue = (val: number | string | null | undefined) => {
     if (val === null || val === undefined) return "—";
     if (typeof val === "string") return val;
@@ -39,7 +46,7 @@ export function KPICard({ title, value, icon: Icon, format = "number", isLoading
     );
   }
 
-  return (
+  const cardContent = (
     <Card className="bg-card border-border hover:border-primary/30 transition-colors">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -54,4 +61,21 @@ export function KPICard({ title, value, icon: Icon, format = "number", isLoading
       </CardContent>
     </Card>
   );
+
+  if (tooltip) {
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            {cardContent}
+          </TooltipTrigger>
+          <TooltipContent>
+            <p className="text-xs">{tooltip}</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+
+  return cardContent;
 }

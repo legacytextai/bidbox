@@ -59,6 +59,7 @@ export function KPIGrid({ data, isLoading }: KPIGridProps) {
       value: data?.conversion_rate,
       icon: Percent,
       format: "percentage" as const,
+      tooltip: "(Projects with Bids ÷ Total Projects) × 100",
     },
     {
       title: "Bid Room Views",
@@ -78,6 +79,7 @@ export function KPIGrid({ data, isLoading }: KPIGridProps) {
           icon={kpi.icon}
           format={kpi.format}
           isLoading={isLoading}
+          tooltip={kpi.tooltip}
         />
       ))}
     </div>
