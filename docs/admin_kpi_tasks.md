@@ -191,44 +191,32 @@ VALUES ('324e7848-6c4d-4fe5-a826-91427265a76e', 'admin');
 
 ---
 
-## Phase 3 — Anonymous View Tracking
+## Phase 3 — Anonymous View Tracking ✅ COMPLETED
 
 ### Task 3.1: Create increment_view_count() RPC Function
-**Status:** [ ] Not Started  
+**Status:** [x] Completed  
 **Description:** Increment view count for a project (called from edge function)  
-**SQL:**
-```sql
-CREATE OR REPLACE FUNCTION public.increment_view_count(p_project_id UUID)
-RETURNS VOID
-LANGUAGE sql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-  UPDATE public.projects
-  SET view_count = view_count + 1
-  WHERE id = p_project_id;
-$$;
-```
+**SQL:** Implemented in migration
 
 ---
 
 ### Task 3.2: Update get-public-project Edge Function
-**Status:** [ ] Not Started  
+**Status:** [x] Completed  
 **File:** `supabase/functions/get-public-project/index.ts`  
 **Changes:**
-- After fetching project, call `increment_view_count(project.id)`
-- Use service role client for the increment
+- After fetching project, calls `increment_view_count(project.id)` via RPC
+- Uses service role client for the increment
 - No PII collected
 
 ---
 
 ### Task 3.3: Verify No PII Collection
-**Status:** [ ] Not Started  
+**Status:** [x] Completed  
 **Checklist:**
-- [ ] No IP addresses stored
-- [ ] No user agents stored
-- [ ] No cookies/session data stored
-- [ ] Only atomic counter increment
+- [x] No IP addresses stored
+- [x] No user agents stored
+- [x] No cookies/session data stored
+- [x] Only atomic counter increment
 
 ---
 
