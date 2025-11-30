@@ -220,23 +220,16 @@ VALUES ('324e7848-6c4d-4fe5-a826-91427265a76e', 'admin');
 
 ---
 
-## Phase 4 — Admin Dashboard UI
+## Phase 4 — Admin Dashboard UI ✅ COMPLETED
 
 ### Task 4.1: Add /admin/analytics Route
-**Status:** [ ] Not Started  
+**Status:** [x] Completed  
 **File:** `src/App.tsx`  
-**Changes:**
-```tsx
-import AdminAnalytics from "./pages/AdminAnalytics";
-
-// In Routes
-<Route path="/admin/analytics" element={<AdminAnalytics />} />
-```
 
 ---
 
 ### Task 4.2: Create AdminAnalytics.tsx Page
-**Status:** [ ] Not Started  
+**Status:** [x] Completed  
 **File:** `src/pages/AdminAnalytics.tsx`  
 **Features:**
 - Admin auth gate (redirect non-admins)
@@ -247,7 +240,7 @@ import AdminAnalytics from "./pages/AdminAnalytics";
 ---
 
 ### Task 4.3: Create useAdminKPIs Hook
-**Status:** [ ] Not Started  
+**Status:** [x] Completed  
 **File:** `src/hooks/useAdminKPIs.tsx`  
 **Features:**
 - Fetch KPI summary via `get_admin_kpi_summary()` RPC
@@ -258,29 +251,20 @@ import AdminAnalytics from "./pages/AdminAnalytics";
 ---
 
 ### Task 4.4: Create KPICard Component
-**Status:** [ ] Not Started  
+**Status:** [x] Completed  
 **File:** `src/components/admin/KPICard.tsx`  
-**Props:**
-```tsx
-interface KPICardProps {
-  title: string;
-  value: number | string;
-  icon?: LucideIcon;
-  format?: 'number' | 'percentage' | 'decimal';
-}
-```
 
 ---
 
 ### Task 4.5: Create KPIGrid Component
-**Status:** [ ] Not Started  
+**Status:** [x] Completed  
 **File:** `src/components/admin/KPIGrid.tsx`  
 **Layout:** 4 columns × 2 rows (responsive: 2×4 on mobile)
 
 ---
 
 ### Task 4.6: Create GCMetricsTable Component
-**Status:** [ ] Not Started  
+**Status:** [x] Completed  
 **File:** `src/components/admin/GCMetricsTable.tsx`  
 **Columns:**
 - Email
@@ -292,7 +276,7 @@ interface KPICardProps {
 ---
 
 ### Task 4.7: Add Loading/Error/Empty States
-**Status:** [ ] Not Started  
+**Status:** [x] Completed  
 **States:**
 - Loading: Skeleton cards
 - Error: Error message with retry button
