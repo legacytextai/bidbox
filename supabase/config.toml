@@ -2,3 +2,9 @@ project_id = "ztuyjlyuzasbceepezua"
 
 [functions.get-public-project]
 verify_jwt = false
+
+[functions.create-checkout]
+verify_jwt = true
+
+[functions.stripe-webhook]
+verify_jwt = false

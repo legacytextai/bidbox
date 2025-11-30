@@ -67,18 +67,21 @@ export type Database = {
           created_at: string
           email: string
           id: string
+          stripe_customer_id: string | null
         }
         Insert: {
           company_name?: string | null
           created_at?: string
           email: string
           id: string
+          stripe_customer_id?: string | null
         }
         Update: {
           company_name?: string | null
           created_at?: string
           email?: string
           id?: string
+          stripe_customer_id?: string | null
         }
         Relationships: []
       }
@@ -165,6 +168,50 @@ export type Database = {
             foreignKeyName: "projects_gc_id_fkey"
             columns: ["gc_id"]
             isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      subscriptions: {
+        Row: {
+          created_at: string
+          id: string
+          profile_id: string
+          status: string
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          subscription_type: string
+          updated_at: string
+          valid_until: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          profile_id: string
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          subscription_type?: string
+          updated_at?: string
+          valid_until?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          profile_id?: string
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          subscription_type?: string
+          updated_at?: string
+          valid_until?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subscriptions_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: true
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
