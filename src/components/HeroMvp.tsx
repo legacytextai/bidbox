@@ -28,10 +28,12 @@ const HeroMvp = () => {
             {/* Left: Copy */}
             <div className="space-y-4 animate-slide-in-left">
               <div className="space-y-4">
-                <h1 className="text-4xl md:text-5xl font-bold text-foreground leading-tight">
-                  The <span className="text-[hsl(var(--bidbox-blue))]">Simple Bid Room</span> That Gets You More Quotes.{" "}
-                  <span className="text-[hsl(var(--bidbox-blue))]">Built for GCs</span> — Loved by
-                  Subs.
+              <h1 className="text-4xl md:text-5xl font-bold text-foreground leading-tight">
+                  <span className="text-[hsl(var(--bidbox-blue))]">Send One Link.</span> Get More Quotes.
+                  <br />
+                  <span className="text-muted-foreground text-2xl md:text-3xl font-medium mt-2 block">
+                    The Simple Bid Room Built For GCs — loved by subs.
+                  </span>
                 </h1>
 
                 <p className="text-xl text-muted-foreground leading-relaxed">
