@@ -57,6 +57,18 @@ serve(async (req) => {
 
     console.log('Project found:', projectData.id);
 
+    // Increment view count (anonymous tracking - no PII collected)
+    const { error: viewError } = await supabase.rpc('increment_view_count', {
+      p_project_id: projectData.id
+    });
+    
+    if (viewError) {
+      console.error('Error incrementing view count:', viewError);
+      // Don't fail the request, just log the error
+    } else {
+      console.log('View count incremented for project:', projectData.id);
+    }
+
     // Fetch associated files
     const { data: filesData, error: filesError } = await supabase
       .from('project_files')
