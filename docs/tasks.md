@@ -773,13 +773,19 @@ Already implemented:
 
 ---
 
-### Task 4.7: Frontend Integration [🔄 IN PROGRESS]
+### Task 4.7: Frontend Integration [✅ COMPLETED]
 
-- [ ] 4.7.1 Add checkout button to PricingMvp component
-- [ ] 4.7.2 Handle success/canceled URL params
-- [ ] 4.7.3 Create `useSubscription` hook
-- [ ] 4.7.4 Display subscription status in Settings page
-- [ ] 4.7.5 Implement free tier limit (3 projects)
+- [x] 4.7.1 Add checkout button to PricingMvp component
+- [x] 4.7.2 Handle success/canceled URL params in Projects page
+- [x] 4.7.3 Create `useSubscription` hook
+- [x] 4.7.4 Display subscription status in Settings page
+- [x] 4.7.5 Implement free tier limit (3 projects)
+
+**Files Created/Modified**:
+- `src/hooks/useSubscription.tsx` (new)
+- `src/components/PricingMvp.tsx` (updated with checkout)
+- `src/pages/Projects.tsx` (payment params + project limit)
+- `src/pages/Settings.tsx` (subscription status display)
 
 ---
 

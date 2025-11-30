@@ -1,7 +1,17 @@
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Check } from "lucide-react";
+import { Check, Loader2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 
 const PricingMvp = () => {
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const navigate = useNavigate();
+
   const plans = [
     {
       name: "Free",
@@ -18,23 +28,8 @@ const PricingMvp = () => {
       cta: "Start Free",
       popular: false,
       featured: false,
+      action: "free",
     },
-    // SAVED FOR LATER - Tier 1 subscription plan
-    // {
-    //   name: "Tier 1",
-    //   price: "$49",
-    //   period: "/month",
-    //   description: "Best for growing estimators who need more flexibility",
-    //   features: [
-    //     "Unlimited bid rooms",
-    //     "Unlimited file uploads",
-    //     "Unlimited subcontractor submissions",
-    //     "Basic admin dashboard",
-    //     "Simple, fast workflow",
-    //   ],
-    //   cta: "Start Free Trial",
-    //   popular: true,
-    // },
     {
       name: "Early Access Lifetime — $199",
       price: "$199",
@@ -50,13 +45,55 @@ const PricingMvp = () => {
       cta: "Claim Lifetime Access",
       popular: false,
       featured: true,
+      action: "checkout",
     },
   ];
 
-  const scrollToSection = (id: string) => {
-    const element = document.getElementById(id);
-    if (element) {
-      element.scrollIntoView({ behavior: "smooth" });
+  const handleCheckout = async () => {
+    if (!user) {
+      toast({
+        title: "Login Required",
+        description: "Please log in to purchase a subscription",
+        variant: "destructive",
+      });
+      navigate("/auth");
+      return;
+    }
+
+    setCheckoutLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("create-checkout");
+
+      if (error) {
+        throw error;
+      }
+
+      if (data?.url) {
+        window.open(data.url, "_blank");
+      } else {
+        throw new Error("No checkout URL returned");
+      }
+    } catch (err: any) {
+      console.error("Checkout error:", err);
+      toast({
+        title: "Checkout Error",
+        description: err.message || "Failed to start checkout",
+        variant: "destructive",
+      });
+    } finally {
+      setCheckoutLoading(false);
+    }
+  };
+
+  const handlePlanAction = (action: string) => {
+    if (action === "checkout") {
+      handleCheckout();
+    } else if (action === "free") {
+      if (user) {
+        navigate("/projects");
+      } else {
+        navigate("/auth");
+      }
     }
   };
 
@@ -121,9 +158,17 @@ const PricingMvp = () => {
                     : ""
                 }`}
                 size="lg"
-                onClick={() => scrollToSection("cta")}
+                onClick={() => handlePlanAction(plan.action)}
+                disabled={plan.action === "checkout" && checkoutLoading}
               >
-                {plan.cta}
+                {plan.action === "checkout" && checkoutLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  plan.cta
+                )}
               </Button>
 
               <ul className="space-y-4">

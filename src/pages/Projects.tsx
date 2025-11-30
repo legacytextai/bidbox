@@ -1,11 +1,14 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Copy, CheckCircle2 } from "lucide-react";
+import { Plus, Copy, CheckCircle2, Lock } from "lucide-react";
 import { Layout } from "@/components/Layout";
 import { formatInProjectTimezone } from "@/lib/timezoneUtils";
+import { useSubscription } from "@/hooks/useSubscription";
+
+const FREE_PROJECT_LIMIT = 3;
 
 interface Project {
   id: string;
@@ -23,6 +26,27 @@ const Projects = () => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { isSubscribed, loading: subscriptionLoading } = useSubscription();
+
+  // Handle payment success/canceled URL params
+  useEffect(() => {
+    const payment = searchParams.get("payment");
+    if (payment === "success") {
+      toast({
+        title: "Payment Successful!",
+        description: "Thank you for your purchase. Your subscription is now active.",
+      });
+      setSearchParams({});
+    } else if (payment === "canceled") {
+      toast({
+        title: "Payment Canceled",
+        description: "Your payment was canceled. No charges were made.",
+        variant: "destructive",
+      });
+      setSearchParams({});
+    }
+  }, [searchParams, setSearchParams, toast]);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -87,15 +111,37 @@ const Projects = () => {
     });
   };
 
+  const handleNewProject = () => {
+    if (!isSubscribed && projects.length >= FREE_PROJECT_LIMIT) {
+      toast({
+        title: "Project Limit Reached",
+        description: `Free plan allows ${FREE_PROJECT_LIMIT} projects. Upgrade for unlimited projects.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    navigate("/projects/new");
+  };
+
+  const canCreateProject = isSubscribed || projects.length < FREE_PROJECT_LIMIT;
+  const isOverLimit = !isSubscribed && projects.length >= FREE_PROJECT_LIMIT;
+
   return (
     <Layout showSidebar={true}>
-      {loading ? (
+      {loading || subscriptionLoading ? (
         <div className="flex items-center justify-center min-h-[calc(100vh-4rem)]">
           <p className="text-muted-foreground">Loading projects...</p>
         </div>
       ) : (
         <div className="p-8">
-          <h1 className="text-3xl font-bold text-foreground mb-8">Projects</h1>
+          <div className="flex items-center justify-between mb-8">
+            <h1 className="text-3xl font-bold text-foreground">Projects</h1>
+            {!isSubscribed && (
+              <p className="text-sm text-muted-foreground">
+                {projects.length}/{FREE_PROJECT_LIMIT} free projects used
+              </p>
+            )}
+          </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {projects.map((project) => (
@@ -154,11 +200,27 @@ const Projects = () => {
             ))}
             
             <div
-              onClick={() => navigate("/projects/new")}
-              className="bg-card border-2 border-dashed border-border rounded-lg p-6 hover:border-[hsl(var(--bidbox-blue))] hover:bg-accent/5 transition-all cursor-pointer flex flex-col items-center justify-center min-h-[200px]"
+              onClick={handleNewProject}
+              className={`bg-card border-2 border-dashed rounded-lg p-6 transition-all cursor-pointer flex flex-col items-center justify-center min-h-[200px] ${
+                canCreateProject
+                  ? "border-border hover:border-[hsl(var(--bidbox-blue))] hover:bg-accent/5"
+                  : "border-border/50 opacity-60"
+              }`}
             >
-              <Plus className="h-12 w-12 text-[hsl(var(--bidbox-blue))] mb-2" />
-              <p className="text-lg font-semibold text-foreground">New Project</p>
+              {isOverLimit ? (
+                <>
+                  <Lock className="h-12 w-12 text-muted-foreground mb-2" />
+                  <p className="text-lg font-semibold text-foreground">Upgrade to Add More</p>
+                  <p className="text-sm text-muted-foreground text-center mt-1">
+                    Free plan limited to {FREE_PROJECT_LIMIT} projects
+                  </p>
+                </>
+              ) : (
+                <>
+                  <Plus className="h-12 w-12 text-[hsl(var(--bidbox-blue))] mb-2" />
+                  <p className="text-lg font-semibold text-foreground">New Project</p>
+                </>
+              )}
             </div>
           </div>
         </div>
