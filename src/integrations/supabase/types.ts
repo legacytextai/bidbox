@@ -246,7 +246,27 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_active_gcs_30d: { Args: never; Returns: number }
+      get_admin_gc_metrics: {
+        Args: never
+        Returns: {
+          bid_count: number
+          company_name: string
+          created_at: string
+          email: string
+          id: string
+          project_count: number
+        }[]
+      }
+      get_admin_kpi_summary: { Args: never; Returns: Json }
+      get_avg_bids_per_project: { Args: never; Returns: number }
+      get_avg_projects_per_gc: { Args: never; Returns: number }
+      get_conversion_rate: { Args: never; Returns: number }
       get_submission_count: { Args: { p_project_id: string }; Returns: number }
+      get_total_bid_room_views: { Args: never; Returns: number }
+      get_total_bids: { Args: never; Returns: number }
+      get_total_gcs: { Args: never; Returns: number }
+      get_total_projects: { Args: never; Returns: number }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
