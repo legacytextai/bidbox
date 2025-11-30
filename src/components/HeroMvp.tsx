@@ -34,9 +34,9 @@ const HeroMvp = () => {
                   <span className="text-2xl md:text-3xl font-medium mt-2 block">BidBox is the <span className="text-foreground">Simple Bid Room Built For GCs</span> <span className="text-foreground">— Loved By Subs.</span></span>
                 </h1>
 
-                <p className="text-xl text-muted-foreground leading-relaxed">
-                  Share project files. Collect quotes. Stay in control on bid day — without expensive, over-complicated software.
-                </p>
+                <p className="text-xl text-muted-foreground leading-relaxed">Stop chasing subcontractors.
+Stop wrestling with overbuilt software.
+Just upload your plans, send one link, and watch the quotes roll in.</p>
               </div>
 
               {/* Key Benefits */}
