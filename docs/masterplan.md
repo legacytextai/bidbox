@@ -164,9 +164,30 @@ Fast to scaffold, secure by default, and matches Lovable's strengths.
 - "Bid received" email to GC    
 - Integrate bid forms by division    
 - Optional contractor registry    
-- Public works bid log export format    
-- Pricing: Free tier (3 bid rooms) + Early Access Lifetime ($199 one-time)
-- Future: Tier 1 subscription ($49/month) - commented out in code
+- Public works bid log export format
+
+---
+
+### 💳 Pricing & Stripe Integration (Implemented 2025-11-30)
+
+**Current Pricing Tiers:**
+| Tier | Price | Bid Rooms | Status |
+|------|-------|-----------|--------|
+| Free | $0 | 3 projects | ✅ Active |
+| Early Access Lifetime | $199 (one-time) | Unlimited | ✅ Active (Featured) |
+| Tier 1 | $49/month | Unlimited | 🔮 Future (Commented out) |
+
+**Implementation Status:**
+- ✅ Stripe account & product setup (Price ID: `price_1SZFudHGNQLTHcjYQs0m5Jq6`)
+- ✅ Database schema: `stripe_customer_id` in profiles, `subscriptions` table
+- ✅ Edge functions: `create-checkout`, `stripe-webhook`
+- ✅ Frontend: `useSubscription` hook, PricingMvp checkout, Settings display
+- ✅ Free tier enforcement (3 project limit with upgrade prompt)
+- ⚠️ PENDING: Register webhook endpoint in Stripe Dashboard
+
+**Documentation:**
+- `docs/stripe-tasks.md` - Detailed task breakdown with status
+- `docs/stripe-steps.md` - Implementation guide
 
 ---
 
