@@ -113,11 +113,7 @@ const Projects = () => {
 
   const handleNewProject = () => {
     if (!isSubscribed && projects.length >= FREE_PROJECT_LIMIT) {
-      toast({
-        title: "Project Limit Reached",
-        description: `Free plan allows ${FREE_PROJECT_LIMIT} projects. Upgrade for unlimited projects.`,
-        variant: "destructive",
-      });
+      navigate("/settings");
       return;
     }
     navigate("/projects/new");
