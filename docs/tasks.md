@@ -707,6 +707,82 @@ Already implemented:
 
 ---
 
+## 💳 Phase 4: Stripe Integration
+
+### Task 4.1: Stripe Account & Product Setup [✅ COMPLETED]
+
+- [x] 4.1.1 Create Stripe account (in test mode)
+- [x] 4.1.2 Create "Early Access Lifetime" product
+- [x] 4.1.3 Set price to $199 one-time
+- [x] 4.1.4 Copy API Keys (Secret Key stored in Lovable)
+
+**Price ID**: `price_1SZFudHGNQLTHcjYQs0m5Jq6`
+
+---
+
+### Task 4.2: Enable Stripe Integration [✅ COMPLETED]
+
+- [x] 4.2.1 Store STRIPE_SECRET_KEY in Lovable secrets
+
+---
+
+### Task 4.3: Database Schema Updates [✅ COMPLETED]
+
+- [x] 4.3.1 Add `stripe_customer_id` column to profiles table
+- [x] 4.3.2 Create `subscriptions` table with:
+  - `id`, `profile_id`, `stripe_customer_id`
+  - `subscription_type`, `status`, `valid_until`
+  - `created_at`, `updated_at`
+- [x] 4.3.3 Enable RLS and create policies
+- [x] 4.3.4 Create trigger for auto-updating `updated_at`
+
+---
+
+### Task 4.4: Create `create-checkout` Edge Function [✅ COMPLETED]
+
+**Location**: `supabase/functions/create-checkout/index.ts`
+
+- [x] 4.4.1 Authenticate user
+- [x] 4.4.2 Check for existing Stripe customer
+- [x] 4.4.3 Create checkout session (mode: "payment" for lifetime)
+- [x] 4.4.4 Return checkout URL for redirect
+- [x] 4.4.5 Configure with `verify_jwt = true`
+
+---
+
+### Task 4.5: Create `stripe-webhook` Edge Function [✅ COMPLETED]
+
+**Location**: `supabase/functions/stripe-webhook/index.ts`
+
+- [x] 4.5.1 Verify webhook signature
+- [x] 4.5.2 Handle `checkout.session.completed` event
+- [x] 4.5.3 Update profiles with `stripe_customer_id`
+- [x] 4.5.4 Upsert subscription record
+- [x] 4.5.5 Configure with `verify_jwt = false`
+
+---
+
+### Task 4.6: Register Webhook in Stripe Dashboard [⚠️ PENDING - MANUAL]
+
+> **User Action Required**: Complete in Stripe Dashboard
+
+- [ ] 4.6.1 Add webhook endpoint:
+  - URL: `https://ztuyjlyuzasbceepezua.supabase.co/functions/v1/stripe-webhook`
+- [ ] 4.6.2 Select event: `checkout.session.completed`
+- [ ] 4.6.3 Copy signing secret → stored as `STRIPE_WEBHOOK_SECRET`
+
+---
+
+### Task 4.7: Frontend Integration [🔄 IN PROGRESS]
+
+- [ ] 4.7.1 Add checkout button to PricingMvp component
+- [ ] 4.7.2 Handle success/canceled URL params
+- [ ] 4.7.3 Create `useSubscription` hook
+- [ ] 4.7.4 Display subscription status in Settings page
+- [ ] 4.7.5 Implement free tier limit (3 projects)
+
+---
+
 ## 📊 Database Schema Reference
 
 ### Current Tables
