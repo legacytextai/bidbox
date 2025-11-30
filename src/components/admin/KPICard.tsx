@@ -70,7 +70,7 @@ export function KPICard({ title, value, icon: Icon, format = "number", isLoading
             {cardContent}
           </TooltipTrigger>
           <TooltipContent>
-            <p className="text-xs">{tooltip}</p>
+            <p className="text-xs whitespace-pre-line">{tooltip}</p>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
