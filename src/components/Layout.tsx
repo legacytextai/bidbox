@@ -155,17 +155,22 @@ const PublicLayout = ({ children }: { children: ReactNode }) => {
     <div className="min-h-screen flex flex-col">
       <header className="sticky top-0 z-50 border-b border-border bg-background">
         <div className="container mx-auto flex h-16 items-center justify-between px-4 sm:px-6">
-          <Link
-            to="/"
-            className="flex items-center gap-2 text-xl sm:text-2xl font-bold text-foreground hover:text-[hsl(var(--bidbox-blue))] transition-colors"
-          >
-            <img 
-              src={bidboxLogoHeader} 
-              alt="BidBox Logo" 
-              className="h-5 sm:h-6"
-            />
-            BidBox
-          </Link>
+          <div className="flex flex-col">
+            <Link
+              to="/"
+              className="flex items-center gap-2 text-xl sm:text-2xl font-bold text-foreground hover:text-[hsl(var(--bidbox-blue))] transition-colors"
+            >
+              <img 
+                src={bidboxLogoHeader} 
+                alt="BidBox Logo" 
+                className="h-5 sm:h-6"
+              />
+              BidBox
+            </Link>
+            <span className="text-xs text-muted-foreground ml-7 sm:ml-8">
+              Bid Better, Win More.
+            </span>
+          </div>
           
           <AuthButtons />
         </div>
