@@ -47,7 +47,7 @@ const HeroMvp = () => {
                   </div>)}
                 {/* Final tagline without checkmark */}
                 <div className="pt-2">
-                  <span className="text-lg font-semibold text-foreground">Send One Link, Get More Quotes</span>
+                  
                 </div>
               </div>
 
