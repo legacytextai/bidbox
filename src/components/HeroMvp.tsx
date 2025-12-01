@@ -34,9 +34,7 @@ const HeroMvp = () => {
                 <span className="text-[hsl(var(--bidbox-blue))]">Bid</span> Better, <span className="text-[hsl(var(--bidbox-blue))]">Win</span> More.
               </h1>
 
-                <p className="text-xl text-muted-foreground leading-relaxed">
-                  Share project files. Collect quotes. Stay in control on bid day — without expensive, over-complicated software.
-                </p>
+                <p className="text-xl text-muted-foreground leading-relaxed">Share project files. Collect quotes. Stay in control on bid day — without chasing down emails or wrestling complicated software.</p>
               </div>
 
               {/* Key Benefits */}
