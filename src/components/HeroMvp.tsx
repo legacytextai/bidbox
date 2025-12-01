@@ -41,10 +41,14 @@ const HeroMvp = () => {
 
               {/* Key Benefits */}
               <div className="space-y-3">
-                {["Create a bid room in seconds", "Share one link with all your subs", "Subs open your bid room instantly — no accounts", "They view/download your project files", "They upload their quote back to you"].map((benefit, idx) => <div key={idx} className="flex items-start gap-3">
+                {["Sign up for your free account", "Set up your first project in under 2 minutes", "Share your Bid Room link with anyone, no login required"].map((benefit, idx) => <div key={idx} className="flex items-start gap-3">
                     <CheckCircle2 className="w-5 h-5 text-[hsl(var(--bidbox-blue))] shrink-0 mt-1" />
                     <span className="text-foreground/90">{benefit}</span>
                   </div>)}
+                {/* Final tagline without checkmark */}
+                <div className="pt-2">
+                  <span className="text-lg font-semibold text-foreground">Send One Link, Get More Quotes</span>
+                </div>
               </div>
 
               {/* CTAs */}
