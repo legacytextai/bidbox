@@ -87,7 +87,7 @@ const Auth = () => {
         });
         navigate("/projects");
       } else {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email: validation.email,
           password: validation.password,
           options: {
@@ -100,11 +100,21 @@ const Auth = () => {
 
         if (error) throw error;
 
-        toast({
-          title: "Success",
-          description: "Account created successfully",
-        });
-        navigate("/projects");
+        // Check if email confirmation is required
+        if (data?.user && !data?.session) {
+          toast({
+            title: "Check Your Email",
+            description: `We've sent a verification link to ${validation.email}. Click it to activate your account.`,
+          });
+          // Stay on auth page - don't navigate
+        } else if (data?.session) {
+          // User is already confirmed (edge case)
+          toast({
+            title: "Success",
+            description: "Account created successfully",
+          });
+          navigate("/projects");
+        }
       }
     } catch (error: any) {
       if (error instanceof z.ZodError) {
