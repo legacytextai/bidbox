@@ -209,29 +209,6 @@ CREATE POLICY "Anyone can view projects by public token"
 
 ---
 
-### Task 0.7: Fix Email Verification on Sign Up [✅ COMPLETED]
-
-**Problem**: New sign-ups immediately logged users in without email verification, allowing anyone to create accounts with any email address.
-
-**Security Risk**: Impersonation, no ownership verification, potential email spam.
-
-- [x] 0.7.1 Disable auto-confirm email signups
-  - Used `supabase--configure-auth` tool
-  - Set `auto_confirm_email: false`
-
-- [x] 0.7.2 Update Auth.tsx sign-up flow
-  - Check if `data?.session` is null after `signUp()`
-  - If null: show "Check Your Email" toast, stay on auth page
-  - If session exists: navigate to `/projects` (edge case)
-
-**Files Changed**:
-- `src/pages/Auth.tsx` - Updated sign-up handler
-- Backend auth config - Disabled auto-confirm
-
-**References**: docs/bug-report-email-verification.md
-
----
-
 ## ✅ Phase 1: MVP Foundation
 
 ### Task 1.1: Authentication System [x] COMPLETED

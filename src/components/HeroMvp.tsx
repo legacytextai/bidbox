@@ -28,18 +28,20 @@ const HeroMvp = () => {
             {/* Left: Copy */}
             <div className="space-y-4 animate-slide-in-left">
               <div className="space-y-4">
-              <h1 className="text-4xl md:text-5xl font-bold text-foreground leading-tight">
-                  <span className="text-[hsl(var(--bidbox-blue))]">Send One Link.</span> Get More Quotes.
-                  <br />
-                  <span className="text-2xl md:text-3xl font-medium mt-2 block">BidBox is the <span className="text-foreground">Simple Bid Room Built For GCs</span> <span className="text-foreground">— Loved By Subs.</span></span>
+                <h1 className="text-4xl md:text-5xl font-bold text-foreground leading-tight">
+                  The <span className="text-[hsl(var(--bidbox-blue))]">Simple Bid Room</span> That Gets You More Quotes.{" "}
+                  <span className="text-[hsl(var(--bidbox-blue))]">Built for GCs</span> — Loved by
+                  Subs.
                 </h1>
 
-              <p className="text-xl leading-relaxed text-foreground">Save hours on bid day. <span className="font-semibold">Send one link and watch the quotes roll in.</span></p>
+                <p className="text-xl text-muted-foreground leading-relaxed">
+                  Share project files. Collect quotes. Stay in control on bid day — without expensive, over-complicated software.
+                </p>
               </div>
 
               {/* Key Benefits */}
               <div className="space-y-3">
-                {["Share plans + Receive quotes", "No logins for subs — they actually respond", "All quotes in one clean dashboard", "Faster coverage for every trade", "Set up a bid room in under 2 minutes"].map((benefit, idx) => <div key={idx} className="flex items-start gap-3">
+                {["Create a bid room in seconds", "Share one link with all your subs", "Subs open your bid room instantly — no accounts", "They view/download your project files", "They upload their quote back to you"].map((benefit, idx) => <div key={idx} className="flex items-start gap-3">
                     <CheckCircle2 className="w-5 h-5 text-[hsl(var(--bidbox-blue))] shrink-0 mt-1" />
                     <span className="text-foreground/90">{benefit}</span>
                   </div>)}
