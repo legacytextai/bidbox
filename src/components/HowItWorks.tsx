@@ -5,7 +5,7 @@ const HowItWorks = () => {
     {
       icon: Upload,
       number: "01",
-      title: "Upload Your Plans & Scope",
+      title: "Create Your Project Bid Room",
       description:
         "Drag and drop your bid documents. Add project details in seconds.",
     },
