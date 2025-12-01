@@ -28,8 +28,8 @@ const HeroMvp = () => {
             {/* Left: Copy */}
             <div className="space-y-4 animate-slide-in-left">
               <div className="space-y-4">
-                <h1 className="text-4xl md:text-5xl font-bold text-foreground leading-tight">A Simple Bid Room for General ContractorsGCs.
-Bid Better, Win More.
+                <h1 className="text-4xl md:text-5xl font-bold text-foreground leading-tight">
+                  A Simple Bid Room for General Contractors.
                   <br />
                   Bid Better, Win More.
                 </h1>
