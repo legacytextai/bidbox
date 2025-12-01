@@ -39,10 +39,18 @@ const HeroMvp = () => {
 
               {/* Key Benefits */}
               <div className="space-y-3">
-                {["Sign up for your free account", "Set up your first project in under 2 minutes", "Share your Bid Room link with anyone, no login required"].map((benefit, idx) => <div key={idx} className="flex items-start gap-3">
-                    <CheckCircle2 className="w-5 h-5 text-[hsl(var(--bidbox-blue))] shrink-0 mt-1" />
-                    <span className="text-foreground/90">{benefit}</span>
-                  </div>)}
+              <div className="flex items-start gap-3">
+                <CheckCircle2 className="w-5 h-5 text-[hsl(var(--bidbox-blue))] shrink-0 mt-1" />
+                <span className="text-foreground/90">Sign up for your <strong>free account</strong></span>
+              </div>
+              <div className="flex items-start gap-3">
+                <CheckCircle2 className="w-5 h-5 text-[hsl(var(--bidbox-blue))] shrink-0 mt-1" />
+                <span className="text-foreground/90">Set up your first project in <strong>under 2 minutes</strong></span>
+              </div>
+              <div className="flex items-start gap-3">
+                <CheckCircle2 className="w-5 h-5 text-[hsl(var(--bidbox-blue))] shrink-0 mt-1" />
+                <span className="text-foreground/90">Share your Bid Room link with anyone, <strong>no login required</strong></span>
+              </div>
                 {/* Final tagline without checkmark */}
                 <div className="pt-2">
                   
