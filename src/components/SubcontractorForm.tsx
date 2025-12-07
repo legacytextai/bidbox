@@ -72,7 +72,7 @@ export function SubcontractorForm({
       const result = await lookupCSLBLicense(formData.license_number);
 
       if (result.success) {
-        // Auto-fill the form
+        // Auto-fill the form from cache
         setFormData(prev => ({
           ...prev,
           company_name: result.company_name || prev.company_name,
@@ -92,6 +92,13 @@ export function SubcontractorForm({
 
         setLookupStatus("success");
         setLookupMessage(`Found: ${result.company_name}${result.cached ? " (cached)" : ""}`);
+      } else if (result.manual_entry_required) {
+        // Manual entry needed - open verification link
+        setLookupStatus("error");
+        setLookupMessage(result.error || "Please enter details manually.");
+        if (result.verification_url) {
+          window.open(result.verification_url, '_blank');
+        }
       } else {
         setLookupStatus("error");
         setLookupMessage(result.error || "License not found");
