@@ -707,7 +707,19 @@ Already implemented:
 
 ---
 
-## 💳 Phase 4: Stripe Integration
+## 💳 Phase 4: Stripe Integration [✅ COMPLETED]
+
+> **Status**: Phase 4 is complete. Stripe integration is now in **LIVE MODE**.
+> 
+> **What's working**:
+> - Checkout flow creates Stripe sessions
+> - Webhook processes payments and creates subscriptions
+> - Free tier limit (3 projects) is enforced
+> - Paid users get unlimited projects
+> 
+> **Optional remaining tasks**: 4.7.6 (bid room counter), 4.7.7 (Lifetime badge)
+
+---
 
 ### Task 4.1: Stripe Account & Product Setup [✅ COMPLETED]
 
@@ -715,8 +727,10 @@ Already implemented:
 - [x] 4.1.2 Create "Early Access Lifetime" product
 - [x] 4.1.3 Set price to $199 one-time
 - [x] 4.1.4 Copy API Keys (Secret Key stored in Lovable)
+- [x] 4.1.5 Switch to Live Mode
 
-**Price ID**: `price_1SZFudHGNQLTHcjYQs0m5Jq6`
+**Test Mode Price ID**: `price_1SZFudHGNQLTHcjYQs0m5Jq6`
+**Live Mode Price ID**: `price_1SbnchHGNQLTHcjYrmmMNh5G` ← Currently Active
 
 ---
 
@@ -762,14 +776,14 @@ Already implemented:
 
 ---
 
-### Task 4.6: Register Webhook in Stripe Dashboard [⚠️ PENDING - MANUAL]
+### Task 4.6: Register Webhook in Stripe Dashboard [✅ COMPLETED]
 
-> **User Action Required**: Complete in Stripe Dashboard
+> **Completed in Live Mode**
 
-- [ ] 4.6.1 Add webhook endpoint:
+- [x] 4.6.1 Add webhook endpoint:
   - URL: `https://ztuyjlyuzasbceepezua.supabase.co/functions/v1/stripe-webhook`
-- [ ] 4.6.2 Select event: `checkout.session.completed`
-- [ ] 4.6.3 Copy signing secret → stored as `STRIPE_WEBHOOK_SECRET`
+- [x] 4.6.2 Select event: `checkout.session.completed`
+- [x] 4.6.3 Copy signing secret → stored as `STRIPE_WEBHOOK_SECRET`
 
 ---
 
@@ -780,7 +794,7 @@ Already implemented:
 - [x] 4.7.3 Create `useSubscription` hook
 - [x] 4.7.4 Display subscription status in Settings page
 - [x] 4.7.5 Implement free tier limit (3 projects)
-- [ ] 4.7.6 Add "X of 3 bid rooms used" display for free users (Not Started)
+- [ ] 4.7.6 Add "X of 3 bid rooms used" display for free users (Optional)
 - [ ] 4.7.7 Add "Lifetime" badge for paid users on dashboard (Optional)
 
 **Files Created/Modified**:
