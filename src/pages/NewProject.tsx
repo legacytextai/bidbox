@@ -13,6 +13,7 @@ import { z } from "zod";
 import { validateProjectFile } from "@/lib/fileValidation";
 import { TIMEZONE_OPTIONS, localDateTimeToUtc } from "@/lib/timezoneUtils";
 import { FileDropzone } from "@/components/FileDropzone";
+import { TradeMultiSelect } from "@/components/TradeMultiSelect";
 import {
   Select,
   SelectContent,
@@ -40,6 +41,7 @@ const NewProject = () => {
     timezone: "America/Los_Angeles",
   });
   const [files, setFiles] = useState<File[]>([]);
+  const [selectedTradeIds, setSelectedTradeIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [currentUpload, setCurrentUpload] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -105,6 +107,21 @@ const NewProject = () => {
         .single();
 
       if (projectError) throw projectError;
+
+      // Insert selected trades
+      if (selectedTradeIds.length > 0) {
+        const { error: tradesError } = await supabase
+          .from("project_trades")
+          .insert(
+            selectedTradeIds.map((tradeTypeId) => ({
+              project_id: project.id,
+              trade_type_id: tradeTypeId,
+            }))
+          );
+        if (tradesError) {
+          console.error("Error saving trades:", tradesError);
+        }
+      }
 
       // Upload files with progress tracking
       for (let i = 0; i < files.length; i++) {
@@ -249,8 +266,18 @@ const NewProject = () => {
                     onChange={(e) =>
                       setFormData({ ...formData, instructions: e.target.value })
                     }
-                    rows={6}
+                    rows={4}
                     placeholder="Enter any special instructions or requirements..."
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Required Trades (Optional)</Label>
+                  <TradeMultiSelect
+                    selectedTradeIds={selectedTradeIds}
+                    onSelectionChange={setSelectedTradeIds}
+                    disabled={isUploading}
+                    stateCode="CA"
                   />
                 </div>
               </div>

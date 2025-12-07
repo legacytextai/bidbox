@@ -1006,9 +1006,9 @@ Before marking MVP complete:
 
 ---
 
-## 🎯 Phase 3.5: Trade Selection Layer [✅ DATABASE COMPLETE]
+## 🎯 Phase 3.5: Trade Selection Layer [✅ COMPLETED]
 
-> **Status**: Database architecture complete with state-agnostic design. Frontend implementation next.
+> **Status**: Fully implemented. Database architecture with state-agnostic design and frontend trade selection UI complete.
 
 ### ⚠️ ARCHITECTURAL PRINCIPLE
 
@@ -1073,27 +1073,27 @@ Before marking MVP complete:
   - Categories: General, Mechanical, Electrical, Structural, Civil, Finishes, Site Work, etc.
 - [x] Includes: A, B, C-4 through C-61 (full CSLB specialty list)
 
-### Task 3.5.3: Add Trade Multi-Select to `/projects/new`
+### Task 3.5.3: Add Trade Multi-Select to `/projects/new` [✅ COMPLETED]
 
-- [ ] Create `src/lib/tradeTypes.ts` utility
+- [x] Create `src/lib/tradeTypes.ts` utility
   - Fetch trade types from database (NOT hard-coded constants)
   - Filter by `state_code = 'CA'` for MVP
   - Group by category for UI display
-- [ ] Add trade multi-select component to NewProject.tsx
-- [ ] Display selected trades as chips/tags with category colors
-- [ ] Store selected `trade_type_id` values
+- [x] Add trade multi-select component to NewProject.tsx
+- [x] Display selected trades as chips/tags with category colors
+- [x] Store selected `trade_type_id` values
 
-### Task 3.5.4: Update Project Creation Logic
+### Task 3.5.4: Update Project Creation Logic [✅ COMPLETED]
 
-- [ ] Add `selectedTradeIds` state to form
-- [ ] Insert selected `trade_type_id`s into `project_trades` after project creation
-- [ ] Update Zod schema to include optional `trades` array
+- [x] Add `selectedTradeIds` state to form
+- [x] Insert selected `trade_type_id`s into `project_trades` after project creation
+- [x] Trade selection is optional (not in Zod schema, stored separately)
 
-### Task 3.5.5: Display Trades on Project Admin Page
+### Task 3.5.5: Display Trades on Project Admin Page [✅ COMPLETED]
 
-- [ ] Query `project_trades` joined with `trade_types`
-- [ ] Show trade chips on `/projects/[id]` with category-based colors
-- [ ] Allow editing trades (add/remove)
+- [x] Query `project_trades` joined with `trade_types`
+- [x] Show trade chips on `/projects/[id]` with category-based colors
+- [x] Allow editing trades (add/remove) via modal dialog
 
 ---
 

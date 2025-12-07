@@ -158,7 +158,7 @@ Each subcontractor in both pools (Private + Network) will have:
 
 - [x] ✅ Review and finalize list with user
 - [x] ✅ Add to database as `trade_types` reference table (43 types seeded)
-- [ ] Implement in trade selection UI dropdown (Task 3.5.3)
+- [x] ✅ Implement in trade selection UI dropdown (Task 3.5.3)
 - [ ] Map existing network subcontractors to `trade_type_id` FK
 
 ---
