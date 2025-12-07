@@ -184,8 +184,6 @@ const PublicLayout = ({ children }: { children: ReactNode }) => {
 };
 
 export const Layout = ({ children, showSidebar = false }: LayoutProps) => {
-  console.log("[Layout.tsx] Rendering Layout, showSidebar:", showSidebar);
-  
   if (showSidebar) {
     return (
       <SidebarProvider>

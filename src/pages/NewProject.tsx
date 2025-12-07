@@ -13,6 +13,7 @@ import { z } from "zod";
 import { validateProjectFile } from "@/lib/fileValidation";
 import { TIMEZONE_OPTIONS, localDateTimeToUtc } from "@/lib/timezoneUtils";
 import { FileDropzone } from "@/components/FileDropzone";
+import { TradeMultiSelect } from "@/components/TradeMultiSelect";
 import {
   Select,
   SelectContent,
@@ -270,7 +271,15 @@ const NewProject = () => {
                   />
                 </div>
 
-                {/* Trade selection temporarily disabled for debugging */}
+                <div className="space-y-2">
+                  <Label>Required Trades (Optional)</Label>
+                  <TradeMultiSelect
+                    selectedTradeIds={selectedTradeIds}
+                    onSelectionChange={setSelectedTradeIds}
+                    disabled={isUploading}
+                    stateCode="CA"
+                  />
+                </div>
               </div>
 
               <div className="space-y-6">
