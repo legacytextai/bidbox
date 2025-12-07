@@ -119,49 +119,44 @@
 
 ---
 
-### **Phase 4 – Subcontractor Directory** 📋 Planned
+### **Phase 4 – Subcontractor Directory** ✅ Complete (Phase 4.0)
 
 **Objective:** Create two-pool architecture for subcontractor management.
 
-> **⚠️ IMPORTANT**: All subcontractor tables use `trade_type_id` FK, NOT hard-coded license strings.
+> **⚠️ IMPORTANT**: All subcontractor tables use `trade_type_id` FK via junction tables, NOT hard-coded license strings.
 
-- [ ] 4.1 Create `subcontractors` table (BidBox Network Pool)
-  ```sql
-  id (uuid, PK)
-  company_name (text)
-  trade_type_id (uuid, FK → trade_types.id)  -- Future-proof FK
-  license_number (text)
-  email (text)
-  phone (text)
-  city (text)
-  state_code (text)           -- For filtering by state
-  service_area (text)
-  is_verified (boolean)
-  created_at (timestamptz)
-  ```
-  - Starts EMPTY (seed later)
+- [x] 4.0 CSLB License Lookup Microservice
+  - Edge function `lookup-cslb` with caching
+  - Scrapes CSLB website for license data
+  - Maps classifications to `trade_type_id`
+  - 30-day cache in `cslb_cache` table
 
-- [ ] 4.2 Create `gc_subcontractors` table (GC's Private Pool)
-  ```sql
-  id (uuid, PK)
-  gc_id (uuid, FK → profiles.id)
-  company_name (text)
-  trade_type_id (uuid, FK → trade_types.id)  -- Future-proof FK
-  contact_name (text)
-  email (text)
-  phone (text)
-  notes (text)
-  created_at (timestamptz)
-  ```
+- [x] 4.1 Create `subcontractors` table (BidBox Network Pool)
+  - Junction table `sub_trade_mappings` for multi-trade support
+  - Admin-only write access via RLS
 
-- [ ] 4.3 Build directory management UI
+- [x] 4.2 Create `gc_subcontractors` table (GC's Private Pool)
+  - Junction table `gc_sub_trade_mappings` for multi-trade support
+  - GC-isolated via RLS policies
+
+- [x] 4.3 Build GC Private Pool UI (`/settings/subcontractors`)
   - Add/edit/delete private subs
-  - View network subs (read-only)
+  - CSLB lookup auto-fill
+  - Manual fallback with TradeMultiSelect
 
-- [ ] 4.4 Map subs to project trades
-  - Auto-match by `trade_type_id` (not string matching)
+- [x] 4.0a Admin Network Seeder UI (`/admin/network-subs`)
+  - Admin-only page for managing network pool
+  - CSLB lookup or manual entry
+  - Starts empty (seed later)
 
-- [ ] 4.5 (Future) Seed BidBox Network Pool with real data
+- [x] 4.4 Project → Sub matching logic
+  - Query by `trade_type_id` via junction tables
+  - Foundation for Call List Generator (Phase 6)
+
+**Deferred to Phase 4.1+:**
+- [ ] 4.5 Bulk CSLB seeding for statewide network
+- [ ] 4.6 Nightly cron for license expiration monitoring
+- [ ] 4.7 Network Pool UI for GCs (read-only view)
 
 ---
 

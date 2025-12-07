@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { FolderOpen, Plus, Settings, LogOut } from "lucide-react";
+import { FolderOpen, Plus, Settings, LogOut, Users } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import bidboxLogo from "@/assets/bidbox-logo.png";
@@ -75,6 +75,12 @@ const AppSidebar = ({ onNavigate }: SidebarNavProps) => {
                 <SidebarMenuButton onClick={() => handleNavigation("/projects/new")}>
                   <Plus className="h-4 w-4 mr-3" />
                   <span>Add New</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton onClick={() => handleNavigation("/settings/subcontractors")}>
+                  <Users className="h-4 w-4 mr-3" />
+                  <span>My Subs</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
