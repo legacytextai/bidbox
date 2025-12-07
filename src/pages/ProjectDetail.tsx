@@ -5,14 +5,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Copy, Download, Trash2, Upload, CheckCircle2, Loader2 } from "lucide-react";
+import { ArrowLeft, Copy, Download, Trash2, Upload, CheckCircle2, Loader2, Pencil } from "lucide-react";
 import { Layout } from "@/components/Layout";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { validateProjectFile } from "@/lib/fileValidation";
 import { TIMEZONE_OPTIONS, localDateTimeToUtc, utcToLocalDateTime } from "@/lib/timezoneUtils";
 import { FileDropzone } from "@/components/FileDropzone";
+import { TradeMultiSelect } from "@/components/TradeMultiSelect";
+import { TradeType, getCategoryColor } from "@/lib/tradeTypes";
+import { cn } from "@/lib/utils";
 import {
   Select,
   SelectContent,
@@ -31,6 +35,15 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 interface ProjectFile {
   id: string;
@@ -60,6 +73,12 @@ interface Submission {
   files: { file_name: string; file_url: string }[];
 }
 
+interface ProjectTrade {
+  id: string;
+  trade_type_id: string;
+  trade_types: TradeType;
+}
+
 const ProjectDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -73,6 +92,12 @@ const ProjectDetail = () => {
   const [newFiles, setNewFiles] = useState<File[]>([]);
   const [currentUpload, setCurrentUpload] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  
+  // Trade-related state
+  const [projectTrades, setProjectTrades] = useState<ProjectTrade[]>([]);
+  const [editingTrades, setEditingTrades] = useState(false);
+  const [editedTradeIds, setEditedTradeIds] = useState<string[]>([]);
+  const [savingTrades, setSavingTrades] = useState(false);
   
   // Editable field states
   const [editedName, setEditedName] = useState("");
@@ -171,6 +196,22 @@ const ProjectDetail = () => {
     }, {});
 
     setSubmissions(Object.values(groupedSubmissions));
+
+    // Load project trades
+    const { data: tradesData } = await supabase
+      .from("project_trades")
+      .select(`
+        id,
+        trade_type_id,
+        trade_types (id, code, name, category, state_code, source, is_default)
+      `)
+      .eq("project_id", id);
+
+    if (tradesData) {
+      setProjectTrades(tradesData as unknown as ProjectTrade[]);
+      setEditedTradeIds(tradesData.map((t: any) => t.trade_type_id));
+    }
+
     setLoading(false);
   };
 
@@ -248,6 +289,57 @@ const ProjectDetail = () => {
     }
     
     setIsSaving(false);
+  };
+
+  const saveTrades = async () => {
+    setSavingTrades(true);
+    
+    // Delete existing trades
+    const { error: deleteError } = await supabase
+      .from("project_trades")
+      .delete()
+      .eq("project_id", id);
+
+    if (deleteError) {
+      toast({
+        title: "Error",
+        description: "Failed to update trades",
+        variant: "destructive",
+      });
+      setSavingTrades(false);
+      return;
+    }
+
+    // Insert new trades
+    if (editedTradeIds.length > 0) {
+      const { error: insertError } = await supabase
+        .from("project_trades")
+        .insert(
+          editedTradeIds.map((tradeTypeId) => ({
+            project_id: id,
+            trade_type_id: tradeTypeId,
+          }))
+        );
+
+      if (insertError) {
+        toast({
+          title: "Error",
+          description: "Failed to save trades",
+          variant: "destructive",
+        });
+        setSavingTrades(false);
+        return;
+      }
+    }
+
+    toast({
+      title: "Success",
+      description: "Trades updated successfully",
+    });
+    
+    setEditingTrades(false);
+    setSavingTrades(false);
+    loadProject();
   };
 
   const handleFileUpload = async () => {
@@ -585,6 +677,76 @@ const ProjectDetail = () => {
               placeholder="Enter any special instructions, requirements, or notes for bidders"
               className="min-h-[100px]"
             />
+          </div>
+
+          {/* Required Trades Section */}
+          <div className="space-y-2 mb-3">
+            <div className="flex items-center justify-between">
+              <Label>Required Trades</Label>
+              <Dialog open={editingTrades} onOpenChange={setEditingTrades}>
+                <DialogTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-7 px-2">
+                    <Pencil className="h-3.5 w-3.5 mr-1" />
+                    Edit
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-[500px]">
+                  <DialogHeader>
+                    <DialogTitle>Edit Required Trades</DialogTitle>
+                    <DialogDescription>
+                      Select the trades required for this project.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="py-4">
+                    <TradeMultiSelect
+                      selectedTradeIds={editedTradeIds}
+                      onSelectionChange={setEditedTradeIds}
+                      stateCode="CA"
+                    />
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setEditedTradeIds(projectTrades.map(t => t.trade_type_id));
+                        setEditingTrades(false);
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button onClick={saveTrades} disabled={savingTrades}>
+                      {savingTrades ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        "Save Trades"
+                      )}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </div>
+            {projectTrades.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {projectTrades.map((pt) => (
+                  <Badge
+                    key={pt.id}
+                    variant="outline"
+                    className={cn(
+                      "px-2 py-1 text-xs font-medium border",
+                      getCategoryColor(pt.trade_types?.category)
+                    )}
+                  >
+                    <span className="font-mono mr-1">{pt.trade_types?.code}</span>
+                    {pt.trade_types?.name}
+                  </Badge>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">No trades selected</p>
+            )}
           </div>
 
           {/* Bid Box Link and Save Changes Section */}
