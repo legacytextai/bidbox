@@ -359,3 +359,48 @@ GCs would LOVE THIS.
 **Note:** AI features are not part of MVP or v1. These capabilities will be developed only after core workflows are stable and validated with early GCs and subcontractors.
 
 ---
+
+### 🏔️ BidBox Network Pool Moat Strategy
+
+> **Strategic Initiative: CSLB Network Directory Seeding**
+
+BidBox is building a long-term competitive moat by populating the Network Pool with verified California subcontractors sourced from the CSLB database.
+
+**Why This Matters:**
+
+1. **Central Directory for California Public Works**
+   - BidBox becomes THE go-to directory for California subcontractors
+   - GCs get instant coverage even with an empty private pool
+   - Local specialization is our wedge against PlanHub and Dodge
+
+2. **Organic + Systematic Growth**
+   - Network grows through: (1) Admin seeding, (2) CSLB harvesting, (3) GC Excel imports
+   - Each GC import potentially enriches the network
+   - Flywheel effect: more subs → more value → more GCs → more subs
+
+3. **Future Revenue Enablers**
+   - **Compliance Monitoring**: Paid feature for license expiration alerts
+   - **Lead Generation**: Connect verified subs with GCs (future marketplace)
+   - **Call List Automation**: Premium feature for ranked, enriched call sheets
+   - **AI Bid Matching**: Auto-suggest subs based on project scope
+
+4. **Defensibility Against Competitors**
+   - 290,000+ contractor database requires months of scraping effort
+   - Classification-to-trade mapping is non-trivial intellectual property
+   - Local California focus creates expertise moat
+   - GC trust and sub relationships compound over time
+
+**Phased Approach:**
+
+| Phase | Focus | Outcome |
+|-------|-------|---------|
+| **7.1** | Architecture | Foundation for seeding |
+| **7.2** | Hot Trades (Tier 1) | ~50,000 subs, top 15 trades |
+| **7.3** | Full Harvest (Tier 2) | 290,000+ subs, statewide |
+| **7.4** | Enrichment (Tier 3) | Emails, websites, phones |
+| **7.5** | GC Excel Import | Accelerate private pool growth |
+| **7.6** | Compliance Jobs | Keep data fresh |
+
+See `docs/tasks.md` Phase 7 for detailed implementation tasks.
+
+---

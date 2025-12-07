@@ -212,11 +212,40 @@ We're not trying to automate away phone calls — we're making those calls smart
 
 ---
 
-## 10. Document References
+## 10. Network Pool Moat Strategy
 
-- `docs/masterplan.md` — Original product vision (updated with Control Center direction)
-- `docs/tasks.md` — Implementation tasks (Phases 3.5-6)
-- `docs/implementation-plan.md` — Updated build sequence
+The BidBox Network Pool is a strategic competitive moat built through the **CSLB Network Directory Seeding Initiative** (Phase 7).
+
+### How the Network Pool Gets Populated
+
+1. **Admin Manual Seeding** — Via `/admin/network-subs` UI (current)
+2. **CSLB Batch Harvesting** — Automated scraping of 290,000+ licenses (planned)
+3. **GC Excel Imports** — Bulk upload enriches both private and network pools (planned)
+
+### Tiered Seeding Strategy
+
+| Tier | Focus | Target Count |
+|------|-------|--------------|
+| Tier 1 | Hot Trades (C-10, C-20, C-36, etc.) | ~50,000 |
+| Tier 2 | Full CSLB Harvest | 290,000+ |
+| Tier 3 | Enrichment (emails, websites) | Ongoing |
+
+### Why This Is Defensible
+
+- Competitors cannot easily replicate without massive scraping infrastructure
+- Classification-to-trade mapping is valuable intellectual property
+- Local California focus creates expertise that national tools can't match
+- GC trust compounds over time as they build private pools
+
+See `docs/tasks.md` Phase 7 and `docs/masterplan.md` "Network Pool Moat Strategy" for details.
+
+---
+
+## 11. Document References
+
+- `docs/masterplan.md` — Product vision (includes Network Pool Moat Strategy)
+- `docs/tasks.md` — Implementation tasks (Phases 3.5-7)
+- `docs/implementation-plan.md` — Build sequence with CSLB Pipeline Architecture
 - `docs/cslb-license-types.md` — California license type reference
 
 ---

@@ -256,3 +256,142 @@
 - [ ] AI bid diff tools
 
 ---
+
+## 🚀 Phase 7: CSLB Network Directory Seeding Initiative
+
+> **Status**: 📋 Planned (Documentation Only)
+> 
+> This phase outlines the strategic initiative to populate the BidBox Network Pool with 290,000+ California CSLB-licensed contractors.
+
+### Objective
+
+Transform BidBox into the central directory for California public works subcontractors by systematically harvesting and enriching CSLB license data.
+
+### Why This Builds Defensibility
+
+- **Curated California directory** = local specialization wedge
+- **Competitors need months of scraping effort** to replicate
+- **Network grows organically** via GC imports + systematic seeding
+- **Enables future revenue features**: compliance monitoring, lead gen, AI matching
+
+---
+
+### Scraping Pipeline Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    CSLB Scraping Pipeline                   │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌───────┐ │
+│  │ Scheduler│───▶│ Firecrawl│───▶│ Parser   │───▶│ Store │ │
+│  │ (Cron)   │    │ /Browser │    │ /Mapper  │    │ (DB)  │ │
+│  └──────────┘    └──────────┘    └──────────┘    └───────┘ │
+│                                                             │
+│  Rate: 1 req/sec    Batch: 100-500    Resumable: Yes       │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key Components:**
+
+1. **Scheduler (Supabase pg_cron)**
+   - Triggers batch jobs at configured intervals
+   - Tracks last-processed license number for resumability
+   - Runs during off-peak hours (2-6 AM PT)
+
+2. **Scraper (Firecrawl preferred)**
+   - Rate limited: Max 1 request/second
+   - Batch size: 100-500 licenses per job
+   - Fallback: Headless browser (Puppeteer)
+   - Error recovery with exponential backoff
+
+3. **Parser/Mapper**
+   - Extract: company_name, license_status, expiration_date, classifications
+   - Map CSLB classifications → `trade_type_id` via lookup
+   - Normalize: phone format, company name capitalization, city names
+
+4. **Storage**
+   - Insert/update `subcontractors` table
+   - Create `sub_trade_mappings` entries for multi-trade contractors
+   - Update `cslb_cache` for fast lookups
+
+---
+
+### Multi-Step Ingestion Flow
+
+```
+1. Fetch CSLB license page via Firecrawl
+   └─▶ URL: https://cslb.ca.gov/OnlineServices/CheckLicenseII/...
+
+2. Parse HTML for contractor data
+   └─▶ company_name, license_status, expiration_date, city, classifications
+
+3. Map each classification to trade_type_id
+   └─▶ "C-10" → trade_types.id WHERE code='C-10' AND state_code='CA'
+   └─▶ Handle multi-classification (e.g., "C-10, C-46")
+
+4. Normalize data
+   └─▶ Phone: (XXX) XXX-XXXX
+   └─▶ Company: Title Case, remove Inc./LLC variations
+   └─▶ City: Match to standardized list
+
+5. Check for existing entry (dedupe)
+   └─▶ Primary key: license_number (unique)
+   └─▶ If exists: UPDATE, else: INSERT
+
+6. Insert/update subcontractors + sub_trade_mappings
+   └─▶ Set is_verified = true for CSLB-sourced data
+
+7. Update cslb_cache for future lookups
+   └─▶ TTL: 30 days
+```
+
+---
+
+### GC Excel Import Flow
+
+```
+1. GC uploads .xlsx via frontend
+   └─▶ Drag-and-drop or file picker
+
+2. Edge function parses rows
+   └─▶ Use xlsx library for parsing
+
+3. AI detects columns (optional)
+   └─▶ OpenAI: "Which column contains license numbers?"
+   └─▶ Fallback: Fixed template format
+
+4. For each row with license_number → CSLB lookup
+   └─▶ Check cslb_cache first (30-day TTL)
+   └─▶ If cache miss: scrape CSLB live
+
+5. Insert into gc_subcontractors + gc_sub_trade_mappings
+   └─▶ Link to GC via gc_id = auth.uid()
+
+6. Return success/error summary
+   └─▶ "Imported 45/50, 5 errors (click to view)"
+```
+
+---
+
+### Tiered Seeding Strategy
+
+| Tier | Focus | Est. Count | Timeline |
+|------|-------|------------|----------|
+| **Tier 1** | Hot Trades (C-10, C-20, C-36, etc.) | ~50,000 | 1-2 weeks |
+| **Tier 2** | Full CSLB Harvest | 290,000+ | 2-4 weeks |
+| **Tier 3** | Enrichment (emails, websites) | Ongoing | Continuous |
+
+---
+
+### Legal & Operational Considerations
+
+- CSLB data is **publicly available** on cslb.ca.gov
+- Scraping must be **rate-limited** (1 req/sec) to avoid IP blocks
+- BidBox is **NOT** a licensed contractor verification authority
+- We provide **convenience + pre-classification**, not official verification
+- Data is for **internal GC use**, not public redistribution
+- Subs can **request removal** if desired
+
+---

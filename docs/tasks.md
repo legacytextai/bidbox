@@ -996,12 +996,12 @@ Before marking MVP complete:
 
 ## 🔗 Document References
 
-- `masterplan.md` - Product vision, target users, core principles
-- `gc-control-center-prd.md` - GC Control Center strategic PRD (NEW)
-- `implementation-plan.md` - Updated build sequence with Phases 3.5-6
+- `masterplan.md` - Product vision, target users, core principles, Network Pool Moat Strategy
+- `gc-control-center-prd.md` - GC Control Center strategic PRD
+- `implementation-plan.md` - Build sequence with Phases 3.5-7, CSLB Pipeline Architecture
 - `design-guidelines.md` - Brand voice, colors, layout rules, motion
 - `app-flow-pages-and-roles.md` - Page structure, user journeys, permissions
-- `cslb-license-types.md` - California license type reference (NEW)
+- `cslb-license-types.md` - California license type reference
 - `tasks.md` (this doc) - Implementation source of truth
 
 ---
@@ -1224,6 +1224,246 @@ Before marking MVP complete:
 - [ ] Location: Project admin view (`/projects/[id]`)
 - [ ] Download `.xlsx` file on click
 - [ ] Show loading state during generation
+
+---
+
+## 🚀 Phase 7: CSLB Network Directory Seeding Initiative
+
+> **Status**: 📋 Planned (Multi-month strategic initiative)
+
+This phase documents the strategic initiative to populate the BidBox Network Pool with verified CSLB-licensed contractors, creating a long-term competitive moat.
+
+### ⚠️ IMPORTANT: This section is documentation and planning only. No code implementation until phases are explicitly activated.
+
+---
+
+### Phase 7.0: Initiative Overview
+
+**Objective:** Seed the BidBox Network Directory with 290,000+ California CSLB-licensed contractors to provide GCs with instant subcontractor coverage.
+
+**Success Metrics:**
+- [ ] 50,000+ "hot trade" contractors seeded (Tier 1)
+- [ ] 80%+ trade coverage for California public works projects
+- [ ] <5% duplicate rate after normalization
+- [ ] Average lookup time <100ms (via caching)
+
+**Legal/Operational Guardrails:**
+- CSLB data is publicly available on cslb.ca.gov
+- Scraping must be rate-limited (max 1 request/second) to avoid IP blocks
+- BidBox is NOT a licensed contractor verification authority
+- We provide convenience + pre-classification, not official verification
+- Data is for internal GC use, not public redistribution
+- Subs can request removal if desired (GDPR-like process)
+
+---
+
+### Phase 7.1: Foundational Architecture [✅ MOSTLY COMPLETE]
+
+**Existing Infrastructure:**
+- [x] 7.1.1 `subcontractors` table (BidBox Network Pool) with `is_verified` flag
+- [x] 7.1.2 `sub_trade_mappings` junction table (multi-trade support per sub)
+- [x] 7.1.3 `cslb_cache` table for lookup caching (30-day TTL)
+- [x] 7.1.4 State-agnostic `trade_type_id` FK architecture
+- [x] 7.1.5 `lookup-cslb` edge function with HTML parsing
+
+**Planned Extensions:**
+- [ ] 7.1.6 Document CSLB classification → `trade_type_id` mapping rules
+  - Map CSLB codes (A, B, C-4, C-10, etc.) to `trade_types.id`
+  - Handle multi-classification contractors (e.g., "C-10, C-46")
+  - Create mapping lookup table or function
+
+- [ ] 7.1.7 Define data normalization standards
+  - Phone format: (XXX) XXX-XXXX
+  - Company name capitalization: Title Case
+  - City normalization: Match to standardized city list
+  - Remove "Inc.", "LLC", "Corp." variations for matching
+
+- [ ] 7.1.8 Define deduplication strategy
+  - Primary key: `license_number` (unique per contractor)
+  - Handle name variations (DBA names, typos)
+  - Merge strategy for existing entries
+
+---
+
+### Phase 7.2: Tier 1 — Hot Trade Seeding
+
+**Objective:** Seed the highest-demand trades first to maximize early GC value.
+
+**Target Trades (Top 15-20 CSLB Classifications):**
+| Priority | Code | Trade Name | Est. License Count |
+|----------|------|------------|-------------------|
+| 1 | C-10 | Electrical | ~45,000 |
+| 2 | C-20 | HVAC | ~35,000 |
+| 3 | C-36 | Plumbing | ~25,000 |
+| 4 | C-8 | Concrete | ~20,000 |
+| 5 | C-12 | Earthwork & Paving | ~15,000 |
+| 6 | C-33 | Painting | ~18,000 |
+| 7 | C-27 | Landscaping | ~12,000 |
+| 8 | C-43 | Sheet Metal | ~8,000 |
+| 9 | C-4 | Boiler/Hot Water | ~5,000 |
+| 10 | C-7 | Low Voltage | ~15,000 |
+| 11 | C-15 | Flooring | ~10,000 |
+| 12 | C-17 | Glazing | ~6,000 |
+| 13 | C-39 | Roofing | ~12,000 |
+| 14 | C-46 | Solar | ~8,000 |
+| 15 | C-54 | Tile | ~7,000 |
+
+**Tasks:**
+- [ ] 7.2.1 Research Firecrawl vs headless browser for CSLB scraping
+  - Firecrawl preferred (already documented in project)
+  - Fallback: Puppeteer/Playwright in edge function
+
+- [ ] 7.2.2 Implement batch CSLB scraper edge function
+  - Input: Trade classification code (e.g., "C-10")
+  - Output: List of contractors with license data
+  - Rate limiting: 1 request/second
+  - Batch size: 100-500 licenses per job
+
+- [ ] 7.2.3 Implement resumable harvesting mechanism
+  - Track last-processed license number
+  - Support pause/resume for long-running jobs
+  - Error recovery with retry logic
+
+- [ ] 7.2.4 Create admin seeding dashboard
+  - Progress tracking per trade
+  - Start/pause/resume controls
+  - Error log viewing
+
+- [ ] 7.2.5 Seed ~50,000 "hot trade" contractors
+  - Run Tier 1 trades through pipeline
+  - Verify data quality via spot checks
+
+- [ ] 7.2.6 Quality assurance
+  - Verify trade mapping accuracy
+  - Check for duplicates
+  - Validate phone/email formats
+
+---
+
+### Phase 7.3: Tier 2 — Full CSLB Harvest
+
+**Objective:** Extend scraping to all 290,000+ CSLB license holders for complete statewide coverage.
+
+**Tasks:**
+- [ ] 7.3.1 Extend scraper to all remaining CSLB classifications
+  - General A, General B
+  - All C-specialty classes (C-4 through C-61)
+  - Hazardous Substance Removal (HAZ)
+
+- [ ] 7.3.2 Implement background job processing
+  - Supabase pg_cron or external scheduler
+  - Batches of 100-500 licenses
+  - Run during off-peak hours
+
+- [ ] 7.3.3 Add progress tracking and resumability
+  - Dashboard showing overall progress (X/290,000)
+  - ETA calculation
+  - Failure rate monitoring
+
+- [ ] 7.3.4 Complete statewide network population
+  - Target: 290,000+ contractors
+  - Timeline: 2-4 weeks of background seeding
+
+---
+
+### Phase 7.4: Tier 3 — Network Enrichment
+
+**Objective:** Add additional contact information beyond CSLB data.
+
+**Tasks:**
+- [ ] 7.4.1 Email lookup integration
+  - Hunter.io, Clearbit, or similar API
+  - Verify email deliverability
+  - Cost analysis per lookup
+
+- [ ] 7.4.2 Website scraping for additional contact info
+  - Extract email/phone from contractor websites
+  - Firecrawl branding extraction for company logos
+
+- [ ] 7.4.3 Phone number validation and formatting
+  - Verify phone numbers are active
+  - Format to (XXX) XXX-XXXX standard
+
+- [ ] 7.4.4 Flag outdated/expired licenses
+  - Nightly cron to check expirations
+  - Visual indicator in network pool
+  - Auto-hide expired licenses from GC view
+
+---
+
+### Phase 7.5: Excel Import (GC Bulk Upload)
+
+**Objective:** Allow GCs to upload their existing subcontractor spreadsheets and auto-enrich with CSLB data.
+
+**User Flow:**
+1. GC uploads .xlsx/.csv file
+2. System parses columns (may use AI for column detection)
+3. For each row with license_number → CSLB lookup
+4. Auto-fill: company_name, license_status, expiration, classifications
+5. Map classifications to `trade_type_id`
+6. Insert into `gc_subcontractors` + `gc_sub_trade_mappings`
+7. Show import summary (success/errors)
+
+**Tasks:**
+- [ ] 7.5.1 Create `bulk-import-subs` edge function
+  - Accept .xlsx/.csv file upload
+  - Parse rows using xlsx library
+
+- [ ] 7.5.2 Implement column detection
+  - Option A: Fixed column order with template
+  - Option B: AI-powered column detection (OpenAI)
+  - Detect: license_number, company_name, contact_name, phone, email
+
+- [ ] 7.5.3 Auto-detect license numbers and run CSLB lookups
+  - Validate license format (7-digit number)
+  - Batch CSLB lookups with rate limiting
+
+- [ ] 7.5.4 Handle partial matches and manual fallback
+  - Show preview before import
+  - Allow GC to fix/skip problematic rows
+
+- [ ] 7.5.5 Provide template download for GCs
+  - Excel template with expected columns
+  - Instructions in first row
+
+- [ ] 7.5.6 Show import progress and error summary
+  - Progress bar during import
+  - Summary: "Imported 45/50, 5 errors (click to view)"
+
+---
+
+### Phase 7.6: Compliance & Nightly Jobs
+
+**Objective:** Keep network data fresh and alert GCs to compliance issues.
+
+**Tasks:**
+- [ ] 7.6.1 Create nightly cron job for license expiration checks
+  - Query CSLB for status changes
+  - Update `license_status` and `license_expiration`
+
+- [ ] 7.6.2 Flag expired/inactive licenses in Network Pool
+  - Add `is_active` computed field
+  - Visual badge: "Expired", "Inactive", "Suspended"
+
+- [ ] 7.6.3 Add compliance alerts for GCs (Future)
+  - Notify when a private pool sub's license expires
+  - Dashboard section showing upcoming expirations
+
+---
+
+### Phase 7 Timeline Estimate
+
+| Sub-Phase | Duration | Dependencies |
+|-----------|----------|--------------|
+| 7.0 Initiative Planning | 1 day | None |
+| 7.1 Architecture Extensions | 2-3 days | 7.0 |
+| 7.2 Tier 1 Hot Trade Seeding | 1-2 weeks | 7.1 |
+| 7.3 Tier 2 Full Harvest | 2-4 weeks | 7.2 |
+| 7.4 Tier 3 Enrichment | Ongoing | 7.3 |
+| 7.5 Excel Import | 3-5 days | 7.1 |
+| 7.6 Compliance Jobs | 2-3 days | 7.3 |
+
+**Total Estimate:** 4-8 weeks for Tiers 1-2, ongoing for enrichment
 
 ---
 
