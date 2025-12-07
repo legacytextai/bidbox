@@ -61,6 +61,129 @@ export type Database = {
           },
         ]
       }
+      cslb_cache: {
+        Row: {
+          city: string | null
+          classifications: Json | null
+          company_name: string | null
+          expiration_date: string | null
+          expires_at: string | null
+          fetched_at: string | null
+          license_number: string
+          license_status: string | null
+          state_code: string | null
+        }
+        Insert: {
+          city?: string | null
+          classifications?: Json | null
+          company_name?: string | null
+          expiration_date?: string | null
+          expires_at?: string | null
+          fetched_at?: string | null
+          license_number: string
+          license_status?: string | null
+          state_code?: string | null
+        }
+        Update: {
+          city?: string | null
+          classifications?: Json | null
+          company_name?: string | null
+          expiration_date?: string | null
+          expires_at?: string | null
+          fetched_at?: string | null
+          license_number?: string
+          license_status?: string | null
+          state_code?: string | null
+        }
+        Relationships: []
+      }
+      gc_sub_trade_mappings: {
+        Row: {
+          created_at: string | null
+          gc_sub_id: string
+          id: string
+          trade_type_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          gc_sub_id: string
+          id?: string
+          trade_type_id: string
+        }
+        Update: {
+          created_at?: string | null
+          gc_sub_id?: string
+          id?: string
+          trade_type_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gc_sub_trade_mappings_gc_sub_id_fkey"
+            columns: ["gc_sub_id"]
+            isOneToOne: false
+            referencedRelation: "gc_subcontractors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gc_sub_trade_mappings_trade_type_id_fkey"
+            columns: ["trade_type_id"]
+            isOneToOne: false
+            referencedRelation: "trade_types"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      gc_subcontractors: {
+        Row: {
+          city: string | null
+          company_name: string
+          contact_name: string | null
+          created_at: string | null
+          email: string | null
+          gc_id: string
+          id: string
+          license_expiration: string | null
+          license_number: string | null
+          license_status: string | null
+          notes: string | null
+          phone: string | null
+          state_code: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          city?: string | null
+          company_name: string
+          contact_name?: string | null
+          created_at?: string | null
+          email?: string | null
+          gc_id: string
+          id?: string
+          license_expiration?: string | null
+          license_number?: string | null
+          license_status?: string | null
+          notes?: string | null
+          phone?: string | null
+          state_code?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          city?: string | null
+          company_name?: string
+          contact_name?: string | null
+          created_at?: string | null
+          email?: string | null
+          gc_id?: string
+          id?: string
+          license_expiration?: string | null
+          license_number?: string | null
+          license_status?: string | null
+          notes?: string | null
+          phone?: string | null
+          state_code?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           company_name: string | null
@@ -211,6 +334,93 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      sub_trade_mappings: {
+        Row: {
+          created_at: string | null
+          id: string
+          sub_id: string
+          trade_type_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          sub_id: string
+          trade_type_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          sub_id?: string
+          trade_type_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sub_trade_mappings_sub_id_fkey"
+            columns: ["sub_id"]
+            isOneToOne: false
+            referencedRelation: "subcontractors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sub_trade_mappings_trade_type_id_fkey"
+            columns: ["trade_type_id"]
+            isOneToOne: false
+            referencedRelation: "trade_types"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      subcontractors: {
+        Row: {
+          city: string | null
+          company_name: string
+          contact_name: string | null
+          created_at: string | null
+          email: string | null
+          id: string
+          is_verified: boolean | null
+          license_expiration: string | null
+          license_number: string | null
+          license_status: string | null
+          notes: string | null
+          phone: string | null
+          state_code: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          city?: string | null
+          company_name: string
+          contact_name?: string | null
+          created_at?: string | null
+          email?: string | null
+          id?: string
+          is_verified?: boolean | null
+          license_expiration?: string | null
+          license_number?: string | null
+          license_status?: string | null
+          notes?: string | null
+          phone?: string | null
+          state_code?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          city?: string | null
+          company_name?: string
+          contact_name?: string | null
+          created_at?: string | null
+          email?: string | null
+          id?: string
+          is_verified?: boolean | null
+          license_expiration?: string | null
+          license_number?: string | null
+          license_status?: string | null
+          notes?: string | null
+          phone?: string | null
+          state_code?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
       }
       subscriptions: {
         Row: {
