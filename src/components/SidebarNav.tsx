@@ -68,7 +68,7 @@ const AppSidebar = ({ onNavigate }: SidebarNavProps) => {
               <SidebarMenuItem>
                 <SidebarMenuButton onClick={() => handleNavigation("/projects")}>
                   <FolderOpen className="h-4 w-4 mr-3" />
-                  <span>View All</span>
+                  <span>Projects</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
