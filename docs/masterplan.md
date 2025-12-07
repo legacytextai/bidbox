@@ -125,6 +125,24 @@ Fast to scaffold, secure by default, and matches Lovable's strengths.
 - email    
 - division (optional)
 
+**trade_types** (NEW - State-Agnostic Architecture)
+- id (uuid, PK)
+- state_code (nullable — "CA", "TX", "FL", null for national)
+- code (text — "C-10", "Roofing", etc.)
+- name (text — "Electrical")
+- category (text — "Mechanical", "Civil", etc.)
+- source (text — "CSLB", "TDLR", "DBPR", "CUSTOM")
+- is_default (boolean)
+- created_at
+
+**project_trades** (NEW)
+- id (uuid, PK)
+- project_id (FK → projects)
+- trade_type_id (FK → trade_types)
+- created_at
+
+> **⚠️ ARCHITECTURAL NOTE**: The licensing system is designed to be **state-agnostic**. California CSLB license types are the initial seed data, but the system supports nationwide expansion without code changes. All trade references use `trade_type_id` foreign keys, never hard-coded license codes.
+
 ---
 
 ### 🎨 UI Design Principles
@@ -168,17 +186,20 @@ Fast to scaffold, secure by default, and matches Lovable's strengths.
 - PDF preview viewer    
 - Countdown component  
 
-**Phase 3.5: Trade Selection Layer** 📋 Planned  
-- Create `project_trades` table
-- Compile CSLB license type list
-- Add trade multi-select to `/projects/new`
-- Display selected trades on project admin page
+**Phase 3.5: Trade Selection Layer** ✅ Database Complete  
+- ✅ Create `trade_types` table (state-agnostic reference table)
+- ✅ Create `project_trades` table (FK to trade_types)
+- ✅ Seed California CSLB license types (43 trade types)
+- 📋 Add trade multi-select to `/projects/new`
+- 📋 Display selected trades on project admin page
+
+> **Architecture Note**: Phase 3.5 uses a future-proof, state-agnostic trade taxonomy. California CSLB is the initial seed data, but the system supports multi-state expansion via the `trade_types.state_code` column.
 
 **Phase 4: Subcontractor Directory** 📋 Planned  
-- Create `subcontractors` table (BidBox Network Pool, starts empty)
-- Create `gc_subcontractors` table (GC's Private Pool)
+- Create `subcontractors` table with `trade_type_id` FK (BidBox Network Pool)
+- Create `gc_subcontractors` table with `trade_type_id` FK (GC's Private Pool)
 - Build directory management UI
-- Map subs to project trades
+- Map subs to project trades via `trade_type_id`
 - (Future) Seed BidBox Network with real data
 
 **Phase 5: Engagement Tracking** 📋 Planned  
