@@ -23,6 +23,7 @@ interface CSLBLookupResult {
   classifications?: CSLBClassification[];
   error?: string;
   cached?: boolean;
+  manual_entry_required?: boolean;
 }
 
 serve(async (req) => {
@@ -77,280 +78,48 @@ serve(async (req) => {
       );
     }
 
-    console.log(`[lookup-cslb] Cache miss, scraping CSLB for ${cleanLicense}`);
+    console.log(`[lookup-cslb] Cache miss for ${cleanLicense}`);
 
-    // Scrape CSLB website
-    const cslbResult = await scrapeCSLB(cleanLicense);
-
-    if (!cslbResult.success) {
+    // NOTE: CSLB website uses JavaScript rendering which requires a browser or advanced scraping.
+    // For MVP, we return a "manual entry required" response.
+    // Future enhancement: Integrate Firecrawl or a headless browser service.
+    
+    // Validate the license number format (California licenses are typically 6-7 digits)
+    if (!/^\d{5,7}$/.test(cleanLicense)) {
       return new Response(
-        JSON.stringify(cslbResult),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ 
+          success: false, 
+          error: 'Invalid license format. California contractor licenses are 5-7 digits.',
+          manual_entry_required: true
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Map classification codes to trade_type_ids
-    const classificationsWithIds: CSLBClassification[] = [];
+    // Return a helpful response indicating manual entry is needed
+    // We can still provide a link for the user to verify manually
+    console.log(`[lookup-cslb] CSLB scraping not available, suggesting manual entry for ${cleanLicense}`);
     
-    if (cslbResult.classifications) {
-      for (const classification of cslbResult.classifications) {
-        const { data: tradeType } = await supabase
-          .from('trade_types')
-          .select('id, name')
-          .eq('code', classification.code)
-          .eq('state_code', 'CA')
-          .maybeSingle();
-
-        classificationsWithIds.push({
-          code: classification.code,
-          name: tradeType?.name || classification.name,
-          trade_type_id: tradeType?.id || null,
-        });
-      }
-    }
-
-    // Cache the result
-    const cacheData = {
-      license_number: cleanLicense,
-      company_name: cslbResult.company_name,
-      license_status: cslbResult.license_status,
-      expiration_date: cslbResult.expiration_date,
-      city: cslbResult.city,
-      state_code: 'CA',
-      classifications: classificationsWithIds,
-      fetched_at: new Date().toISOString(),
-      expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days
-    };
-
-    const { error: upsertError } = await supabase
-      .from('cslb_cache')
-      .upsert(cacheData, { onConflict: 'license_number' });
-
-    if (upsertError) {
-      console.error('[lookup-cslb] Cache upsert error:', upsertError);
-    }
-
-    console.log(`[lookup-cslb] Successfully looked up ${cleanLicense}: ${cslbResult.company_name}`);
-
     return new Response(
       JSON.stringify({
-        success: true,
-        company_name: cslbResult.company_name,
+        success: false,
+        error: `CSLB auto-lookup is temporarily unavailable. Please verify license #${cleanLicense} at cslb.ca.gov and enter details manually.`,
+        manual_entry_required: true,
+        verification_url: `https://www.cslb.ca.gov/onlineservices/checklicenseII/LicenseDetail.aspx?LicNum=${cleanLicense}`,
         license_number: cleanLicense,
-        license_status: cslbResult.license_status,
-        expiration_date: cslbResult.expiration_date,
-        city: cslbResult.city,
-        state_code: 'CA',
-        classifications: classificationsWithIds,
-        cached: false,
       }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
     console.error('[lookup-cslb] Error:', error);
     return new Response(
-      JSON.stringify({ success: false, error: 'Internal server error' }),
+      JSON.stringify({ 
+        success: false, 
+        error: 'Internal server error',
+        manual_entry_required: true 
+      }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });
-
-async function scrapeCSLB(licenseNumber: string): Promise<CSLBLookupResult> {
-  try {
-    // CSLB License Lookup URL
-    const url = `https://www.cslb.ca.gov/onlineservices/checklicenseII/checklicense.aspx`;
-    
-    // First, get the page to extract form fields
-    const pageResponse = await fetch(url);
-    const pageHtml = await pageResponse.text();
-    
-    // Extract __VIEWSTATE and __EVENTVALIDATION
-    const viewStateMatch = pageHtml.match(/id="__VIEWSTATE" value="([^"]+)"/);
-    const eventValidationMatch = pageHtml.match(/id="__EVENTVALIDATION" value="([^"]+)"/);
-    const viewStateGeneratorMatch = pageHtml.match(/id="__VIEWSTATEGENERATOR" value="([^"]+)"/);
-    
-    if (!viewStateMatch || !eventValidationMatch) {
-      console.log('[lookup-cslb] Could not extract form fields, trying direct API');
-      return await tryDirectLookup(licenseNumber);
-    }
-
-    // Submit the form
-    const formData = new URLSearchParams();
-    formData.append('__VIEWSTATE', viewStateMatch[1]);
-    formData.append('__EVENTVALIDATION', eventValidationMatch[1]);
-    if (viewStateGeneratorMatch) {
-      formData.append('__VIEWSTATEGENERATOR', viewStateGeneratorMatch[1]);
-    }
-    formData.append('LicNum', licenseNumber);
-    formData.append('Button1', 'Check License');
-
-    const searchResponse = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: formData.toString(),
-    });
-
-    const resultHtml = await searchResponse.text();
-    
-    // Parse the results
-    return parseCSLBResult(resultHtml, licenseNumber);
-
-  } catch (error) {
-    console.error('[lookup-cslb] Scrape error:', error);
-    return await tryDirectLookup(licenseNumber);
-  }
-}
-
-async function tryDirectLookup(licenseNumber: string): Promise<CSLBLookupResult> {
-  try {
-    // Try the direct license page
-    const directUrl = `https://www.cslb.ca.gov/onlineservices/checklicenseII/LicenseDetail.aspx?LicNum=${licenseNumber}`;
-    const response = await fetch(directUrl);
-    const html = await response.text();
-    
-    return parseCSLBResult(html, licenseNumber);
-  } catch (error) {
-    console.error('[lookup-cslb] Direct lookup error:', error);
-    return { success: false, error: 'Failed to lookup license. CSLB may be unavailable.' };
-  }
-}
-
-function parseCSLBResult(html: string, licenseNumber: string): CSLBLookupResult {
-  // Check for "no results" or error messages
-  if (html.includes('No contractor was found') || html.includes('Invalid License Number')) {
-    return { success: false, error: 'License not found' };
-  }
-
-  // Extract business name - look for common patterns
-  let companyName = '';
-  const businessNamePatterns = [
-    /Business Name[:\s]*<[^>]*>([^<]+)/i,
-    /class="businessName"[^>]*>([^<]+)/i,
-    /<span[^>]*id="[^"]*BusinessName[^"]*"[^>]*>([^<]+)/i,
-    /Business\s*(?:Name|Information)[^<]*<[^>]*>([^<]+)/i,
-  ];
-  
-  for (const pattern of businessNamePatterns) {
-    const match = html.match(pattern);
-    if (match && match[1]) {
-      companyName = match[1].trim();
-      break;
-    }
-  }
-
-  // Extract status
-  let status = 'UNKNOWN';
-  const statusPatterns = [
-    /License Status[:\s]*<[^>]*>([^<]+)/i,
-    /Status[:\s]*<[^>]*>([^<]+)/i,
-    /<span[^>]*id="[^"]*Status[^"]*"[^>]*>([^<]+)/i,
-  ];
-  
-  for (const pattern of statusPatterns) {
-    const match = html.match(pattern);
-    if (match && match[1]) {
-      status = match[1].trim().toUpperCase();
-      break;
-    }
-  }
-
-  // Extract expiration date
-  let expirationDate = '';
-  const expPatterns = [
-    /Expir(?:ation|es)[:\s]*<[^>]*>([^<]+)/i,
-    /<span[^>]*id="[^"]*Expir[^"]*"[^>]*>([^<]+)/i,
-  ];
-  
-  for (const pattern of expPatterns) {
-    const match = html.match(pattern);
-    if (match && match[1]) {
-      const dateStr = match[1].trim();
-      // Try to parse and format the date
-      const date = new Date(dateStr);
-      if (!isNaN(date.getTime())) {
-        expirationDate = date.toISOString().split('T')[0];
-      }
-      break;
-    }
-  }
-
-  // Extract city
-  let city = '';
-  const cityPatterns = [
-    /City[:\s]*<[^>]*>([^<]+)/i,
-    /<span[^>]*id="[^"]*City[^"]*"[^>]*>([^<]+)/i,
-  ];
-  
-  for (const pattern of cityPatterns) {
-    const match = html.match(pattern);
-    if (match && match[1]) {
-      city = match[1].trim();
-      break;
-    }
-  }
-
-  // Extract classifications
-  const classifications: { code: string; name: string }[] = [];
-  
-  // Look for classification patterns like "C-10", "C-20", "A", "B"
-  const classPatterns = [
-    /Class(?:ification)?[:\s]*([A-Z]-?\d+(?:\s*-\s*[^<]+)?)/gi,
-    /([A-Z]-\d+)\s*-\s*([^<,]+)/gi,
-    /License Class[:\s]*<[^>]*>([^<]+)/gi,
-  ];
-  
-  const foundCodes = new Set<string>();
-  
-  for (const pattern of classPatterns) {
-    let match;
-    while ((match = pattern.exec(html)) !== null) {
-      const fullMatch = match[1] || match[0];
-      // Extract just the code (e.g., "C-10" from "C-10 - Electrical")
-      const codeMatch = fullMatch.match(/([A-Z]-?\d+)/);
-      if (codeMatch && !foundCodes.has(codeMatch[1])) {
-        foundCodes.add(codeMatch[1]);
-        // Try to extract name after the code
-        const nameMatch = fullMatch.match(/[A-Z]-?\d+\s*-\s*(.+)/);
-        classifications.push({
-          code: codeMatch[1],
-          name: nameMatch ? nameMatch[1].trim() : codeMatch[1],
-        });
-      }
-    }
-  }
-
-  // If we couldn't extract a company name, the lookup likely failed
-  if (!companyName) {
-    // Try one more pattern - sometimes the page has a different structure
-    const tableMatch = html.match(/<td[^>]*>([^<]+)<\/td>\s*<td[^>]*>License\s*Number/i);
-    if (tableMatch && tableMatch[1]) {
-      companyName = tableMatch[1].trim();
-    }
-  }
-
-  if (!companyName) {
-    return { 
-      success: false, 
-      error: 'Could not parse license information. The license may not exist or CSLB website structure may have changed.' 
-    };
-  }
-
-  const classificationsWithNull: CSLBClassification[] = classifications.map(c => ({
-    ...c,
-    trade_type_id: null,
-  }));
-
-  return {
-    success: true,
-    company_name: companyName,
-    license_number: licenseNumber,
-    license_status: status,
-    expiration_date: expirationDate || undefined,
-    city: city || undefined,
-    state_code: 'CA',
-    classifications: classificationsWithNull.length > 0 ? classificationsWithNull : undefined,
-  };
-}
