@@ -120,6 +120,42 @@ export type Database = {
           },
         ]
       }
+      project_trades: {
+        Row: {
+          created_at: string | null
+          id: string
+          project_id: string
+          trade_type_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          project_id: string
+          trade_type_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          project_id?: string
+          trade_type_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_trades_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_trades_trade_type_id_fkey"
+            columns: ["trade_type_id"]
+            isOneToOne: false
+            referencedRelation: "trade_types"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       projects: {
         Row: {
           agency: string | null
@@ -219,6 +255,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      trade_types: {
+        Row: {
+          category: string | null
+          code: string
+          created_at: string | null
+          id: string
+          is_default: boolean | null
+          name: string
+          source: string | null
+          state_code: string | null
+        }
+        Insert: {
+          category?: string | null
+          code: string
+          created_at?: string | null
+          id?: string
+          is_default?: boolean | null
+          name: string
+          source?: string | null
+          state_code?: string | null
+        }
+        Update: {
+          category?: string | null
+          code?: string
+          created_at?: string | null
+          id?: string
+          is_default?: boolean | null
+          name?: string
+          source?: string | null
+          state_code?: string | null
+        }
+        Relationships: []
       }
       user_roles: {
         Row: {

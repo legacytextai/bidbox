@@ -73,32 +73,49 @@
 
 ## 🎯 GC Control Center Phases (NEW)
 
-### **Phase 3.5 – Trade Selection Layer** 📋 Next Up
+### **Phase 3.5 – Trade Selection Layer** ✅ Database Complete
 
 **Objective:** Allow GCs to select required trades (by license type) when creating a project.
 
-- [ ] 3.5.1 Create `project_trades` table
+> **⚠️ ARCHITECTURAL PRINCIPLE**: The licensing system is **state-agnostic**. California CSLB is the initial seed data, but the architecture supports nationwide expansion without code changes.
+
+- [x] 3.5.0 Create `trade_types` reference table (STATE-AGNOSTIC)
+  ```sql
+  id (uuid, PK)
+  state_code (text, nullable)   -- "CA", "TX", "FL", null for national
+  code (text)                   -- "C-10", "Roofing", etc.
+  name (text)                   -- "Electrical"
+  category (text)               -- "Mechanical", "Civil", etc.
+  source (text)                 -- "CSLB", "TDLR", "DBPR", "CUSTOM"
+  is_default (boolean)
+  created_at (timestamptz)
+  UNIQUE(state_code, code)
+  ```
+
+- [x] 3.5.1 Create `project_trades` table with FK to `trade_types`
   ```sql
   id (uuid, PK)
   project_id (uuid, FK → projects.id)
-  trade_code (text)      -- e.g., "C-10"
-  trade_name (text)      -- e.g., "Electrical"
+  trade_type_id (uuid, FK → trade_types.id)  -- NOT hard-coded strings!
   created_at (timestamptz)
+  UNIQUE(project_id, trade_type_id)
   ```
 
-- [ ] 3.5.2 Compile CSLB license type list (SEPARATE TASK)
-  - See `docs/cslb-license-types.md`
-  - Collaborate to finalize list
+- [x] 3.5.2 Seed California CSLB license types
+  - 43 trade types seeded with state_code='CA', source='CSLB'
+  - Includes: General (A, B), Specialty (C-4 through C-61)
 
 - [ ] 3.5.3 Add trade multi-select UI to `/projects/new`
-  - Dropdown/multi-select of CA license types
+  - Fetch trade types dynamically from database
+  - Filter by `state_code = 'CA'` for MVP
   - Display selected trades as chips/tags
 
 - [ ] 3.5.4 Update project creation logic
-  - Insert selected trades into `project_trades` table
+  - Insert selected `trade_type_id`s into `project_trades` table
 
 - [ ] 3.5.5 Display selected trades on `/projects/[id]` admin page
-  - Show trade chips in project info section
+  - Join `project_trades` with `trade_types`
+  - Show trade chips with category-based colors
 
 ---
 
@@ -106,15 +123,18 @@
 
 **Objective:** Create two-pool architecture for subcontractor management.
 
+> **⚠️ IMPORTANT**: All subcontractor tables use `trade_type_id` FK, NOT hard-coded license strings.
+
 - [ ] 4.1 Create `subcontractors` table (BidBox Network Pool)
   ```sql
   id (uuid, PK)
   company_name (text)
-  license_type (text)
+  trade_type_id (uuid, FK → trade_types.id)  -- Future-proof FK
   license_number (text)
   email (text)
   phone (text)
   city (text)
+  state_code (text)           -- For filtering by state
   service_area (text)
   is_verified (boolean)
   created_at (timestamptz)
@@ -126,7 +146,7 @@
   id (uuid, PK)
   gc_id (uuid, FK → profiles.id)
   company_name (text)
-  license_type (text)
+  trade_type_id (uuid, FK → trade_types.id)  -- Future-proof FK
   contact_name (text)
   email (text)
   phone (text)
@@ -139,7 +159,7 @@
   - View network subs (read-only)
 
 - [ ] 4.4 Map subs to project trades
-  - Auto-match by license_type
+  - Auto-match by `trade_type_id` (not string matching)
 
 - [ ] 4.5 (Future) Seed BidBox Network Pool with real data
 
@@ -174,12 +194,13 @@
 
 - [ ] 6.2 Merge two pools for project coverage
   - Combine GC's Private Pool + BidBox Network Pool
-  - Filter by selected trades
+  - Filter by `trade_type_id` (not string matching)
+  - Join with `trade_types` for display names
 
 - [ ] 6.3 Generate Excel (.xlsx) output
-  - Grouped by trade
+  - Grouped by trade (from `trade_types.name`)
   - Sorted by engagement priority
-  - Columns: Name, Company, Phone, Email, Engagement Status
+  - Columns: Name, Company, Phone, Email, Trade, State, Engagement Status
 
 - [ ] 6.4 Add "Generate Call List (Excel)" button
   - Location: Project admin view

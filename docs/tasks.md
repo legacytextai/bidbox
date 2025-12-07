@@ -1,7 +1,19 @@
 # BidBox Implementation Tasks
 
 **Source of Truth for Feature Implementation**  
-Last Updated: 2025-11-30
+Last Updated: 2025-12-07
+
+---
+
+## 🏗️ Architecture Note: State-Agnostic Licensing
+
+> **CRITICAL**: BidBox uses a **future-proof, state-agnostic trade taxonomy**.
+> 
+> - `trade_types` table stores all license/trade types with `state_code` column
+> - California CSLB is the **initial seed data**, not a permanent constraint
+> - All tables (project_trades, subcontractors, gc_subcontractors) use `trade_type_id` FK
+> - **NEVER** hard-code license codes like "C-10" in components or logic
+> - Multi-state expansion requires only adding rows to `trade_types`, no code changes
 
 ---
 
@@ -994,62 +1006,102 @@ Before marking MVP complete:
 
 ---
 
-## 🎯 Phase 3.5: Trade Selection Layer (NEW)
+## 🎯 Phase 3.5: Trade Selection Layer [✅ DATABASE COMPLETE]
 
-> **Next Up**: This phase enables the GC Control Center foundation
+> **Status**: Database architecture complete with state-agnostic design. Frontend implementation next.
 
-### Task 3.5.1: Create `project_trades` Table
+### ⚠️ ARCHITECTURAL PRINCIPLE
 
-- [ ] Database migration to create table:
+> **The licensing system is STATE-AGNOSTIC.** California CSLB is the initial seed data, but the architecture supports nationwide expansion without code changes. All trade references use `trade_type_id` foreign keys, NEVER hard-coded license code strings.
+
+### Task 3.5.0: Create `trade_types` Reference Table [✅ COMPLETED]
+
+- [x] Database migration to create state-agnostic table:
+  ```sql
+  CREATE TABLE public.trade_types (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    state_code text,                    -- "CA", "TX", "FL", null for national
+    code text NOT NULL,                 -- "C-10", "Roofing", etc.
+    name text NOT NULL,                 -- "Electrical"
+    category text,                      -- "Mechanical", "Civil", etc.
+    source text,                        -- "CSLB", "TDLR", "DBPR", "CUSTOM"
+    is_default boolean DEFAULT true,
+    created_at timestamptz DEFAULT now(),
+    UNIQUE(state_code, code)
+  );
+
+  -- RLS: Everyone can read, admins can modify
+  ALTER TABLE public.trade_types ENABLE ROW LEVEL SECURITY;
+
+  CREATE POLICY "Anyone can view trade types"
+    ON public.trade_types FOR SELECT USING (true);
+
+  CREATE POLICY "Admins can manage trade types"
+    ON public.trade_types FOR ALL
+    USING (public.has_role(auth.uid(), 'admin'));
+  ```
+
+### Task 3.5.1: Create `project_trades` Table [✅ COMPLETED]
+
+- [x] Database migration with FK to trade_types:
   ```sql
   CREATE TABLE public.project_trades (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id uuid REFERENCES projects ON DELETE CASCADE NOT NULL,
-    trade_code text NOT NULL,        -- e.g., "C-10"
-    trade_name text NOT NULL,        -- e.g., "Electrical"
-    created_at timestamptz DEFAULT now()
+    trade_type_id uuid REFERENCES trade_types(id) NOT NULL,  -- FK, not strings!
+    created_at timestamptz DEFAULT now(),
+    UNIQUE(project_id, trade_type_id)
   );
 
   -- RLS: GCs can manage trades for their projects
   ALTER TABLE public.project_trades ENABLE ROW LEVEL SECURITY;
 
-  CREATE POLICY "GCs can manage trades for their projects"
+  CREATE POLICY "GCs can view/add/delete trades for their projects"
     ON public.project_trades FOR ALL
-    USING (EXISTS (
+    USING/WITH CHECK (EXISTS (
       SELECT 1 FROM projects
       WHERE projects.id = project_trades.project_id
       AND projects.gc_id = auth.uid()
     ));
   ```
 
-### Task 3.5.2: Compile CSLB License Type List (SEPARATE TASK)
+### Task 3.5.2: Seed California CSLB License Types [✅ COMPLETED]
 
-- [ ] Review `docs/cslb-license-types.md`
-- [ ] Finalize list collaboratively
-- [ ] Create constants file or database reference table
+- [x] 43 trade types seeded with:
+  - `state_code = 'CA'`
+  - `source = 'CSLB'`
+  - Categories: General, Mechanical, Electrical, Structural, Civil, Finishes, Site Work, etc.
+- [x] Includes: A, B, C-4 through C-61 (full CSLB specialty list)
 
 ### Task 3.5.3: Add Trade Multi-Select to `/projects/new`
 
-- [ ] Add trade multi-select component
-- [ ] Use CSLB license types as options
-- [ ] Display selected trades as chips/tags
-- [ ] Validate at least one trade selected (optional)
+- [ ] Create `src/lib/tradeTypes.ts` utility
+  - Fetch trade types from database (NOT hard-coded constants)
+  - Filter by `state_code = 'CA'` for MVP
+  - Group by category for UI display
+- [ ] Add trade multi-select component to NewProject.tsx
+- [ ] Display selected trades as chips/tags with category colors
+- [ ] Store selected `trade_type_id` values
 
 ### Task 3.5.4: Update Project Creation Logic
 
-- [ ] Insert selected trades into `project_trades` table on project create
-- [ ] Update Zod schema if needed
+- [ ] Add `selectedTradeIds` state to form
+- [ ] Insert selected `trade_type_id`s into `project_trades` after project creation
+- [ ] Update Zod schema to include optional `trades` array
 
 ### Task 3.5.5: Display Trades on Project Admin Page
 
-- [ ] Show trade chips on `/projects/[id]`
+- [ ] Query `project_trades` joined with `trade_types`
+- [ ] Show trade chips on `/projects/[id]` with category-based colors
 - [ ] Allow editing trades (add/remove)
 
 ---
 
 ## 🎯 Phase 4: Subcontractor Directory (NEW)
 
-> **Planned**: Two-pool subcontractor architecture
+> **Planned**: Two-pool subcontractor architecture with state-agnostic design
+
+### ⚠️ IMPORTANT: All subcontractor tables use `trade_type_id` FK, NOT hard-coded license strings
 
 ### Task 4.1: Create `subcontractors` Table (BidBox Network Pool)
 
@@ -1058,17 +1110,18 @@ Before marking MVP complete:
   CREATE TABLE public.subcontractors (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     company_name text NOT NULL,
-    license_type text NOT NULL,
+    trade_type_id uuid REFERENCES trade_types(id),  -- FK, not strings!
     license_number text,
     email text,
     phone text,
     city text,
+    state_code text DEFAULT 'CA',                   -- For multi-state filtering
     service_area text,
     is_verified boolean DEFAULT false,
     created_at timestamptz DEFAULT now()
   );
 
-  -- Public read, admin write
+  -- Public read verified, admin write
   ALTER TABLE public.subcontractors ENABLE ROW LEVEL SECURITY;
 
   CREATE POLICY "Anyone can view verified subcontractors"
@@ -1084,7 +1137,7 @@ Before marking MVP complete:
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     gc_id uuid REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
     company_name text NOT NULL,
-    license_type text,
+    trade_type_id uuid REFERENCES trade_types(id),  -- FK, not strings!
     contact_name text,
     email text,
     phone text,
@@ -1103,17 +1156,18 @@ Before marking MVP complete:
 ### Task 4.3: Build Directory Management UI
 
 - [ ] Create `/subcontractors` page or section in settings
-- [ ] Add/edit/delete private subs UI
+- [ ] Add/edit/delete private subs UI (select trade from trade_types dropdown)
 - [ ] View network subs (read-only)
 
 ### Task 4.4: Map Subs to Project Trades
 
-- [ ] Auto-match subs by license_type to project trades
+- [ ] Auto-match subs by `trade_type_id` (FK join, not string matching)
 - [ ] Display matched subs per trade
 
 ### Task 4.5: Seed BidBox Network Pool (FUTURE)
 
 - [ ] Compile list of California public works subcontractors
+- [ ] Map each to appropriate `trade_type_id`
 - [ ] Import into `subcontractors` table
 - [ ] Mark verified subs
 
