@@ -971,10 +971,191 @@ Before marking MVP complete:
 ## 🔗 Document References
 
 - `masterplan.md` - Product vision, target users, core principles
-- `implementation-plan.md` - Original 4-phase build sequence
+- `gc-control-center-prd.md` - GC Control Center strategic PRD (NEW)
+- `implementation-plan.md` - Updated build sequence with Phases 3.5-6
 - `design-guidelines.md` - Brand voice, colors, layout rules, motion
 - `app-flow-pages-and-roles.md` - Page structure, user journeys, permissions
+- `cslb-license-types.md` - California license type reference (NEW)
 - `tasks.md` (this doc) - Implementation source of truth
+
+---
+
+## 🎯 Phase 3.5: Trade Selection Layer (NEW)
+
+> **Next Up**: This phase enables the GC Control Center foundation
+
+### Task 3.5.1: Create `project_trades` Table
+
+- [ ] Database migration to create table:
+  ```sql
+  CREATE TABLE public.project_trades (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id uuid REFERENCES projects ON DELETE CASCADE NOT NULL,
+    trade_code text NOT NULL,        -- e.g., "C-10"
+    trade_name text NOT NULL,        -- e.g., "Electrical"
+    created_at timestamptz DEFAULT now()
+  );
+
+  -- RLS: GCs can manage trades for their projects
+  ALTER TABLE public.project_trades ENABLE ROW LEVEL SECURITY;
+
+  CREATE POLICY "GCs can manage trades for their projects"
+    ON public.project_trades FOR ALL
+    USING (EXISTS (
+      SELECT 1 FROM projects
+      WHERE projects.id = project_trades.project_id
+      AND projects.gc_id = auth.uid()
+    ));
+  ```
+
+### Task 3.5.2: Compile CSLB License Type List (SEPARATE TASK)
+
+- [ ] Review `docs/cslb-license-types.md`
+- [ ] Finalize list collaboratively
+- [ ] Create constants file or database reference table
+
+### Task 3.5.3: Add Trade Multi-Select to `/projects/new`
+
+- [ ] Add trade multi-select component
+- [ ] Use CSLB license types as options
+- [ ] Display selected trades as chips/tags
+- [ ] Validate at least one trade selected (optional)
+
+### Task 3.5.4: Update Project Creation Logic
+
+- [ ] Insert selected trades into `project_trades` table on project create
+- [ ] Update Zod schema if needed
+
+### Task 3.5.5: Display Trades on Project Admin Page
+
+- [ ] Show trade chips on `/projects/[id]`
+- [ ] Allow editing trades (add/remove)
+
+---
+
+## 🎯 Phase 4: Subcontractor Directory (NEW)
+
+> **Planned**: Two-pool subcontractor architecture
+
+### Task 4.1: Create `subcontractors` Table (BidBox Network Pool)
+
+- [ ] Database migration (starts empty, seed later):
+  ```sql
+  CREATE TABLE public.subcontractors (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_name text NOT NULL,
+    license_type text NOT NULL,
+    license_number text,
+    email text,
+    phone text,
+    city text,
+    service_area text,
+    is_verified boolean DEFAULT false,
+    created_at timestamptz DEFAULT now()
+  );
+
+  -- Public read, admin write
+  ALTER TABLE public.subcontractors ENABLE ROW LEVEL SECURITY;
+
+  CREATE POLICY "Anyone can view verified subcontractors"
+    ON public.subcontractors FOR SELECT
+    USING (is_verified = true);
+  ```
+
+### Task 4.2: Create `gc_subcontractors` Table (GC's Private Pool)
+
+- [ ] Database migration:
+  ```sql
+  CREATE TABLE public.gc_subcontractors (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    gc_id uuid REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
+    company_name text NOT NULL,
+    license_type text,
+    contact_name text,
+    email text,
+    phone text,
+    notes text,
+    created_at timestamptz DEFAULT now()
+  );
+
+  -- RLS: GCs can only see/manage their own subs
+  ALTER TABLE public.gc_subcontractors ENABLE ROW LEVEL SECURITY;
+
+  CREATE POLICY "GCs can manage their own subcontractors"
+    ON public.gc_subcontractors FOR ALL
+    USING (gc_id = auth.uid());
+  ```
+
+### Task 4.3: Build Directory Management UI
+
+- [ ] Create `/subcontractors` page or section in settings
+- [ ] Add/edit/delete private subs UI
+- [ ] View network subs (read-only)
+
+### Task 4.4: Map Subs to Project Trades
+
+- [ ] Auto-match subs by license_type to project trades
+- [ ] Display matched subs per trade
+
+### Task 4.5: Seed BidBox Network Pool (FUTURE)
+
+- [ ] Compile list of California public works subcontractors
+- [ ] Import into `subcontractors` table
+- [ ] Mark verified subs
+
+---
+
+## 🎯 Phase 5: Engagement Tracking (NEW)
+
+> **Planned**: Track subcontractor engagement with bid rooms
+
+### Task 5.1: Track Plan Views
+
+- [ ] Enhance existing `view_count` or create detailed tracking
+- [ ] Consider per-sub tracking (requires sub identification)
+
+### Task 5.2: Track File Downloads
+
+- [ ] Create `file_downloads` table or add tracking column
+- [ ] Log which files were downloaded
+
+### Task 5.3: Display Engagement Status
+
+- [ ] Status enum: Not opened / Viewed / Downloaded / Submitted
+- [ ] Display in sub list for each project
+
+---
+
+## 🎯 Phase 6: Call List Generator (NEW)
+
+> **Planned**: Generate ranked Excel call lists for bid day
+
+### Task 6.1: Build Ranking Logic
+
+- [ ] Priority ranking:
+  1. Not opened → highest priority (needs outreach)
+  2. Viewed but not downloaded (interested, stalled)
+  3. Downloaded but no quote (engaged, needs follow-up)
+  4. Submitted a quote → lowest priority (complete)
+
+### Task 6.2: Merge Two Pools
+
+- [ ] Combine GC's Private Pool + BidBox Network Pool
+- [ ] Filter by selected trades for the project
+- [ ] De-duplicate by company name/license
+
+### Task 6.3: Generate Excel (.xlsx) Output
+
+- [ ] Use xlsx library (server-side or client-side)
+- [ ] Group by trade
+- [ ] Sort by engagement priority
+- [ ] Columns: Name, Company, Phone, Email, Engagement Status
+
+### Task 6.4: Add "Generate Call List (Excel)" Button
+
+- [ ] Location: Project admin view (`/projects/[id]`)
+- [ ] Download `.xlsx` file on click
+- [ ] Show loading state during generation
 
 ---
 

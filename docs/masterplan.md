@@ -4,9 +4,9 @@
 
 ### 🚀 30-Second Elevator Pitch
 
-BidBox is a lean, login-free bid room for general contractors.    
-Create a project, upload plans, share a public link, and start receiving subcontractor quotes — all in under 5 minutes.    
-No bloat. No portals. Just fast, frictionless bidding.
+BidBox is the **GC Control Center** — a fast, no-fluff operating system for preconstruction.  
+Create a project, upload plans, select required trades, share a public link, and generate call lists from two subcontractor pools — all designed for bid day urgency.  
+No bloat. No sub logins. Just clarity, organization, and action.
 
 ---
 
@@ -14,10 +14,31 @@ No bloat. No portals. Just fast, frictionless bidding.
 
 **Problem:**    
 Small GCs and public works estimators waste hours chasing subcontractor bids using Dropbox, email, and spreadsheets.    
-Procore and BuildingConnected are overbuilt and overpriced. Subs ignore logins.
+Procore and BuildingConnected are overbuilt and overpriced. Subs ignore logins.  
+The real pain is **lack of visibility**, **lack of organization**, and **lack of a unified place to manage trades, coverage, and compliance**.
 
 **Mission:**    
-Eliminate bidding friction by giving GCs a fast, no-login tool to share plans and collect bids — designed for bid day urgency.
+Give GCs a fast, no-login tool that makes them more informed, organized, and effective on bid day — not by replacing phone calls, but by making them smarter.
+
+---
+
+### ⭐ GC Control Center Direction (NEW)
+
+BidBox is evolving from a "simple bid room" into the **GC Control Center**:
+
+**Guiding Principles:**
+1. **Do not replace phone calls — empower them.** GCs close gaps by calling subs. BidBox surfaces insights that make calls more efficient.
+2. **Subs must experience zero friction.** No logins. No portals. Just: Click link → View plans → Upload quote.
+3. **Clarity beats features.** Immediate visibility into trades needed, sub coverage, engagement status, and gaps.
+4. **Local specialization is the wedge.** California public works, license-type filtering, curated SoCal directories.
+
+**Four Pillars:**
+- **Trade Intelligence**: Select required trades, view coverage heatmap, know where risks are
+- **Subcontractor Organization**: Two-pool architecture (Private + Network), map subs to trades
+- **Engagement Visibility**: Track views, downloads, submissions, follow-up needs
+- **Bid-Day Command Center**: Auto-generated call lists, coverage meters, compliance reminders
+
+See `docs/gc-control-center-prd.md` for full strategic PRD.
 
 ---
 
@@ -31,6 +52,7 @@ Eliminate bidding friction by giving GCs a fast, no-login tool to share plans an
 
 ### 🧩 Core Features
 
+**MVP Features (Current):**
 - GC login + dashboard  
 - Create new bid project  
 - Upload plans/specs (PDFs)  
@@ -41,6 +63,15 @@ Eliminate bidding friction by giving GCs a fast, no-login tool to share plans an
   - Upload/delete documents  
   - View/download bids  
 - All file storage via Supabase (not Lovable file system)
+
+**Control Center Features (New):**
+- **Trade Selection**: Select required license types when creating projects (C-10 Electrical, C-20 HVAC, etc.)
+- **Two-Pool Subcontractor Architecture**:
+  - GC's Private Pool: Subs the GC has personally added
+  - BidBox Network Pool: Curated, verified subcontractors
+- **Call List Generator**: Excel export grouped by trade, sorted by engagement priority
+- **Engagement Tracking**: Views, downloads, submissions per subcontractor
+- **Coverage Intelligence**: Visual indicators showing which trades have coverage
 
 ---
 
@@ -123,7 +154,7 @@ Fast to scaffold, secure by default, and matches Lovable's strengths.
 
 ### 🗺️ Phased Roadmap
 
-**MVP (v0)**    
+**MVP (v0)** ✅ Complete  
 - GC login + dashboard    
 - Create project    
 - Upload files    
@@ -131,11 +162,35 @@ Fast to scaffold, secure by default, and matches Lovable's strengths.
 - Accept uploads    
 - View/manage bids  
 
-**v1**    
+**v1** 🔄 In Progress  
 - Download all bids (ZIP/CSV)    
 - Responsive mobile layout polish    
 - PDF preview viewer    
 - Countdown component  
+
+**Phase 3.5: Trade Selection Layer** 📋 Planned  
+- Create `project_trades` table
+- Compile CSLB license type list
+- Add trade multi-select to `/projects/new`
+- Display selected trades on project admin page
+
+**Phase 4: Subcontractor Directory** 📋 Planned  
+- Create `subcontractors` table (BidBox Network Pool, starts empty)
+- Create `gc_subcontractors` table (GC's Private Pool)
+- Build directory management UI
+- Map subs to project trades
+- (Future) Seed BidBox Network with real data
+
+**Phase 5: Engagement Tracking** 📋 Planned  
+- Track plan views (enhance existing)
+- Track file downloads
+- Display engagement status per sub
+
+**Phase 6: Call List Generator** 📋 Planned  
+- Build ranking logic (Not opened → Viewed → Downloaded → Submitted)
+- Merge two pools for project coverage
+- Generate Excel (.xlsx) grouped by trade
+- Add "Generate Call List (Excel)" button
 
 **v2+ (future)**    
 - Sub invite batching (email/SMS)    
@@ -143,6 +198,7 @@ Fast to scaffold, secure by default, and matches Lovable's strengths.
 - Bid analytics + coverage map    
 - AI bid diff tools    
 - Multi-user GC orgs
+- Compliance tracking (COIs, license expirations)
 
 ---
 
