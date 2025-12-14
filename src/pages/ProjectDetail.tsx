@@ -17,6 +17,7 @@ import { FileDropzone } from "@/components/FileDropzone";
 import { TradeMultiSelect } from "@/components/TradeMultiSelect";
 import { TradeType, getCategoryColor } from "@/lib/tradeTypes";
 import { cn } from "@/lib/utils";
+import { CallListButton } from "@/components/CallListButton";
 import {
   Select,
   SelectContent,
@@ -753,7 +754,7 @@ const ProjectDetail = () => {
           <div className="flex justify-between items-start mb-4 gap-4">
             <div className="space-y-2">
               <Label>Bid Box Link</Label>
-              <div>
+              <div className="flex gap-2">
                 <Button
                   variant="outline"
                   size="sm"
@@ -771,6 +772,12 @@ const ProjectDetail = () => {
                     </>
                   )}
                 </Button>
+                <CallListButton
+                  projectId={project.id}
+                  projectName={project.name}
+                  gcId={project.gc_id}
+                  hasSelectedTrades={projectTrades.length > 0}
+                />
               </div>
             </div>
 
