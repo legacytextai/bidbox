@@ -327,7 +327,10 @@ export default function SubcontractorDirectory() {
 
         {/* Add/Edit Dialog */}
         <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogContent 
+            className="max-w-2xl max-h-[90vh]"
+            onWheel={(e) => e.stopPropagation()}
+          >
             <DialogHeader>
               <DialogTitle>
                 {editingSub ? "Edit Subcontractor" : "Add Subcontractor"}
