@@ -72,7 +72,7 @@ export function TradeMultiSelect({
 
   return (
     <div className="space-y-3">
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover open={open} onOpenChange={setOpen} modal={false}>
         <PopoverTrigger asChild>
           <Button
             variant="outline"
