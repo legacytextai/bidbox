@@ -705,7 +705,10 @@ const ProjectDetail = () => {
                     Edit
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="sm:max-w-[500px]">
+                <DialogContent 
+                  className="sm:max-w-[500px]"
+                  onWheel={(e) => e.stopPropagation()}
+                >
                   <DialogHeader>
                     <DialogTitle>Edit Required Trades</DialogTitle>
                     <DialogDescription>
