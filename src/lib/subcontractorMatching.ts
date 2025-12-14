@@ -265,10 +265,23 @@ export async function updateGCSubcontractor(
   },
   tradeTypeIds?: string[]
 ) {
+  // Sanitize empty strings to null for nullable fields (PostgreSQL date type cannot accept "")
+  const sanitizedData = {
+    ...subData,
+    license_number: subData.license_number || null,
+    license_status: subData.license_status || null,
+    license_expiration: subData.license_expiration || null,
+    contact_name: subData.contact_name || null,
+    email: subData.email || null,
+    phone: subData.phone || null,
+    city: subData.city || null,
+    notes: subData.notes || null,
+  };
+
   // Update the subcontractor
   const { error: subError } = await supabase
     .from('gc_subcontractors')
-    .update(subData)
+    .update(sanitizedData)
     .eq('id', subId);
 
   if (subError) {
