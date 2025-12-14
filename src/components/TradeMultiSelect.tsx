@@ -92,7 +92,7 @@ export function TradeMultiSelect({
         <PopoverContent className="w-[400px] p-0 bg-background z-50 pointer-events-auto" align="start">
           <Command>
             <CommandInput placeholder="Search trades by name or code..." />
-            <CommandList className="max-h-[300px] overflow-y-auto pointer-events-auto">
+            <CommandList className="max-h-[300px] overflow-y-auto overscroll-contain pointer-events-auto">
               <CommandEmpty>No trades found.</CommandEmpty>
               {Object.entries(groupedTrades).map(([category, categoryTrades]) => (
                 <CommandGroup key={category} heading={category}>
