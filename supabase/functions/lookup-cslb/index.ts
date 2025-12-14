@@ -43,9 +43,151 @@ interface CSLBLookupResult {
   city?: string;
   state_code?: string;
   classifications?: CSLBClassification[];
+  trade_type_ids?: string[];
   error?: string;
   cached?: boolean;
   manual_entry_required?: boolean;
+  skip_enrichment?: boolean;
+  reason?: string;
+}
+
+/**
+ * Normalize CSLB classification code to match trade_types format
+ * "C10" → "C-10", "C-10" → "C-10", "A" → "A", "B" → "B"
+ */
+function normalizeCSLBCode(rawCode: string): string {
+  const cleaned = rawCode.trim().toUpperCase();
+  // Match pattern like "C10", "C-10", "A", "B", "C61/D21"
+  const match = cleaned.match(/^([ABC])(-?)(\d+)?/);
+  if (match) {
+    const letter = match[1];
+    const number = match[3];
+    return number ? `${letter}-${number}` : letter;
+  }
+  return cleaned;
+}
+
+/**
+ * Parse license status text to a normalized value
+ */
+function parseStatus(statusText: string): string {
+  const lower = statusText.toLowerCase();
+  if (lower.includes('current') && lower.includes('active')) return 'active';
+  if (lower.includes('expired')) return 'expired';
+  if (lower.includes('inactive')) return 'inactive';
+  if (lower.includes('suspended')) return 'suspended';
+  if (lower.includes('revoked')) return 'revoked';
+  return 'unknown';
+}
+
+/**
+ * Parse date from CSLB format (MM/DD/YYYY) to ISO format (YYYY-MM-DD)
+ */
+function parseDate(dateText: string): string | null {
+  const match = dateText.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (match) {
+    const [, month, day, year] = match;
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+  }
+  return null;
+}
+
+/**
+ * Extract text content from HTML by finding content between specific patterns
+ */
+function extractById(html: string, id: string): string | null {
+  // Look for span or element with the given id
+  const patterns = [
+    new RegExp(`id="${id}"[^>]*>([^<]+)<`, 'i'),
+    new RegExp(`id='${id}'[^>]*>([^<]+)<`, 'i'),
+    new RegExp(`id=${id}[^>]*>([^<]+)<`, 'i'),
+  ];
+  
+  for (const pattern of patterns) {
+    const match = html.match(pattern);
+    if (match && match[1]) {
+      return match[1].trim();
+    }
+  }
+  return null;
+}
+
+/**
+ * Extract classifications from the CSLB page
+ * Classifications appear in a table with links like "C10 - ELECTRICAL"
+ */
+function extractClassifications(html: string): { code: string; name: string }[] {
+  const classifications: { code: string; name: string }[] = [];
+  
+  // Look for the classification table section
+  // Classifications appear as links in format: "C10 - ELECTRICAL" or "C-10 - ELECTRICAL"
+  const classRegex = /<a[^>]*>([ABC]-?\d*)\s*-\s*([^<]+)<\/a>/gi;
+  let match;
+  
+  while ((match = classRegex.exec(html)) !== null) {
+    const rawCode = match[1].trim();
+    const name = match[2].trim();
+    const code = normalizeCSLBCode(rawCode);
+    
+    // Avoid duplicates
+    if (!classifications.find(c => c.code === code)) {
+      classifications.push({ code, name });
+    }
+  }
+  
+  // Also try to find classifications in plain text format (backup)
+  if (classifications.length === 0) {
+    const plainRegex = /([ABC]-?\d+)\s*-\s*([A-Z][A-Z\s&\/]+)/g;
+    while ((match = plainRegex.exec(html)) !== null) {
+      const rawCode = match[1].trim();
+      const name = match[2].trim();
+      const code = normalizeCSLBCode(rawCode);
+      
+      if (!classifications.find(c => c.code === code)) {
+        classifications.push({ code, name });
+      }
+    }
+  }
+  
+  return classifications;
+}
+
+/**
+ * Extract company name and city from business info section
+ */
+function extractBusinessInfo(html: string): { companyName: string | null; city: string | null } {
+  let companyName: string | null = null;
+  let city: string | null = null;
+  
+  // Try to find the business name section
+  // Look for MainContent_BusInfo or similar
+  const busInfoMatch = html.match(/id="MainContent_BusInfo"[^>]*>([\s\S]*?)<\/span>/i);
+  if (busInfoMatch) {
+    const content = busInfoMatch[1];
+    // First line is usually company name, before <br>
+    const lines = content.split(/<br\s*\/?>/i);
+    if (lines[0]) {
+      companyName = lines[0].replace(/<[^>]+>/g, '').trim();
+    }
+    // City is usually in the address line (City, ST ZIP format)
+    for (const line of lines) {
+      const cityMatch = line.match(/([A-Z][A-Z\s]+),\s*CA\s+\d{5}/i);
+      if (cityMatch) {
+        city = cityMatch[1].trim();
+        break;
+      }
+    }
+  }
+  
+  // Fallback: look for business name in other locations
+  if (!companyName) {
+    const nameMatch = html.match(/Business Name[:\s]*<\/td>\s*<td[^>]*>([^<]+)/i);
+    if (nameMatch) {
+      companyName = nameMatch[1].trim();
+    }
+  }
+  
+  return { companyName, city };
 }
 
 serve(async (req) => {
@@ -72,13 +214,27 @@ serve(async (req) => {
 
     if (!license_number || typeof license_number !== 'string') {
       return new Response(
-        JSON.stringify({ success: false, error: 'License number is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ success: false, error: 'License number is required', skip_enrichment: true }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     // Clean the license number (remove spaces, dashes)
     const cleanLicense = license_number.replace(/[\s-]/g, '').toUpperCase();
+
+    // Validate format - California licenses are typically 5-7 digits
+    if (!/^\d{5,7}$/.test(cleanLicense)) {
+      console.log(`[lookup-cslb] Invalid format, skipping enrichment: ${cleanLicense}`);
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          skip_enrichment: true,
+          manual_entry_required: true,
+          reason: 'Invalid license format. California contractor licenses are 5-7 digits.'
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     console.log(`[lookup-cslb] Looking up license: ${cleanLicense}`);
 
@@ -97,6 +253,12 @@ serve(async (req) => {
 
     if (cached && !cacheError) {
       console.log(`[lookup-cslb] Cache hit for ${cleanLicense}`);
+      
+      // Extract trade_type_ids from cached classifications
+      const tradeTypeIds = (cached.classifications as CSLBClassification[] || [])
+        .filter(c => c.trade_type_id)
+        .map(c => c.trade_type_id as string);
+      
       return new Response(
         JSON.stringify({
           success: true,
@@ -107,46 +269,176 @@ serve(async (req) => {
           city: cached.city,
           state_code: cached.state_code,
           classifications: cached.classifications,
+          trade_type_ids: tradeTypeIds,
           cached: true,
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log(`[lookup-cslb] Cache miss for ${cleanLicense}`);
+    console.log(`[lookup-cslb] Cache miss for ${cleanLicense}, fetching from CSLB...`);
 
-    // NOTE: CSLB website uses JavaScript rendering which requires a browser or advanced scraping.
-    // For MVP, we return a "manual entry required" response.
-    // Future enhancement: Integrate Firecrawl or a headless browser service.
+    // Fetch from CSLB website
+    const cslbUrl = `https://www.cslb.ca.gov/onlineservices/checklicenseII/LicenseDetail.aspx?LicNum=${cleanLicense}`;
     
-    // Validate the license number format (California licenses are typically 6-7 digits)
-    // Return 200 with skip_enrichment for invalid formats (bulk import needs this to be non-blocking)
-    if (!/^\d{5,7}$/.test(cleanLicense)) {
-      console.log(`[lookup-cslb] Invalid format, skipping enrichment: ${cleanLicense}`);
+    let html: string;
+    try {
+      const response = await fetch(cslbUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.5',
+        },
+      });
+      
+      if (!response.ok) {
+        console.error(`[lookup-cslb] CSLB returned ${response.status}`);
+        return new Response(
+          JSON.stringify({
+            success: false,
+            skip_enrichment: true,
+            manual_entry_required: true,
+            reason: `CSLB website returned status ${response.status}`,
+            verification_url: cslbUrl,
+            license_number: cleanLicense,
+          }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      html = await response.text();
+    } catch (fetchError) {
+      console.error(`[lookup-cslb] Fetch error:`, fetchError);
       return new Response(
-        JSON.stringify({ 
-          success: false, 
+        JSON.stringify({
+          success: false,
           skip_enrichment: true,
           manual_entry_required: true,
-          reason: 'Invalid license format. California contractor licenses are 5-7 digits.'
+          reason: 'Failed to connect to CSLB website',
+          verification_url: cslbUrl,
+          license_number: cleanLicense,
         }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Return a helpful response indicating manual entry is needed
-    // We can still provide a link for the user to verify manually
-    console.log(`[lookup-cslb] CSLB scraping not available, suggesting manual entry for ${cleanLicense}`);
+    // Check if license was not found
+    if (html.includes('was not found') || html.includes('No record found') || html.includes('License Number Not Found')) {
+      console.log(`[lookup-cslb] License not found: ${cleanLicense}`);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          skip_enrichment: true,
+          manual_entry_required: true,
+          reason: 'License number not found in CSLB database',
+          verification_url: cslbUrl,
+          license_number: cleanLicense,
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log(`[lookup-cslb] Parsing CSLB page for ${cleanLicense}...`);
+
+    // Extract data from HTML
+    const { companyName, city } = extractBusinessInfo(html);
+    const statusText = extractById(html, 'MainContent_Status') || '';
+    const expirationText = extractById(html, 'MainContent_ExpDt') || '';
+    const rawClassifications = extractClassifications(html);
     
+    const licenseStatus = parseStatus(statusText);
+    const expirationDate = parseDate(expirationText);
+
+    console.log(`[lookup-cslb] Extracted: company=${companyName}, status=${licenseStatus}, exp=${expirationDate}, classifications=${rawClassifications.length}`);
+
+    // Map classification codes to trade_type_ids
+    const classificationCodes = rawClassifications.map(c => c.code);
+    let classifications: CSLBClassification[] = [];
+    let tradeTypeIds: string[] = [];
+
+    if (classificationCodes.length > 0) {
+      const { data: tradeTypes, error: tradeError } = await supabase
+        .from('trade_types')
+        .select('id, code, name')
+        .eq('state_code', 'CA')
+        .in('code', classificationCodes);
+
+      if (tradeError) {
+        console.error(`[lookup-cslb] Error fetching trade types:`, tradeError);
+      }
+
+      // Build classifications with trade_type_ids
+      classifications = rawClassifications.map(raw => {
+        const tradeType = tradeTypes?.find(t => t.code === raw.code);
+        return {
+          code: raw.code,
+          name: raw.name,
+          trade_type_id: tradeType?.id || null,
+        };
+      });
+
+      tradeTypeIds = classifications
+        .filter(c => c.trade_type_id)
+        .map(c => c.trade_type_id as string);
+
+      console.log(`[lookup-cslb] Mapped ${tradeTypeIds.length} trade_type_ids from ${classifications.length} classifications`);
+    }
+
+    // Validate we got at least some useful data
+    if (!companyName && classifications.length === 0) {
+      console.log(`[lookup-cslb] Could not parse useful data from CSLB page for ${cleanLicense}`);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          skip_enrichment: true,
+          manual_entry_required: true,
+          reason: 'Could not parse license details from CSLB page',
+          verification_url: cslbUrl,
+          license_number: cleanLicense,
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Cache the result
+    const cacheData = {
+      license_number: cleanLicense,
+      company_name: companyName,
+      license_status: licenseStatus,
+      expiration_date: expirationDate,
+      city: city,
+      state_code: 'CA',
+      classifications: classifications,
+      fetched_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days
+    };
+
+    const { error: insertError } = await supabase
+      .from('cslb_cache')
+      .upsert(cacheData, { onConflict: 'license_number' });
+
+    if (insertError) {
+      console.error(`[lookup-cslb] Cache insert error:`, insertError);
+      // Continue anyway, caching is not critical
+    } else {
+      console.log(`[lookup-cslb] Cached result for ${cleanLicense}`);
+    }
+
+    // Return success response
     return new Response(
       JSON.stringify({
-        success: false,
-        error: `CSLB auto-lookup is temporarily unavailable. Please verify license #${cleanLicense} at cslb.ca.gov and enter details manually.`,
-        manual_entry_required: true,
-        verification_url: `https://www.cslb.ca.gov/onlineservices/checklicenseII/LicenseDetail.aspx?LicNum=${cleanLicense}`,
+        success: true,
+        company_name: companyName,
         license_number: cleanLicense,
+        license_status: licenseStatus,
+        expiration_date: expirationDate,
+        city: city,
+        state_code: 'CA',
+        classifications: classifications,
+        trade_type_ids: tradeTypeIds,
+        cached: false,
       }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
@@ -154,10 +446,11 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         success: false, 
-        error: 'Internal server error',
-        manual_entry_required: true 
+        skip_enrichment: true,
+        manual_entry_required: true,
+        reason: 'Internal server error'
       }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });
