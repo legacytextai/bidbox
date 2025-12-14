@@ -28,10 +28,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, Pencil, Trash2, Users, Building2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Users, Building2, Upload } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { SubcontractorForm } from "@/components/SubcontractorForm";
+import { ExcelImportDialog } from "@/components/ExcelImportDialog";
 import {
   getAllGCSubcontractors,
   addGCSubcontractor,
@@ -55,6 +56,7 @@ export default function SubcontractorDirectory() {
   
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [subToDelete, setSubToDelete] = useState<GCSubcontractor | null>(null);
+  const [isImportOpen, setIsImportOpen] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -197,10 +199,16 @@ export default function SubcontractorDirectory() {
               Manage your private subcontractor directory. These subs will be matched to your projects based on required trades.
             </p>
           </div>
-          <Button onClick={handleAddNew}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Subcontractor
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setIsImportOpen(true)}>
+              <Upload className="h-4 w-4 mr-2" />
+              Import from Excel
+            </Button>
+            <Button onClick={handleAddNew}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Subcontractor
+            </Button>
+          </div>
         </div>
 
         {/* Content */}
@@ -364,6 +372,16 @@ export default function SubcontractorDirectory() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* Excel Import Dialog */}
+        {userId && (
+          <ExcelImportDialog
+            open={isImportOpen}
+            onOpenChange={setIsImportOpen}
+            userId={userId}
+            onImportComplete={loadData}
+          />
+        )}
       </div>
     </Layout>
   );
