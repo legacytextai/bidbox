@@ -195,12 +195,15 @@ export function ExcelImportDialog({
 
         let tradeTypeIds: string[] = [];
 
-        // Try CSLB enrichment if license number exists
-        if (row.license_number) {
+        // Try CSLB enrichment only if license number exists AND matches valid format
+        const validLicenseFormat = /^\d{5,7}$/;
+        const cleanLicense = row.license_number?.replace(/[\s-]/g, '') || '';
+        
+        if (cleanLicense && validLicenseFormat.test(cleanLicense)) {
           try {
-            const cslbData = await lookupCSLBLicense(row.license_number);
+            const cslbData = await lookupCSLBLicense(row.license_number!);
             
-            if (cslbData?.success) {
+            if (cslbData?.success && !cslbData?.skip_enrichment) {
               // Enrich with CSLB data
               if (cslbData.company_name) subData.company_name = cslbData.company_name;
               if (cslbData.license_status) subData.license_status = cslbData.license_status;
@@ -210,9 +213,8 @@ export function ExcelImportDialog({
               
               result.enriched++;
             }
-          } catch (cslbError) {
-            // CSLB lookup failed - continue without enrichment
-            console.log('CSLB lookup skipped:', cslbError);
+          } catch {
+            // CSLB lookup failed - continue silently without enrichment
           }
         }
 

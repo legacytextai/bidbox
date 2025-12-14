@@ -120,14 +120,17 @@ serve(async (req) => {
     // Future enhancement: Integrate Firecrawl or a headless browser service.
     
     // Validate the license number format (California licenses are typically 6-7 digits)
+    // Return 200 with skip_enrichment for invalid formats (bulk import needs this to be non-blocking)
     if (!/^\d{5,7}$/.test(cleanLicense)) {
+      console.log(`[lookup-cslb] Invalid format, skipping enrichment: ${cleanLicense}`);
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: 'Invalid license format. California contractor licenses are 5-7 digits.',
-          manual_entry_required: true
+          skip_enrichment: true,
+          manual_entry_required: true,
+          reason: 'Invalid license format. California contractor licenses are 5-7 digits.'
         }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
