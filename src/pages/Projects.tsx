@@ -7,6 +7,7 @@ import { Plus, Copy, CheckCircle2, Lock } from "lucide-react";
 import { Layout } from "@/components/Layout";
 import { formatInProjectTimezone } from "@/lib/timezoneUtils";
 import { useSubscription } from "@/hooks/useSubscription";
+import { getProjectDisplayStatus } from "@/lib/projectStatus";
 
 const FREE_PROJECT_LIMIT = 3;
 
@@ -150,15 +151,22 @@ const Projects = () => {
                   <h3 className="font-semibold text-lg text-foreground">
                     {project.name}
                   </h3>
-                  <span
-                    className={`px-2 py-1 text-xs font-medium rounded ${
-                      project.status === "LIVE"
-                        ? "bg-green-500/10 text-green-600"
-                        : "bg-gray-500/10 text-gray-600"
-                    }`}
-                  >
-                    {project.status}
-                  </span>
+                  {(() => {
+                    const displayStatus = getProjectDisplayStatus(project);
+                    return (
+                      <span
+                        className={`px-2 py-1 text-xs font-medium rounded ${
+                          displayStatus.color === 'green'
+                            ? "bg-green-500/10 text-green-600"
+                            : displayStatus.color === 'red'
+                            ? "bg-destructive/10 text-destructive"
+                            : "bg-gray-500/10 text-gray-600"
+                        }`}
+                      >
+                        {displayStatus.label}
+                      </span>
+                    );
+                  })()}
                 </div>
                 
                 <p className="text-sm text-muted-foreground mb-2">

@@ -18,6 +18,7 @@ import { TradeMultiSelect } from "@/components/TradeMultiSelect";
 import { TradeType, getCategoryColor } from "@/lib/tradeTypes";
 import { cn } from "@/lib/utils";
 import { CallListButton } from "@/components/CallListButton";
+import { getProjectDisplayStatus } from "@/lib/projectStatus";
 import {
   Select,
   SelectContent,
@@ -620,18 +621,31 @@ const ProjectDetail = () => {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-3">
             <div className="space-y-2">
               <Label>Status</Label>
-              <Select
-                value={project.status}
-                onValueChange={(value) => updateProject({ status: value })}
-              >
-                <SelectTrigger className={project.status === "LIVE" ? "text-green-600 font-semibold" : "text-muted-foreground"}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="LIVE" className="text-green-600 font-semibold">LIVE</SelectItem>
-                  <SelectItem value="DEAD" className="text-muted-foreground">DEAD</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="flex items-center gap-2">
+                <Select
+                  value={project.status}
+                  onValueChange={(value) => updateProject({ status: value })}
+                >
+                  <SelectTrigger className={project.status === "LIVE" ? "text-green-600 font-semibold" : "text-muted-foreground"}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="LIVE" className="text-green-600 font-semibold">LIVE</SelectItem>
+                    <SelectItem value="DEAD" className="text-muted-foreground">DEAD</SelectItem>
+                  </SelectContent>
+                </Select>
+                {(() => {
+                  const displayStatus = getProjectDisplayStatus(project);
+                  if (displayStatus.label === 'CLOSED') {
+                    return (
+                      <Badge variant="destructive" className="ml-1">
+                        CLOSED
+                      </Badge>
+                    );
+                  }
+                  return null;
+                })()}
+              </div>
             </div>
 
             <div className="space-y-2">
