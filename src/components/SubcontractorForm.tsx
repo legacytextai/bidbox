@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { TradeMultiSelect } from "@/components/TradeMultiSelect";
-import { Search, Loader2, CheckCircle, AlertCircle } from "lucide-react";
+import { Search, Loader2, CheckCircle, AlertCircle, ExternalLink } from "lucide-react";
 import { lookupCSLBLicense } from "@/lib/subcontractorMatching";
 import { getCategoryColor } from "@/lib/tradeTypes";
 
@@ -54,7 +54,7 @@ export function SubcontractorForm({
 
   const [selectedTradeIds, setSelectedTradeIds] = useState<string[]>(initialTradeIds);
   const [isLookingUp, setIsLookingUp] = useState(false);
-  const [lookupStatus, setLookupStatus] = useState<"idle" | "success" | "error">("idle");
+  const [lookupStatus, setLookupStatus] = useState<"idle" | "success" | "error" | "info">("idle");
   const [lookupMessage, setLookupMessage] = useState("");
 
   const handleLookup = async () => {
@@ -93,12 +93,12 @@ export function SubcontractorForm({
         setLookupStatus("success");
         setLookupMessage(`Found: ${result.company_name}${result.cached ? " (cached)" : ""}`);
       } else if (result.manual_entry_required) {
-        // Manual entry needed - open verification link
-        setLookupStatus("error");
-        setLookupMessage(result.error || "Please enter details manually.");
+        // Manual entry needed - open verification link (this is informational, not an error)
         if (result.verification_url) {
           window.open(result.verification_url, '_blank');
         }
+        setLookupStatus("info");
+        setLookupMessage("CSLB verification page opened — enter details from there.");
       } else {
         setLookupStatus("error");
         setLookupMessage(result.error || "License not found");
@@ -153,10 +153,14 @@ export function SubcontractorForm({
 
         {lookupStatus !== "idle" && (
           <div className={`flex items-center gap-2 text-sm ${
-            lookupStatus === "success" ? "text-green-600" : "text-destructive"
+            lookupStatus === "success" ? "text-green-600" : 
+            lookupStatus === "info" ? "text-blue-600" : 
+            "text-destructive"
           }`}>
             {lookupStatus === "success" ? (
               <CheckCircle className="h-4 w-4" />
+            ) : lookupStatus === "info" ? (
+              <ExternalLink className="h-4 w-4" />
             ) : (
               <AlertCircle className="h-4 w-4" />
             )}
