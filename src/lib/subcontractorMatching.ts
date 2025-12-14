@@ -162,18 +162,25 @@ export async function getAllGCSubcontractors(gcId: string): Promise<GCSubcontrac
 
 /**
  * Lookup a CSLB license and return the data
+ * This function NEVER throws - it always returns a result object.
+ * For bulk import, failed lookups return { success: false, skip_enrichment: true }
  */
 export async function lookupCSLBLicense(licenseNumber: string) {
-  const { data, error } = await supabase.functions.invoke('lookup-cslb', {
-    body: { license_number: licenseNumber },
-  });
+  try {
+    const { data, error } = await supabase.functions.invoke('lookup-cslb', {
+      body: { license_number: licenseNumber },
+    });
 
-  if (error) {
-    console.error('CSLB lookup error:', error);
-    throw new Error('Failed to lookup license');
+    if (error) {
+      console.log('CSLB lookup skipped (non-fatal):', error);
+      return { success: false, skip_enrichment: true };
+    }
+
+    return data;
+  } catch (err) {
+    console.log('CSLB lookup exception (non-fatal):', err);
+    return { success: false, skip_enrichment: true };
   }
-
-  return data;
 }
 
 /**
