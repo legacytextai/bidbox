@@ -1,7 +1,7 @@
 # BidBox Implementation Tasks
 
 **Source of Truth for Feature Implementation**  
-Last Updated: 2025-12-07
+Last Updated: 2025-12-14
 
 ---
 
@@ -1097,15 +1097,28 @@ Before marking MVP complete:
 
 ---
 
-## 🎯 Phase 4: Subcontractor Directory (NEW)
+## ✅ Phase 4: Subcontractor Directory
 
-> **Planned**: Two-pool subcontractor architecture with state-agnostic design
+### Phase 4 Subcontractor Status
+
+**Completed:**
+- [x] Task 4.1: `subcontractors` table (BidBox Network Pool)
+- [x] Task 4.2: `gc_subcontractors` table (GC Private Pool)
+- [x] Task 4.3: Directory Management UI at `/settings/subcontractors`
+- [x] Task 4.4: Junction tables for trade mapping (`sub_trade_mappings`, `gc_sub_trade_mappings`)
+- [x] Admin Network Seeder UI at `/admin/network-subs`
+- [x] CSLB License Lookup edge function (`lookup-cslb`) with caching (`cslb_cache` table)
+
+**Remaining:**
+- [ ] Task 4.5: Seed BidBox Network Pool (see Phase 7)
+
+---
 
 ### ⚠️ IMPORTANT: All subcontractor tables use `trade_type_id` FK, NOT hard-coded license strings
 
-### Task 4.1: Create `subcontractors` Table (BidBox Network Pool)
+### Task 4.1: Create `subcontractors` Table (BidBox Network Pool) [✅ COMPLETED]
 
-- [ ] Database migration (starts empty, seed later):
+- [x] Database migration (starts empty, seed later):
   ```sql
   CREATE TABLE public.subcontractors (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1129,9 +1142,9 @@ Before marking MVP complete:
     USING (is_verified = true);
   ```
 
-### Task 4.2: Create `gc_subcontractors` Table (GC's Private Pool)
+### Task 4.2: Create `gc_subcontractors` Table (GC's Private Pool) [✅ COMPLETED]
 
-- [ ] Database migration:
+- [x] Database migration:
   ```sql
   CREATE TABLE public.gc_subcontractors (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1153,16 +1166,17 @@ Before marking MVP complete:
     USING (gc_id = auth.uid());
   ```
 
-### Task 4.3: Build Directory Management UI
+### Task 4.3: Build Directory Management UI [✅ COMPLETED]
 
-- [ ] Create `/subcontractors` page or section in settings
-- [ ] Add/edit/delete private subs UI (select trade from trade_types dropdown)
-- [ ] View network subs (read-only)
+- [x] Create `/subcontractors` page or section in settings → `/settings/subcontractors`
+- [x] Add/edit/delete private subs UI (select trade from `trade_types` dropdown via `TradeMultiSelect`)
+- [x] Admin Network Seeder at `/admin/network-subs` for managing BidBox Network Pool
 
-### Task 4.4: Map Subs to Project Trades
+### Task 4.4: Map Subs to Project Trades [✅ COMPLETED]
 
-- [ ] Auto-match subs by `trade_type_id` (FK join, not string matching)
-- [ ] Display matched subs per trade
+- [x] Junction tables created (`gc_sub_trade_mappings`, `sub_trade_mappings`)
+- [x] Auto-match subs by `trade_type_id` (FK join, not string matching)
+- [ ] Display matched subs per trade (planned for Phase 6: Call List Generator)
 
 ### Task 4.5: Seed BidBox Network Pool (FUTURE)
 
@@ -1170,6 +1184,8 @@ Before marking MVP complete:
 - [ ] Map each to appropriate `trade_type_id`
 - [ ] Import into `subcontractors` table
 - [ ] Mark verified subs
+
+> **Note:** See Phase 7: CSLB Network Directory Seeding Initiative for detailed seeding strategy
 
 ---
 
