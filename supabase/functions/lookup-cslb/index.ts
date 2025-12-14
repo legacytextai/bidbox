@@ -94,19 +94,20 @@ function parseDate(dateText: string): string | null {
 
 /**
  * Extract text content from HTML by finding content between specific patterns
+ * Handles nested tags and different closing elements (td, span, div)
  */
 function extractById(html: string, id: string): string | null {
-  // Look for span or element with the given id
+  // Look for element with the given id - capture everything up to closing tag
   const patterns = [
-    new RegExp(`id="${id}"[^>]*>([^<]+)<`, 'i'),
-    new RegExp(`id='${id}'[^>]*>([^<]+)<`, 'i'),
-    new RegExp(`id=${id}[^>]*>([^<]+)<`, 'i'),
+    new RegExp(`id="${id}"[^>]*>([\\s\\S]*?)<\\/(?:td|span|div)>`, 'i'),
+    new RegExp(`id='${id}'[^>]*>([\\s\\S]*?)<\\/(?:td|span|div)>`, 'i'),
   ];
   
   for (const pattern of patterns) {
     const match = html.match(pattern);
     if (match && match[1]) {
-      return match[1].trim();
+      // Strip HTML tags and return plain text
+      return match[1].replace(/<[^>]+>/g, '').trim();
     }
   }
   return null;
@@ -159,9 +160,9 @@ function extractBusinessInfo(html: string): { companyName: string | null; city: 
   let companyName: string | null = null;
   let city: string | null = null;
   
-  // Try to find the business name section
-  // Look for MainContent_BusInfo or similar
-  const busInfoMatch = html.match(/id="MainContent_BusInfo"[^>]*>([\s\S]*?)<\/span>/i);
+  // Try to find the business name section - CSLB uses <td> elements
+  // Pattern matches: id="MainContent_BusInfo"...>CONTENT</td>
+  const busInfoMatch = html.match(/id="MainContent_BusInfo"[^>]*>([\s\S]*?)<\/td>/i);
   if (busInfoMatch) {
     const content = busInfoMatch[1];
     // First line is usually company name, before <br>
@@ -171,7 +172,7 @@ function extractBusinessInfo(html: string): { companyName: string | null; city: 
     }
     // City is usually in the address line (City, ST ZIP format)
     for (const line of lines) {
-      const cityMatch = line.match(/([A-Z][A-Z\s]+),\s*CA\s+\d{5}/i);
+      const cityMatch = line.match(/([A-Z][A-Za-z\s]+),\s*CA\s+\d{5}/i);
       if (cityMatch) {
         city = cityMatch[1].trim();
         break;
@@ -339,6 +340,8 @@ serve(async (req) => {
     }
 
     console.log(`[lookup-cslb] Parsing CSLB page for ${cleanLicense}...`);
+    console.log(`[lookup-cslb] HTML preview (first 500 chars): ${html.substring(0, 500).replace(/\n/g, ' ')}`);
+    console.log(`[lookup-cslb] HTML contains BusInfo: ${html.includes('MainContent_BusInfo')}, Status: ${html.includes('MainContent_Status')}, ClassTable: ${html.includes('MainContent_ClassCellTable')}`);
 
     // Extract data from HTML
     const { companyName, city } = extractBusinessInfo(html);
