@@ -89,10 +89,10 @@ export function TradeMultiSelect({
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-[400px] p-0 bg-background z-50" align="start">
+        <PopoverContent className="w-[400px] p-0 bg-background z-50 pointer-events-auto" align="start">
           <Command>
             <CommandInput placeholder="Search trades by name or code..." />
-            <CommandList className="max-h-[300px]">
+            <CommandList className="max-h-[300px] overflow-y-auto pointer-events-auto">
               <CommandEmpty>No trades found.</CommandEmpty>
               {Object.entries(groupedTrades).map(([category, categoryTrades]) => (
                 <CommandGroup key={category} heading={category}>
