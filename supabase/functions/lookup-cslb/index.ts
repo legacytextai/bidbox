@@ -284,13 +284,27 @@ serve(async (req) => {
     
     let html: string;
     try {
+      // More complete browser headers to avoid being blocked
       const response = await fetch(cslbUrl, {
+        method: 'GET',
+        redirect: 'follow',
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.5',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Accept-Encoding': 'gzip, deflate, br',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
+          'Sec-Fetch-Dest': 'document',
+          'Sec-Fetch-Mode': 'navigate',
+          'Sec-Fetch-Site': 'none',
+          'Sec-Fetch-User': '?1',
+          'Upgrade-Insecure-Requests': '1',
+          'Connection': 'keep-alive',
         },
       });
+      
+      console.log(`[lookup-cslb] CSLB response status: ${response.status}, redirected: ${response.redirected}, finalURL: ${response.url}`);
       
       if (!response.ok) {
         console.error(`[lookup-cslb] CSLB returned ${response.status}`);
@@ -308,6 +322,7 @@ serve(async (req) => {
       }
       
       html = await response.text();
+      console.log(`[lookup-cslb] Received ${html.length} bytes of HTML`);
     } catch (fetchError) {
       console.error(`[lookup-cslb] Fetch error:`, fetchError);
       return new Response(
