@@ -170,6 +170,36 @@ Fast to scaffold, secure by default, and matches Lovable's strengths.
 
 ---
 
+### 🔒 Security Decisions (Audit Reference)
+
+> **Last Reviewed**: 2025-12-15
+
+#### SD-001: Two-Pool Subcontractor Access Model
+
+**Decision**: The `subcontractors` table (BidBox Network Pool) is intentionally readable by ALL authenticated users. This is NOT a security vulnerability.
+
+**Rationale**:
+- The Network Pool is a **shared, BidBox-owned directory** populated via CSLB scraping and admin curation
+- Cross-GC visibility is a **designed feature**, not a bug — it enables the Call List Generator to provide instant coverage
+- The table has **no ownership column** (`gc_id`, `owner_id`, `created_by`) by design
+- Competitor intelligence concerns are a business decision, not a security flaw
+
+**Correct Access Model**:
+| Table | Ownership | Authenticated Access | Public Access |
+|-------|-----------|---------------------|---------------|
+| `subcontractors` | BidBox (shared) | ✅ All authenticated | ❌ Blocked |
+| `gc_subcontractors` | Per-GC (`gc_id`) | ✅ Own rows only | ❌ Blocked |
+
+**Do NOT**:
+- Add ownership columns to `subcontractors`
+- Restrict `subcontractors` to admin-only without product decision
+- Merge the two-pool model into a single table
+- Flag authenticated network pool access as a vulnerability
+
+**References**: `docs/gc-control-center-prd.md` Section 6, `docs/tasks.md` Security Decisions, Lovable memory `architecture/two-pool-subcontractor-model`
+
+---
+
 ### 🗺️ Phased Roadmap
 
 **MVP (v0)** ✅ Complete  

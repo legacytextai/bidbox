@@ -126,6 +126,33 @@ The Call List Generator pulls from **two distinct pools**:
 
 **Result:** GC has an actionable call sheet ready immediately.
 
+### Security Model (Audit Reference)
+
+> **Decision ID**: SD-001  
+> **Last Reviewed**: 2025-12-15  
+> **Status**: Final — Do not reopen without product review
+
+The two-pool architecture has **intentionally different access rules**:
+
+| Pool | Table | Access Rule | Rationale |
+|------|-------|-------------|-----------|
+| Network Pool | `subcontractors` | All authenticated users | Shared directory, BidBox-owned, no GC ownership |
+| Private Pool | `gc_subcontractors` | GC's own rows only | Proprietary contact list, strict RLS via `gc_id` |
+
+**Why Network Pool is shared**:
+- Enables instant coverage for GCs with empty private pools
+- Powers Call List Generator without requiring GC to build directory first
+- Creates network effects (more subs → more value → more GCs)
+
+**This is NOT a vulnerability**:
+- Unauthenticated access is blocked (RLS requires `auth.uid() IS NOT NULL`)
+- Competitor browsing is a business concern, not a security flaw
+- If business decides to restrict visibility, use security definer functions scoped to project trades
+
+**Do NOT flag as security issue**: Cross-GC visibility in `subcontractors` table.
+
+**References**: `docs/masterplan.md` Security Decisions, `docs/tasks.md` Security Decisions
+
 ---
 
 ## 7. Queen Bee Features
