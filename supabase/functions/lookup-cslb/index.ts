@@ -279,41 +279,71 @@ serve(async (req) => {
 
     console.log(`[lookup-cslb] Cache miss for ${cleanLicense}, fetching from CSLB...`);
 
-    // Fetch from CSLB website
+    // Fetch from CSLB website using Firecrawl (CSLB blocks direct server-side fetch)
     const cslbUrl = `https://www.cslb.ca.gov/onlineservices/checklicenseII/LicenseDetail.aspx?LicNum=${cleanLicense}`;
     
     let html: string;
     try {
-      // More complete browser headers to avoid being blocked
-      const response = await fetch(cslbUrl, {
-        method: 'GET',
-        redirect: 'follow',
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.9',
-          'Accept-Encoding': 'gzip, deflate, br',
-          'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache',
-          'Sec-Fetch-Dest': 'document',
-          'Sec-Fetch-Mode': 'navigate',
-          'Sec-Fetch-Site': 'none',
-          'Sec-Fetch-User': '?1',
-          'Upgrade-Insecure-Requests': '1',
-          'Connection': 'keep-alive',
-        },
-      });
-      
-      console.log(`[lookup-cslb] CSLB response status: ${response.status}, redirected: ${response.redirected}, finalURL: ${response.url}`);
-      
-      if (!response.ok) {
-        console.error(`[lookup-cslb] CSLB returned ${response.status}`);
+      const firecrawlApiKey = Deno.env.get('FIRECRAWL_API_KEY');
+      if (!firecrawlApiKey) {
+        console.error(`[lookup-cslb] FIRECRAWL_API_KEY not configured`);
         return new Response(
           JSON.stringify({
             success: false,
             skip_enrichment: true,
             manual_entry_required: true,
-            reason: `CSLB website returned status ${response.status}`,
+            reason: 'CSLB lookup service not configured',
+            verification_url: cslbUrl,
+            license_number: cleanLicense,
+          }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      console.log(`[lookup-cslb] Fetching CSLB page via Firecrawl: ${cslbUrl}`);
+      
+      const firecrawlResponse = await fetch('https://api.firecrawl.dev/v1/scrape', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${firecrawlApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url: cslbUrl,
+          formats: ['html'],
+          waitFor: 2000,
+        }),
+      });
+
+      if (!firecrawlResponse.ok) {
+        const errorText = await firecrawlResponse.text();
+        console.error(`[lookup-cslb] Firecrawl error: ${firecrawlResponse.status} - ${errorText}`);
+        return new Response(
+          JSON.stringify({
+            success: false,
+            skip_enrichment: true,
+            manual_entry_required: true,
+            reason: 'Failed to fetch CSLB page',
+            verification_url: cslbUrl,
+            license_number: cleanLicense,
+          }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const firecrawlData = await firecrawlResponse.json();
+      
+      // Firecrawl returns data nested in data.html
+      html = firecrawlData.data?.html || firecrawlData.html || '';
+      
+      if (!html) {
+        console.error(`[lookup-cslb] Firecrawl returned no HTML content`);
+        return new Response(
+          JSON.stringify({
+            success: false,
+            skip_enrichment: true,
+            manual_entry_required: true,
+            reason: 'Could not retrieve CSLB page content',
             verification_url: cslbUrl,
             license_number: cleanLicense,
           }),
@@ -321,16 +351,15 @@ serve(async (req) => {
         );
       }
       
-      html = await response.text();
-      console.log(`[lookup-cslb] Received ${html.length} bytes of HTML`);
+      console.log(`[lookup-cslb] Received ${html.length} bytes of HTML from Firecrawl`);
     } catch (fetchError) {
-      console.error(`[lookup-cslb] Fetch error:`, fetchError);
+      console.error(`[lookup-cslb] Firecrawl fetch error:`, fetchError);
       return new Response(
         JSON.stringify({
           success: false,
           skip_enrichment: true,
           manual_entry_required: true,
-          reason: 'Failed to connect to CSLB website',
+          reason: 'Failed to connect to CSLB lookup service',
           verification_url: cslbUrl,
           license_number: cleanLicense,
         }),
