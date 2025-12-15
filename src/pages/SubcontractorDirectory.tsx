@@ -232,18 +232,22 @@ export default function SubcontractorDirectory() {
               Manage your private subcontractor directory. These subs will be matched to your projects based on required trades.
             </p>
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setIsImportOpen(true)}>
-              <Upload className="h-4 w-4 mr-2" />
-              Import from Excel
-            </Button>
-            <Button onClick={handleAddNew}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Subcontractor
-            </Button>
+          <div className="flex flex-col gap-2">
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setIsImportOpen(true)}>
+                <Upload className="h-4 w-4 mr-2" />
+                Import from Excel
+              </Button>
+              <Button onClick={handleAddNew}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Subcontractor
+              </Button>
+            </div>
             {subcontractors.length > 0 && (
               <Button 
                 variant="destructive" 
+                size="sm"
+                className="self-end"
                 onClick={() => setDeleteAllConfirmOpen(true)}
               >
                 <Trash2 className="h-4 w-4 mr-2" />
