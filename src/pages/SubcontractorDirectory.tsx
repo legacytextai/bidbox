@@ -57,6 +57,8 @@ export default function SubcontractorDirectory() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [subToDelete, setSubToDelete] = useState<GCSubcontractor | null>(null);
   const [isImportOpen, setIsImportOpen] = useState(false);
+  const [deleteAllConfirmOpen, setDeleteAllConfirmOpen] = useState(false);
+  const [isDeletingAll, setIsDeletingAll] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -121,6 +123,34 @@ export default function SubcontractorDirectory() {
     } finally {
       setDeleteConfirmOpen(false);
       setSubToDelete(null);
+    }
+  };
+
+  const handleDeleteAllConfirm = async () => {
+    if (!userId || subcontractors.length === 0) return;
+
+    setIsDeletingAll(true);
+    try {
+      // Delete all subcontractors one by one
+      for (const sub of subcontractors) {
+        await deleteGCSubcontractor(sub.id);
+      }
+      setSubcontractors([]);
+      toast({
+        title: "Directory Cleared",
+        description: `All ${subcontractors.length} subcontractors have been removed.`,
+      });
+    } catch (error) {
+      console.error("Delete all error:", error);
+      toast({
+        title: "Error",
+        description: "Failed to delete all subcontractors",
+        variant: "destructive",
+      });
+      await loadData(); // Refresh to get accurate state
+    } finally {
+      setIsDeletingAll(false);
+      setDeleteAllConfirmOpen(false);
     }
   };
 
@@ -234,7 +264,20 @@ export default function SubcontractorDirectory() {
                   <TableHead>Trades</TableHead>
                   <TableHead>Contact</TableHead>
                   <TableHead>City</TableHead>
-                  <TableHead className="w-[100px]">Actions</TableHead>
+                  <TableHead className="w-[120px]">
+                    <div className="flex flex-col items-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+                        onClick={() => setDeleteAllConfirmOpen(true)}
+                      >
+                        <Trash2 className="h-3 w-3 mr-1" />
+                        Delete All
+                      </Button>
+                      <span className="text-xs text-muted-foreground">Actions</span>
+                    </div>
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -371,6 +414,28 @@ export default function SubcontractorDirectory() {
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               >
                 Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Delete All Confirmation */}
+        <AlertDialog open={deleteAllConfirmOpen} onOpenChange={setDeleteAllConfirmOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete All Subcontractors?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently remove <strong>all {subcontractors.length} subcontractors</strong> from your directory. This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isDeletingAll}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDeleteAllConfirm}
+                disabled={isDeletingAll}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {isDeletingAll ? "Deleting..." : "Delete All"}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
