@@ -26,6 +26,49 @@ Last Updated: 2025-12-14
 
 ---
 
+## 🔐 Security Decisions (Audit Reference)
+
+> **Purpose**: Document intentional security architecture decisions to prevent false-positive vulnerability reports.
+
+---
+
+### SD-001: Two-Pool Subcontractor Access Model [FINAL]
+
+**Date**: 2025-12-15  
+**Status**: Reviewed and closed — Do not reopen without product decision
+
+**Summary**: BidBox uses two distinct subcontractor tables with different access models:
+
+1. **`subcontractors`** (Network Pool)
+   - Shared, BidBox-owned directory
+   - Readable by ALL authenticated users (intentional)
+   - No `gc_id` or ownership column (by design)
+   - Populated via CSLB scraping, admin curation
+
+2. **`gc_subcontractors`** (Private Pool)
+   - Per-GC private directory
+   - Readable ONLY by owning GC (strict RLS via `gc_id`)
+   - Populated via Excel import, manual entry
+
+**RLS Policies**:
+- `subcontractors`: `auth.uid() IS NOT NULL` (authenticated access)
+- `gc_subcontractors`: `gc_id = auth.uid()` (owner-only access)
+
+**Why NOT a vulnerability**:
+- Network Pool shared access is a **product feature**, not a security flaw
+- Competitor intelligence concerns are business decisions
+- Unauthenticated/public access is blocked
+- Private Pool remains strictly isolated
+
+**Future audits**: If flagged as "PUBLIC_SENSITIVE_DATA" or similar, reference this decision before implementing restrictions.
+
+**References**: 
+- `docs/masterplan.md` → Security Decisions
+- `docs/gc-control-center-prd.md` → Section 6 Security Model
+- Lovable memory: `architecture/two-pool-subcontractor-model`
+
+---
+
 ## 🔴 Phase 0: CRITICAL SECURITY FIXES (DO FIRST)
 
 > **BLOCKER**: These vulnerabilities expose ALL project data to the public internet. Must fix before any new features.
