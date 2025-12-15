@@ -265,10 +265,10 @@ export function ExcelImportDialog({
           <p className="text-sm text-muted-foreground mb-4">
             or click to browse
           </p>
-          <Button variant="outline" type="button">
-            <Upload className="h-4 w-4 mr-2" />
+          <span className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2 transition-colors cursor-pointer">
+            <Upload className="h-4 w-4" />
             Choose File
-          </Button>
+          </span>
         </label>
       </div>
 
