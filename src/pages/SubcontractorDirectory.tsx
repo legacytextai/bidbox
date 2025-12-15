@@ -57,6 +57,8 @@ export default function SubcontractorDirectory() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [subToDelete, setSubToDelete] = useState<GCSubcontractor | null>(null);
   const [isImportOpen, setIsImportOpen] = useState(false);
+  const [deleteAllConfirmOpen, setDeleteAllConfirmOpen] = useState(false);
+  const [isDeletingAll, setIsDeletingAll] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -121,6 +123,37 @@ export default function SubcontractorDirectory() {
     } finally {
       setDeleteConfirmOpen(false);
       setSubToDelete(null);
+    }
+  };
+
+  const handleDeleteAllConfirm = async () => {
+    if (!userId) return;
+
+    setIsDeletingAll(true);
+    try {
+      // Delete all subcontractors for this GC
+      const { error } = await supabase
+        .from("gc_subcontractors")
+        .delete()
+        .eq("gc_id", userId);
+
+      if (error) throw error;
+
+      setSubcontractors([]);
+      toast({
+        title: "Directory Cleared",
+        description: "All subcontractors have been removed from your directory.",
+      });
+    } catch (error) {
+      console.error("Delete all error:", error);
+      toast({
+        title: "Error",
+        description: "Failed to delete all subcontractors",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeletingAll(false);
+      setDeleteAllConfirmOpen(false);
     }
   };
 
@@ -208,6 +241,15 @@ export default function SubcontractorDirectory() {
               <Plus className="h-4 w-4 mr-2" />
               Add Subcontractor
             </Button>
+            {subcontractors.length > 0 && (
+              <Button 
+                variant="destructive" 
+                onClick={() => setDeleteAllConfirmOpen(true)}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete All
+              </Button>
+            )}
           </div>
         </div>
 
@@ -371,6 +413,28 @@ export default function SubcontractorDirectory() {
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               >
                 Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Delete All Confirmation */}
+        <AlertDialog open={deleteAllConfirmOpen} onOpenChange={setDeleteAllConfirmOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Entire Directory?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete <strong>all {subcontractors.length} subcontractors</strong> from your directory? This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isDeletingAll}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDeleteAllConfirm}
+                disabled={isDeletingAll}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {isDeletingAll ? "Deleting..." : "Delete All"}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
