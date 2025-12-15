@@ -54,8 +54,14 @@ export function SubcontractorForm({
 
   const [selectedTradeIds, setSelectedTradeIds] = useState<string[]>(initialTradeIds);
   const [isLookingUp, setIsLookingUp] = useState(false);
+  const [isAutoLookingUp, setIsAutoLookingUp] = useState(false);
   const [lookupStatus, setLookupStatus] = useState<"idle" | "success" | "error" | "info">("idle");
   const [lookupMessage, setLookupMessage] = useState("");
+
+  const performLookup = async (licenseNumber: string) => {
+    const result = await lookupCSLBLicense(licenseNumber);
+    return result;
+  };
 
   const handleLookup = async () => {
     if (!formData.license_number.trim()) {
@@ -69,7 +75,7 @@ export function SubcontractorForm({
     setLookupMessage("");
 
     try {
-      const result = await lookupCSLBLicense(formData.license_number);
+      const result = await performLookup(formData.license_number);
 
       if (result.success) {
         // Auto-fill the form from cache
@@ -114,7 +120,41 @@ export function SubcontractorForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await onSubmit(formData, selectedTradeIds);
+    
+    let finalTradeIds = selectedTradeIds;
+    let finalFormData = formData;
+    
+    // Auto-lookup CSLB if license provided and no trades selected
+    if (formData.license_number.trim() && selectedTradeIds.length === 0) {
+      setIsAutoLookingUp(true);
+      try {
+        const result = await performLookup(formData.license_number);
+        if (result.success) {
+          // Update form data from lookup
+          finalFormData = {
+            ...formData,
+            company_name: result.company_name || formData.company_name,
+            license_status: result.license_status || formData.license_status,
+            license_expiration: result.expiration_date || formData.license_expiration,
+            city: result.city || formData.city,
+            state_code: result.state_code || formData.state_code,
+          };
+          
+          // Extract trade IDs from classifications
+          if (result.classifications?.length > 0) {
+            finalTradeIds = result.classifications
+              .filter((c: any) => c.trade_type_id)
+              .map((c: any) => c.trade_type_id);
+          }
+        }
+      } catch (error) {
+        console.warn('Auto-lookup failed, proceeding with manual data:', error);
+      } finally {
+        setIsAutoLookingUp(false);
+      }
+    }
+    
+    await onSubmit(finalFormData, finalTradeIds);
   };
 
   const handleChange = (field: keyof SubcontractorFormData, value: string) => {
@@ -271,8 +311,13 @@ export function SubcontractorForm({
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" disabled={isSubmitting || !formData.company_name.trim()}>
-          {isSubmitting ? (
+        <Button type="submit" disabled={isSubmitting || isAutoLookingUp || !formData.company_name.trim()}>
+          {isAutoLookingUp ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              Looking up license...
+            </>
+          ) : isSubmitting ? (
             <>
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               Saving...
