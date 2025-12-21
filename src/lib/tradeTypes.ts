@@ -8,6 +8,9 @@ export interface TradeType {
   category: string | null;
   source: string | null;
   is_default: boolean | null;
+  parent_code: string | null;
+  is_active: boolean | null;
+  notes: string | null;
 }
 
 // Category color map for UI badges
@@ -40,6 +43,7 @@ export async function fetchTradeTypes(stateCode?: string): Promise<TradeType[]> 
   let query = supabase
     .from('trade_types')
     .select('*')
+    .eq('is_active', true)
     .order('category', { ascending: true })
     .order('code', { ascending: true });
   
@@ -59,16 +63,37 @@ export async function fetchTradeTypes(stateCode?: string): Promise<TradeType[]> 
 
 /**
  * Group trade types by category for dropdown display
+ * D-codes (with parent_code) are nested under their parent
  */
 export function groupTradesByCategory(trades: TradeType[]): Record<string, TradeType[]> {
-  return trades.reduce((acc, trade) => {
+  // Separate parent trades and child D-codes
+  const parentTrades = trades.filter(t => !t.parent_code);
+  const childTrades = trades.filter(t => t.parent_code);
+  
+  const grouped = parentTrades.reduce((acc, trade) => {
     const category = trade.category || 'Other';
     if (!acc[category]) {
       acc[category] = [];
     }
     acc[category].push(trade);
+    
+    // If this trade is C-61, add its D-code children right after
+    if (trade.code === 'C-61') {
+      const dCodes = childTrades.filter(c => c.parent_code === 'C-61');
+      acc[category].push(...dCodes);
+    }
+    
     return acc;
   }, {} as Record<string, TradeType[]>);
+  
+  return grouped;
+}
+
+/**
+ * Check if a trade is a D-code (child of C-61)
+ */
+export function isDCode(trade: TradeType): boolean {
+  return trade.parent_code === 'C-61';
 }
 
 /**

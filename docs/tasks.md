@@ -1116,6 +1116,23 @@ Before marking MVP complete:
   - Categories: General, Mechanical, Electrical, Structural, Civil, Finishes, Site Work, etc.
 - [x] Includes: A, B, C-4 through C-61 (full CSLB specialty list)
 
+### Task 3.5.2.1: Add C-61 Limited Specialty D-Codes [✅ COMPLETED]
+
+- [x] Added `parent_code`, `is_active`, `notes` columns to `trade_types` table
+- [x] Added index on `parent_code` for efficient lookups
+- [x] Inserted all 29 authoritative D-codes from CSLB portal:
+  - C-61/D-3 through C-61/D-65 (active codes only)
+  - All with `parent_code = 'C-61'`, `is_active = true`
+- [x] Updated `TradeType` interface with new fields
+- [x] Updated `fetchTradeTypes()` to filter by `is_active = true`
+- [x] Updated `groupTradesByCategory()` to nest D-codes under C-61
+- [x] Added `isDCode()` helper function
+- [x] Updated `TradeMultiSelect` component to indent D-codes
+- [x] Updated `docs/cslb-license-types.md` with authoritative D-code list
+- [x] Deprecated/legacy D-codes intentionally excluded (D-1, D-2, etc.)
+
+**Notes**: Implementation maintains full compatibility with CSLB ingestion, Network Pool, and Call List Generator. D-codes use exact CSLB format (`C-61/D-34`) with no translation layer.
+
 ### Task 3.5.3: Add Trade Multi-Select to `/projects/new` [✅ COMPLETED]
 
 - [x] Create `src/lib/tradeTypes.ts` utility
