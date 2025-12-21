@@ -22,6 +22,7 @@ import {
   groupTradesByCategory,
   getCategoryColor,
   formatTradeDisplay,
+  isDCode,
 } from "@/lib/tradeTypes";
 
 interface TradeMultiSelectProps {
@@ -96,27 +97,36 @@ export function TradeMultiSelect({
               <CommandEmpty>No trades found.</CommandEmpty>
               {Object.entries(groupedTrades).map(([category, categoryTrades]) => (
                 <CommandGroup key={category} heading={category}>
-                  {categoryTrades.map((trade) => (
-                    <CommandItem
-                      key={trade.id}
-                      value={`${trade.code} ${trade.name}`}
-                      onSelect={() => toggleTrade(trade.id)}
-                      className="cursor-pointer"
-                    >
-                      <Check
+                  {categoryTrades.map((trade) => {
+                    const isChild = isDCode(trade);
+                    return (
+                      <CommandItem
+                        key={trade.id}
+                        value={`${trade.code} ${trade.name}`}
+                        onSelect={() => toggleTrade(trade.id)}
                         className={cn(
-                          "mr-2 h-4 w-4",
-                          selectedTradeIds.includes(trade.id)
-                            ? "opacity-100"
-                            : "opacity-0"
+                          "cursor-pointer",
+                          isChild && "pl-8" // Indent D-codes
                         )}
-                      />
-                      <span className="font-mono text-xs mr-2 text-muted-foreground">
-                        {trade.code}
-                      </span>
-                      <span>{trade.name}</span>
-                    </CommandItem>
-                  ))}
+                      >
+                        <Check
+                          className={cn(
+                            "mr-2 h-4 w-4",
+                            selectedTradeIds.includes(trade.id)
+                              ? "opacity-100"
+                              : "opacity-0"
+                          )}
+                        />
+                        <span className={cn(
+                          "font-mono text-xs mr-2",
+                          isChild ? "text-muted-foreground/70" : "text-muted-foreground"
+                        )}>
+                          {trade.code}
+                        </span>
+                        <span className={isChild ? "text-sm" : ""}>{trade.name}</span>
+                      </CommandItem>
+                    );
+                  })}
                 </CommandGroup>
               ))}
             </CommandList>

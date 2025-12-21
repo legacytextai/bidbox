@@ -472,8 +472,11 @@ export type Database = {
           code: string
           created_at: string | null
           id: string
+          is_active: boolean | null
           is_default: boolean | null
           name: string
+          notes: string | null
+          parent_code: string | null
           source: string | null
           state_code: string | null
         }
@@ -482,8 +485,11 @@ export type Database = {
           code: string
           created_at?: string | null
           id?: string
+          is_active?: boolean | null
           is_default?: boolean | null
           name: string
+          notes?: string | null
+          parent_code?: string | null
           source?: string | null
           state_code?: string | null
         }
@@ -492,8 +498,11 @@ export type Database = {
           code?: string
           created_at?: string | null
           id?: string
+          is_active?: boolean | null
           is_default?: boolean | null
           name?: string
+          notes?: string | null
+          parent_code?: string | null
           source?: string | null
           state_code?: string | null
         }
