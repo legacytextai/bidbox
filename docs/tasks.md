@@ -1341,6 +1341,7 @@ This phase documents the strategic initiative to populate the BidBox Network Poo
 - [x] 7.1.3 `cslb_cache` table for lookup caching (30-day TTL)
 - [x] 7.1.4 State-agnostic `trade_type_id` FK architecture
 - [x] 7.1.5 `lookup-cslb` edge function with HTML parsing
+- [x] 7.1.X Optimized `cslb-ingest-master` to skip offsets without parsing (prevents CPU timeouts at 200k+ offsets)
 
 **Planned Extensions:**
 - [ ] 7.1.6 Document CSLB classification → `trade_type_id` mapping rules
