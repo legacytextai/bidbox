@@ -1270,36 +1270,45 @@ Before marking MVP complete:
 
 ---
 
-## 🎯 Phase 6: Call List Generator (NEW)
+## 🎯 Phase 6: Bid List Generator [✅ COMPLETED]
 
-> **Planned**: Generate ranked Excel call lists for bid day
+> **Status**: Completed 2024-12-28
 
-### Task 6.1: Build Ranking Logic
+### Task 6.1: Build Bid List Generator Service [✅ COMPLETED]
 
-- [ ] Priority ranking:
-  1. Not opened → highest priority (needs outreach)
-  2. Viewed but not downloaded (interested, stalled)
-  3. Downloaded but no quote (engaged, needs follow-up)
-  4. Submitted a quote → lowest priority (complete)
+- [x] Create `src/lib/bidListGenerator.ts`
+- [x] Fetch from GC Private Pool (gc_subcontractors)
+- [x] Fetch from Network Pool (subcontractors) with CLEAR license status
+- [x] Filter by project's selected trades
+- [x] Deduplicate network subs by matching license_number against private pool
+- [x] Return separate arrays: `{ privateSubs, networkSubs }`
 
-### Task 6.2: Merge Two Pools
+### Task 6.2: Two-Sheet Excel Export [✅ COMPLETED]
 
-- [ ] Combine GC's Private Pool + BidBox Network Pool
-- [ ] Filter by selected trades for the project
-- [ ] De-duplicate by company name/license
+- [x] Add `exportBidListToExcel()` to `src/lib/excelExport.ts`
+- [x] Sheet 1: "My Subs" - Company Name, Contact Name, Phone, Email, City, Trades, Notes
+- [x] Sheet 2: "Network Subs" - Business Name, License #, Phone, City, County, Classification(s)
+- [x] Use xlsx library for client-side generation
 
-### Task 6.3: Generate Excel (.xlsx) Output
+### Task 6.3: BidListButton Component [✅ COMPLETED]
 
-- [ ] Use xlsx library (server-side or client-side)
-- [ ] Group by trade
-- [ ] Sort by engagement priority
-- [ ] Columns: Name, Company, Phone, Email, Engagement Status
+- [x] Create `src/components/BidListButton.tsx`
+- [x] Disabled state when no trades selected
+- [x] Loading spinner during generation
+- [x] Toast notifications for success/error/empty results
+- [x] Icon: FileSpreadsheet from lucide-react
 
-### Task 6.4: Add "Generate Call List (Excel)" Button
+### Task 6.4: Integration [✅ COMPLETED]
 
-- [ ] Location: Project admin view (`/projects/[id]`)
-- [ ] Download `.xlsx` file on click
-- [ ] Show loading state during generation
+- [x] Replace CallListButton with BidListButton in ProjectDetail.tsx
+- [x] Button location: Bid Box Link section
+- [x] Props: projectId, projectName, gcId, hasSelectedTrades
+
+**Implementation Notes:**
+- Private pool subs take priority in deduplication (license_number matching)
+- Network pool only returns CLEAR license status subs
+- Both sheets created even if one pool is empty
+- Export blocked with helpful toast if no trades selected
 
 ---
 

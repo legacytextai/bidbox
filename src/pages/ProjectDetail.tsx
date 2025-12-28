@@ -18,6 +18,7 @@ import { TradeMultiSelect } from "@/components/TradeMultiSelect";
 import { TradeType, getCategoryColor } from "@/lib/tradeTypes";
 import { cn } from "@/lib/utils";
 import { CallListButton } from "@/components/CallListButton";
+import { BidListButton } from "@/components/BidListButton";
 import { getProjectDisplayStatus } from "@/lib/projectStatus";
 import {
   Select,
@@ -789,7 +790,7 @@ const ProjectDetail = () => {
                     </>
                   )}
                 </Button>
-                <CallListButton
+                <BidListButton
                   projectId={project.id}
                   projectName={project.name}
                   gcId={project.gc_id}
