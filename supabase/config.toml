@@ -12,5 +12,5 @@ verify_jwt = false
 [functions.lookup-cslb]
 verify_jwt = false
 
-[functions.cslb-ingest-c10]
+[functions.cslb-ingest-master]
 verify_jwt = false
