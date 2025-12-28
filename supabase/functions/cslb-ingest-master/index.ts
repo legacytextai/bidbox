@@ -12,7 +12,7 @@ const CSLB_MASTER_CSV_URL = 'https://cslb.ca.gov/OnlineServices/DataPortal/DownL
 
 // Processing configuration
 const BATCH_SIZE = 500;
-const MAX_ROWS_PER_INVOCATION = 50000;
+const MAX_ROWS_PER_INVOCATION = 40000; // Reduced to avoid CPU timeout
 
 // Safety cap for initial testing - set to 0 for full ingestion
 const SAFETY_CAP = 0;
@@ -260,8 +260,8 @@ async function batchProcessMappings(
   
   stats.mappings_deleted += subIds.length;
   
-  // Prepare all new mappings
-  const mappingsToInsert: { sub_id: string; trade_type_id: string }[] = [];
+  // Prepare all new mappings (deduplicate to avoid constraint violations)
+  const mappingsMap = new Map<string, { sub_id: string; trade_type_id: string }>();
   
   for (const contractor of contractors) {
     const subId = licenseToIdMap.get(contractor.license_number);
@@ -270,19 +270,27 @@ async function batchProcessMappings(
     for (const code of contractor.classifications) {
       const tradeTypeId = tradeTypeCache.get(code);
       if (tradeTypeId) {
-        mappingsToInsert.push({ sub_id: subId, trade_type_id: tradeTypeId });
+        const key = `${subId}-${tradeTypeId}`;
+        if (!mappingsMap.has(key)) {
+          mappingsMap.set(key, { sub_id: subId, trade_type_id: tradeTypeId });
+        }
       } else if (!stats.unknown_codes.includes(code)) {
         stats.unknown_codes.push(code);
       }
     }
   }
   
+  const mappingsToInsert = Array.from(mappingsMap.values());
+  
   if (mappingsToInsert.length === 0) return;
   
-  // Batch insert new mappings
+  // Batch upsert new mappings (ignore duplicates)
   const { error: insertError } = await supabase
     .from('sub_trade_mappings')
-    .insert(mappingsToInsert);
+    .upsert(mappingsToInsert, { 
+      onConflict: 'sub_id,trade_type_id',
+      ignoreDuplicates: true 
+    });
   
   if (insertError) {
     console.error('[cslb-ingest-master] Batch insert mappings error:', insertError.message);
