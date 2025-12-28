@@ -283,6 +283,7 @@ export type Database = {
         Row: {
           agency: string | null
           bid_due_at: string
+          county: string | null
           created_at: string
           gc_id: string
           id: string
@@ -298,6 +299,7 @@ export type Database = {
         Insert: {
           agency?: string | null
           bid_due_at: string
+          county?: string | null
           created_at?: string
           gc_id: string
           id?: string
@@ -313,6 +315,7 @@ export type Database = {
         Update: {
           agency?: string | null
           bid_due_at?: string
+          county?: string | null
           created_at?: string
           gc_id?: string
           id?: string

@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { getRegionForCounty, getCountiesInRegion, REGION_DISPLAY_NAMES, CARegion } from "@/lib/californiaRegions";
 
 /**
  * Private Pool entry for My Subs sheet
@@ -36,11 +37,20 @@ export interface BidListResult {
 /**
  * Generate bid list with separate pools for two-sheet Excel export.
  * Deduplicates network subs by removing those with matching license numbers in private pool.
+ * Applies regional filtering to network subs based on project county.
  */
 export async function generateBidList(
   projectId: string,
-  gcId: string
+  gcId: string,
+  projectCounty: string
 ): Promise<BidListResult> {
+  // Log region info
+  const region = getRegionForCounty(projectCounty);
+  const allowedCounties = getCountiesInRegion(projectCounty);
+  console.log('[BidList][Region] Project county:', projectCounty);
+  console.log('[BidList][Region] Derived region:', region ? REGION_DISPLAY_NAMES[region] : 'Unknown');
+  console.log('[BidList][Region] Allowed counties:', allowedCounties);
+
   // Get project's required trade_type_ids
   const { data: projectTrades, error: tradesError } = await supabase
     .from('project_trades')
@@ -59,7 +69,7 @@ export async function generateBidList(
   // Fetch from both pools in parallel
   const [privateSubs, networkSubs] = await Promise.all([
     getMatchingGCSubcontractors(projectId, gcId, tradeIds),
-    getMatchingNetworkSubcontractors(projectId, tradeIds),
+    getMatchingNetworkSubcontractors(projectId, tradeIds, allowedCounties),
   ]);
 
   console.log('[BidList] Private subs fetched:', privateSubs.length);
@@ -204,13 +214,16 @@ async function getMatchingGCSubcontractors(
 /**
  * Get subcontractors from Network Pool matching project trades
  * Only includes subs with CLEAR license status
+ * Filtered by allowed counties (regional filtering)
  */
 async function getMatchingNetworkSubcontractors(
   projectId: string,
-  tradeIds: string[]
+  tradeIds: string[],
+  allowedCounties: string[]
 ): Promise<NetworkSubWithTrades[]> {
   console.log('[BidList][Network] Project ID:', projectId);
   console.log('[BidList][Network] Project trades:', tradeIds);
+  console.log('[BidList][Network] Allowed counties for region filter:', allowedCounties.length);
   
   if (tradeIds.length === 0) {
     console.log('[BidList][Network] No trades selected, returning empty');
@@ -264,13 +277,20 @@ async function getMatchingNetworkSubcontractors(
   }
   console.log('[BidList][Network] Fetching subs in', chunks.length, 'chunk(s)');
 
-  // Fetch all subs in chunks (without status filter first for logging)
+  // Fetch all subs in chunks with region filter applied
   let allSubs: any[] = [];
   for (const chunk of chunks) {
-    const { data: chunkSubs, error: chunkError } = await supabase
+    let query = supabase
       .from('subcontractors')
       .select('*')
       .in('id', chunk);
+    
+    // Apply county filter if we have allowed counties
+    if (allowedCounties.length > 0) {
+      query = query.in('county', allowedCounties);
+    }
+    
+    const { data: chunkSubs, error: chunkError } = await query;
     
     if (chunkError) {
       console.error('[BidList][Network] Error fetching subcontractors chunk:', chunkError);
@@ -282,6 +302,7 @@ async function getMatchingNetworkSubcontractors(
   }
 
   console.log('[BidList][Network] Subs before status filter:', allSubs.length);
+  console.log('[BidList][Network] Subs after region filter:', allSubs.length);
 
   // Apply robust license status filter
   const networkSubs = allSubs.filter(sub => {

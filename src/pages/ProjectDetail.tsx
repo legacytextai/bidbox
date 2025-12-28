@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils";
 import { CallListButton } from "@/components/CallListButton";
 import { BidListButton } from "@/components/BidListButton";
 import { getProjectDisplayStatus } from "@/lib/projectStatus";
+import { CountySelect } from "@/components/CountySelect";
 import {
   Select,
   SelectContent,
@@ -104,7 +105,7 @@ const ProjectDetail = () => {
   
   // Editable field states
   const [editedName, setEditedName] = useState("");
-  const [editedLocation, setEditedLocation] = useState("");
+  const [editedCounty, setEditedCounty] = useState("");
   const [editedAgency, setEditedAgency] = useState("");
   const [editedInstructions, setEditedInstructions] = useState("");
   const [editedBidDueAt, setEditedBidDueAt] = useState("");
@@ -123,14 +124,14 @@ const ProjectDetail = () => {
       const originalBidDue = project.bid_due_at ? utcToLocalDateTime(project.bid_due_at, projectTimezone) : "";
       const changed = 
         editedName !== project.name ||
-        editedLocation !== (project.location || "") ||
+        editedCounty !== (project.county || "") ||
         editedAgency !== (project.agency || "") ||
         editedInstructions !== (project.instructions || "") ||
         editedBidDueAt !== originalBidDue ||
         editedTimezone !== projectTimezone;
       setHasChanges(changed);
     }
-  }, [editedName, editedLocation, editedAgency, editedInstructions, editedBidDueAt, editedTimezone, project]);
+  }, [editedName, editedCounty, editedAgency, editedInstructions, editedBidDueAt, editedTimezone, project]);
 
   const loadProject = async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -159,7 +160,7 @@ const ProjectDetail = () => {
     // Initialize editable fields
     const projectTimezone = projectData.timezone || "America/Los_Angeles";
     setEditedName(projectData.name);
-    setEditedLocation(projectData.location || "");
+    setEditedCounty(projectData.county || "");
     setEditedAgency(projectData.agency || "");
     setEditedInstructions(projectData.instructions || "");
     setEditedBidDueAt(projectData.bid_due_at ? utcToLocalDateTime(projectData.bid_due_at, projectTimezone) : "");
@@ -264,7 +265,7 @@ const ProjectDetail = () => {
     
     const updates = {
       name: editedName,
-      location: editedLocation || null,
+      county: editedCounty || null,
       agency: editedAgency || null,
       instructions: editedInstructions || null,
       bid_due_at: editedBidDueAt ? localDateTimeToUtc(editedBidDueAt, editedTimezone) : project.bid_due_at,
@@ -599,12 +600,10 @@ const ProjectDetail = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="location">Location</Label>
-                <Input
-                  id="location"
-                  value={editedLocation}
-                  onChange={(e) => setEditedLocation(e.target.value)}
-                  placeholder="Enter location"
+                <Label htmlFor="county">Project County</Label>
+                <CountySelect
+                  value={editedCounty}
+                  onChange={setEditedCounty}
                 />
               </div>
               <div className="space-y-2">
@@ -795,6 +794,7 @@ const ProjectDetail = () => {
                   projectName={project.name}
                   gcId={project.gc_id}
                   hasSelectedTrades={projectTrades.length > 0}
+                  projectCounty={project.county}
                 />
               </div>
             </div>

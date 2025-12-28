@@ -14,6 +14,8 @@ import { validateProjectFile } from "@/lib/fileValidation";
 import { TIMEZONE_OPTIONS, localDateTimeToUtc } from "@/lib/timezoneUtils";
 import { FileDropzone } from "@/components/FileDropzone";
 import { TradeMultiSelect } from "@/components/TradeMultiSelect";
+import { CountySelect } from "@/components/CountySelect";
+import { isValidCACounty } from "@/lib/californiaRegions";
 import {
   Select,
   SelectContent,
@@ -24,7 +26,10 @@ import {
 
 const projectSchema = z.object({
   name: z.string().min(1, "Project name is required").max(200),
-  location: z.string().max(200).optional(),
+  county: z.string().min(1, "Project county is required").refine(
+    (val) => isValidCACounty(val),
+    { message: "Please select a valid California county" }
+  ),
   agency: z.string().max(200).optional(),
   bid_due_at: z.string().min(1, "Bid due date is required"),
   instructions: z.string().max(2000).optional(),
@@ -34,7 +39,7 @@ const projectSchema = z.object({
 const NewProject = () => {
   const [formData, setFormData] = useState({
     name: "",
-    location: "",
+    county: "",
     agency: "",
     bid_due_at: "",
     instructions: "",
@@ -97,7 +102,7 @@ const NewProject = () => {
         .insert({
           gc_id: userId,
           name: validation.name,
-          location: validation.location || null,
+          county: validation.county,
           agency: validation.agency || null,
           bid_due_at: localDateTimeToUtc(validation.bid_due_at, validation.timezone),
           instructions: validation.instructions || null,
@@ -203,13 +208,13 @@ const NewProject = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="location">Location (optional)</Label>
-                  <Input
-                    id="location"
-                    value={formData.location}
-                    onChange={(e) =>
-                      setFormData({ ...formData, location: e.target.value })
+                  <Label htmlFor="county">Project County *</Label>
+                  <CountySelect
+                    value={formData.county}
+                    onChange={(value) =>
+                      setFormData({ ...formData, county: value })
                     }
+                    disabled={isUploading}
                   />
                 </div>
 

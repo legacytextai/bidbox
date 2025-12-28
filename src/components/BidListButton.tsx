@@ -4,19 +4,22 @@ import { FileSpreadsheet, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { generateBidList } from "@/lib/bidListGenerator";
 import { exportBidListToExcel } from "@/lib/excelExport";
+import { isValidCACounty } from "@/lib/californiaRegions";
 
 interface BidListButtonProps {
   projectId: string;
   projectName: string;
   gcId: string;
   hasSelectedTrades: boolean;
+  projectCounty: string | null;
 }
 
 export function BidListButton({ 
   projectId, 
   projectName, 
   gcId,
-  hasSelectedTrades 
+  hasSelectedTrades,
+  projectCounty,
 }: BidListButtonProps) {
   const { toast } = useToast();
   const [isGenerating, setIsGenerating] = useState(false);
@@ -31,27 +34,55 @@ export function BidListButton({
       return;
     }
 
+    // Validate county is set
+    if (!projectCounty) {
+      console.error('[BidList][Error] Missing county — export aborted');
+      toast({
+        title: "County required",
+        description: "Please select a project county to generate a regional bid list.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validate county is valid
+    if (!isValidCACounty(projectCounty)) {
+      console.error('[BidList][Error] Invalid county — export aborted:', projectCounty);
+      toast({
+        title: "Invalid county",
+        description: "Selected county is not supported for regional filtering.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsGenerating(true);
 
     try {
-      const result = await generateBidList(projectId, gcId);
+      const result = await generateBidList(projectId, gcId, projectCounty);
 
-      const totalCount = result.privateSubs.length + result.networkSubs.length;
-
-      if (totalCount === 0) {
+      if (result.privateSubs.length === 0 && result.networkSubs.length === 0) {
         toast({
           title: "No subcontractors found",
-          description: "No matching subcontractors found for the selected trades.",
+          description: "No matching subcontractors found for the selected trades. Add subs to your directory first.",
           variant: "destructive",
         });
         return;
+      }
+
+      // Check if network subs is empty after filtering
+      if (result.networkSubs.length === 0 && result.privateSubs.length > 0) {
+        toast({
+          title: "Limited results",
+          description: "No network subcontractors found for selected trades in this region. Only your private subs are included.",
+        });
       }
 
       exportBidListToExcel(result, projectName);
 
       toast({
         title: "Bid list exported",
-        description: `Exported ${result.privateSubs.length} from My Subs, ${result.networkSubs.length} from Network.`,
+        description: `Exported ${result.privateSubs.length} private + ${result.networkSubs.length} network subs to Excel.`,
       });
     } catch (error) {
       console.error("Export error:", error);
@@ -69,7 +100,7 @@ export function BidListButton({
     <Button
       variant="outline"
       onClick={handleExport}
-      disabled={isGenerating || !hasSelectedTrades}
+      disabled={isGenerating}
       className="gap-2"
     >
       {isGenerating ? (
