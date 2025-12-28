@@ -15,7 +15,7 @@ const BATCH_SIZE = 500;
 const MAX_ROWS_PER_INVOCATION = 50000;
 
 // Safety cap for initial testing - set to 0 for full ingestion
-const SAFETY_CAP = 5000;
+const SAFETY_CAP = 0;
 
 interface IngestionStats {
   rows_parsed: number;
@@ -86,22 +86,51 @@ function parseCSVLine(line: string): string[] {
   return result;
 }
 
-// Parse classifications from semicolon-delimited string
+// Normalize license code by adding hyphen if missing
+// Examples: C10 → C-10, C33 → C-33, D12 → D-12, B → B
+function normalizeLicenseCode(code: string): string {
+  const trimmed = code.trim().toUpperCase();
+  
+  // Single letter codes stay as-is (A, B, C)
+  if (/^[A-Z]$/.test(trimmed)) {
+    return trimmed;
+  }
+  
+  // Match pattern like "C10" or "D12" (letter followed by digits, no hyphen)
+  const match = trimmed.match(/^([A-Z])(\d+)$/);
+  if (match) {
+    return `${match[1]}-${match[2]}`;
+  }
+  
+  // Already has hyphen or other format, return as-is
+  return trimmed;
+}
+
+// Parse classifications from pipe-delimited string (CSLB uses | delimiter)
 function parseClassifications(classificationsStr: string): string[] {
   if (!classificationsStr) return [];
   
   return classificationsStr
-    .split(';')
+    .split('|')  // CSLB uses pipe delimiter
     .map(c => c.trim())
     .filter(c => c.length > 0)
     .map(c => {
-      // Normalize D-codes: "C-61/D-64" → "D-64"
+      // Handle C-61/D-xx codes - keep the full code format for trade_types lookup
       if (c.includes('/')) {
         const parts = c.split('/');
-        const dCode = parts.find(p => p.startsWith('D-'));
-        if (dCode) return dCode;
+        const cPart = normalizeLicenseCode(parts[0]);
+        const dPart = normalizeLicenseCode(parts[1]);
+        return `${cPart}/${dPart}`;
       }
-      return c;
+      
+      // Check if this is a standalone D-code that should be C-61/D-xx
+      const normalized = normalizeLicenseCode(c);
+      if (normalized.startsWith('D-')) {
+        // D-codes are stored as C-61/D-xx in trade_types
+        return `C-61/${normalized}`;
+      }
+      
+      return normalized;
     });
 }
 
