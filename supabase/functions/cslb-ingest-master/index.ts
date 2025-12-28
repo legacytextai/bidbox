@@ -11,8 +11,8 @@ const corsHeaders = {
 const CSLB_MASTER_CSV_URL = 'https://cslb.ca.gov/OnlineServices/DataPortal/DownLoadFile.ashx?fName=MasterLicenseData&type=C';
 
 // Processing configuration
-const BATCH_SIZE = 500;
-const MAX_ROWS_PER_INVOCATION = 10000; // Smaller batches to avoid CPU timeout on large offsets
+const BATCH_SIZE = 250; // Smaller batch for faster commits
+const MAX_ROWS_PER_INVOCATION = 5000; // Reduced to avoid CPU timeout on large offsets
 
 // Safety cap for initial testing - set to 0 for full ingestion
 const SAFETY_CAP = 0;
