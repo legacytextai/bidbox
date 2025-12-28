@@ -54,11 +54,16 @@ export async function generateBidList(
 
   const tradeIds = projectTrades?.map(pt => pt.trade_type_id) || [];
   
+  console.log('[BidList] Starting bid list generation for project:', projectId);
+  
   // Fetch from both pools in parallel
   const [privateSubs, networkSubs] = await Promise.all([
     getMatchingGCSubcontractors(projectId, gcId, tradeIds),
     getMatchingNetworkSubcontractors(projectId, tradeIds),
   ]);
+
+  console.log('[BidList] Private subs fetched:', privateSubs.length);
+  console.log('[BidList] Network subs fetched:', networkSubs.length);
 
   // Build set of license numbers from private pool for deduplication
   const privateLicenses = new Set<string>();
@@ -67,6 +72,7 @@ export async function generateBidList(
       privateLicenses.add(sub.license_number.toLowerCase());
     }
   }
+  console.log('[BidList] Private license numbers for dedup:', privateLicenses.size);
 
   // Format private subs
   const formattedPrivateSubs: PrivateSubEntry[] = privateSubs.map(sub => ({
@@ -80,6 +86,7 @@ export async function generateBidList(
   }));
 
   // Format network subs, excluding those with matching licenses
+  const networkSubsBeforeDedup = networkSubs.length;
   const formattedNetworkSubs: NetworkSubEntry[] = networkSubs
     .filter(sub => {
       if (!sub.license_number) return true;
@@ -93,6 +100,10 @@ export async function generateBidList(
       county: sub.county,
       classifications: sub.trades.map(t => `${t.code} - ${t.name}`).join(', '),
     }));
+
+  const removedByDedup = networkSubsBeforeDedup - formattedNetworkSubs.length;
+  console.log('[BidList] Network subs removed by deduplication:', removedByDedup);
+  console.log('[BidList] Final counts - Private:', formattedPrivateSubs.length, 'Network:', formattedNetworkSubs.length);
 
   return {
     privateSubs: formattedPrivateSubs,
@@ -198,42 +209,103 @@ async function getMatchingNetworkSubcontractors(
   projectId: string,
   tradeIds: string[]
 ): Promise<NetworkSubWithTrades[]> {
+  console.log('[BidList][Network] Project ID:', projectId);
+  console.log('[BidList][Network] Project trades:', tradeIds);
+  
   if (tradeIds.length === 0) {
-    // No trades selected, return empty - require trade selection
+    console.log('[BidList][Network] No trades selected, returning empty');
     return [];
   }
 
   // Get network subs with matching trades
-  const { data: matchingMappings } = await supabase
+  const { data: matchingMappings, error: mappingsError } = await supabase
     .from('sub_trade_mappings')
-    .select('sub_id')
+    .select('sub_id, trade_type_id')
     .in('trade_type_id', tradeIds);
 
+  if (mappingsError) {
+    console.error('[BidList][Network] Error fetching sub_trade_mappings:', mappingsError);
+    return [];
+  }
+
+  console.log('[BidList][Network] Matching sub_trade_mappings:', matchingMappings?.length || 0);
+  
+  // Log distinct trade_type_ids found to verify alignment
+  const foundTradeIds = [...new Set(matchingMappings?.map(m => m.trade_type_id) || [])];
+  console.log('[BidList][Network] Trade IDs found in mappings:', foundTradeIds);
+
   if (!matchingMappings || matchingMappings.length === 0) {
+    console.log('[BidList][Network] No matching mappings found');
     return [];
   }
 
   const matchingSubIds = [...new Set(matchingMappings.map(m => m.sub_id))];
+  console.log('[BidList][Network] Unique sub IDs to fetch:', matchingSubIds.length);
 
-  // Fetch subs with CLEAR license status only
-  const { data: networkSubs } = await supabase
-    .from('subcontractors')
-    .select('*')
-    .in('id', matchingSubIds)
-    .eq('license_status', 'CLEAR')
-    .order('company_name');
+  // Chunk the sub IDs to avoid query-too-large errors (Supabase limit)
+  const CHUNK_SIZE = 500;
+  const chunks: string[][] = [];
+  for (let i = 0; i < matchingSubIds.length; i += CHUNK_SIZE) {
+    chunks.push(matchingSubIds.slice(i, i + CHUNK_SIZE));
+  }
+  console.log('[BidList][Network] Fetching subs in', chunks.length, 'chunk(s)');
 
-  if (!networkSubs) return [];
+  // Fetch all subs in chunks (without status filter first for logging)
+  let allSubs: any[] = [];
+  for (const chunk of chunks) {
+    const { data: chunkSubs, error: chunkError } = await supabase
+      .from('subcontractors')
+      .select('*')
+      .in('id', chunk);
+    
+    if (chunkError) {
+      console.error('[BidList][Network] Error fetching subcontractors chunk:', chunkError);
+      continue;
+    }
+    if (chunkSubs) {
+      allSubs = allSubs.concat(chunkSubs);
+    }
+  }
 
-  // Get full trade mappings for these subs
-  const { data: tradeMappings } = await supabase
-    .from('sub_trade_mappings')
-    .select(`
-      sub_id,
-      trade_type_id,
-      trade_types (code, name)
-    `)
-    .in('sub_id', networkSubs.map(s => s.id));
+  console.log('[BidList][Network] Subs before status filter:', allSubs.length);
+
+  // Apply robust license status filter
+  const networkSubs = allSubs.filter(sub => {
+    const status = (sub.license_status || '').toString().trim().toUpperCase();
+    return status === 'CLEAR';
+  });
+
+  console.log('[BidList][Network] Subs after status filter:', networkSubs.length);
+
+  if (networkSubs.length === 0) {
+    // Log sample of statuses to debug
+    const sampleStatuses = allSubs.slice(0, 10).map(s => s.license_status);
+    console.log('[BidList][Network] Sample license_status values:', sampleStatuses);
+    return [];
+  }
+
+  // Sort by company name
+  networkSubs.sort((a, b) => (a.company_name || '').localeCompare(b.company_name || ''));
+
+  // Get full trade mappings for these subs (also chunked)
+  const subIds = networkSubs.map(s => s.id);
+  let allTradeMappings: any[] = [];
+  
+  for (let i = 0; i < subIds.length; i += CHUNK_SIZE) {
+    const chunk = subIds.slice(i, i + CHUNK_SIZE);
+    const { data: tradeMappings } = await supabase
+      .from('sub_trade_mappings')
+      .select(`
+        sub_id,
+        trade_type_id,
+        trade_types (code, name)
+      `)
+      .in('sub_id', chunk);
+    
+    if (tradeMappings) {
+      allTradeMappings = allTradeMappings.concat(tradeMappings);
+    }
+  }
 
   return networkSubs.map(sub => ({
     id: sub.id,
@@ -242,7 +314,7 @@ async function getMatchingNetworkSubcontractors(
     phone: sub.phone,
     city: sub.city,
     county: sub.county,
-    trades: tradeMappings
+    trades: allTradeMappings
       ?.filter(m => m.sub_id === sub.id)
       .map(m => ({
         code: (m.trade_types as any)?.code || '',
