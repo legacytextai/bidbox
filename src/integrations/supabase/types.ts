@@ -376,10 +376,12 @@ export type Database = {
           city: string | null
           company_name: string
           contact_name: string | null
+          county: string | null
           created_at: string | null
           email: string | null
           id: string
           is_verified: boolean | null
+          last_cslb_update: string | null
           license_expiration: string | null
           license_number: string | null
           license_status: string | null
@@ -392,10 +394,12 @@ export type Database = {
           city?: string | null
           company_name: string
           contact_name?: string | null
+          county?: string | null
           created_at?: string | null
           email?: string | null
           id?: string
           is_verified?: boolean | null
+          last_cslb_update?: string | null
           license_expiration?: string | null
           license_number?: string | null
           license_status?: string | null
@@ -408,10 +412,12 @@ export type Database = {
           city?: string | null
           company_name?: string
           contact_name?: string | null
+          county?: string | null
           created_at?: string | null
           email?: string | null
           id?: string
           is_verified?: boolean | null
+          last_cslb_update?: string | null
           license_expiration?: string | null
           license_number?: string | null
           license_status?: string | null
