@@ -217,29 +217,43 @@ async function getMatchingNetworkSubcontractors(
     return [];
   }
 
-  // Get network subs with matching trades
-  const { data: matchingMappings, error: mappingsError } = await supabase
-    .from('sub_trade_mappings')
-    .select('sub_id, trade_type_id')
-    .in('trade_type_id', tradeIds);
-
-  if (mappingsError) {
-    console.error('[BidList][Network] Error fetching sub_trade_mappings:', mappingsError);
-    return [];
-  }
-
-  console.log('[BidList][Network] Matching sub_trade_mappings:', matchingMappings?.length || 0);
+  // Query each trade separately to avoid 1000-row limit bias
+  // This ensures all trades get representation, not just the first 1000 mappings
+  console.log('[BidList][Network] Querying mappings per trade...');
   
-  // Log distinct trade_type_ids found to verify alignment
-  const foundTradeIds = [...new Set(matchingMappings?.map(m => m.trade_type_id) || [])];
-  console.log('[BidList][Network] Trade IDs found in mappings:', foundTradeIds);
+  const allSubIds = new Set<string>();
+  const tradeStats: { tradeId: string; mappingCount: number; newSubs: number }[] = [];
+  
+  for (const tradeId of tradeIds) {
+    const { data: mappings, error, count } = await supabase
+      .from('sub_trade_mappings')
+      .select('sub_id', { count: 'exact' })
+      .eq('trade_type_id', tradeId)
+      .limit(50000); // High limit per-trade to get all mappings
+    
+    if (error) {
+      console.error(`[BidList][Network] Error for trade ${tradeId}:`, error);
+      continue;
+    }
+    
+    const beforeCount = allSubIds.size;
+    mappings?.forEach(m => allSubIds.add(m.sub_id));
+    const newSubs = allSubIds.size - beforeCount;
+    
+    tradeStats.push({ tradeId, mappingCount: count || mappings?.length || 0, newSubs });
+    console.log(`[BidList][Network] Trade ${tradeId}: ${count || mappings?.length || 0} mappings, +${newSubs} new subs (total: ${allSubIds.size})`);
+  }
+  
+  // Log summary of per-trade coverage
+  console.log('[BidList][Network] Per-trade summary:', JSON.stringify(tradeStats));
+  console.log('[BidList][Network] Total unique sub IDs:', allSubIds.size);
 
-  if (!matchingMappings || matchingMappings.length === 0) {
-    console.log('[BidList][Network] No matching mappings found');
+  if (allSubIds.size === 0) {
+    console.log('[BidList][Network] No matching subs found across all trades');
     return [];
   }
 
-  const matchingSubIds = [...new Set(matchingMappings.map(m => m.sub_id))];
+  const matchingSubIds = [...allSubIds];
   console.log('[BidList][Network] Unique sub IDs to fetch:', matchingSubIds.length);
 
   // Chunk the sub IDs to avoid query-too-large errors (Supabase limit)
