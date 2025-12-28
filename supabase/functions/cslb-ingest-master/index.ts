@@ -106,6 +106,11 @@ function parseClassifications(classificationsStr: string): string[] {
 }
 
 // Map a CSV row to contractor data
+// Global counter for debug logging
+let statusSampleLogged = 0;
+const MAX_STATUS_SAMPLES = 10;
+
+// Map a CSV row to contractor data
 function mapRowToContractor(fields: string[], headers: Map<string, number>): CSLBContractor | null {
   const get = (name: string): string => {
     const idx = headers.get(name.toLowerCase());
@@ -113,22 +118,33 @@ function mapRowToContractor(fields: string[], headers: Map<string, number>): CSL
   };
   
   const licenseNumber = get('licenseno') || get('license_nbr') || get('licnbr');
-  const licenseStatus = get('licensestatus') || get('license_status') || get('status');
+  // CSLB uses PrimaryStatus column, not LicenseStatus
+  const licenseStatus = get('primarystatus') || get('licensestatus') || get('license_status') || get('status');
+  
+  // Debug: log first few status values to understand the data
+  if (statusSampleLogged < MAX_STATUS_SAMPLES) {
+    console.log(`[cslb-ingest-master] DEBUG Sample row ${statusSampleLogged + 1}: license=${licenseNumber}, status="${licenseStatus}", business=${get('businessname')?.substring(0, 30)}`);
+    statusSampleLogged++;
+  }
   
   if (!licenseNumber) return null;
   
-  // Only process ACTIVE licenses
-  if (licenseStatus.toUpperCase() !== 'ACTIVE') return null;
+  // Only process ACTIVE/CLEAR licenses (CSLB uses "CLEAR" for active licenses)
+  const normalizedStatus = licenseStatus.toUpperCase().trim();
+  const isActive = normalizedStatus === 'ACTIVE' || normalizedStatus === 'CLEAR' || normalizedStatus === 'A';
   
-  const classificationsRaw = get('classifications') || get('classification') || get('class');
+  if (!isActive) return null;
+  
+  // CSLB uses "Classifications(s)" with parentheses
+  const classificationsRaw = get('classifications(s)') || get('classifications') || get('classification') || get('class');
   
   return {
     license_number: licenseNumber.trim(),
-    company_name: (get('businessname') || get('business_name') || get('name') || 'Unknown').trim(),
+    company_name: (get('businessname') || get('fullbusinessname') || get('business_name') || get('name') || 'Unknown').trim(),
     city: get('city') || null,
     county: get('county') || null,
     phone: normalizePhone(get('businessphone') || get('phone') || get('busphone')),
-    license_status: licenseStatus.toUpperCase(),
+    license_status: normalizedStatus,
     last_cslb_update: get('lastupdate') || get('last_update') || null,
     classifications: parseClassifications(classificationsRaw),
   };
@@ -346,6 +362,7 @@ async function processCSVIngestion(
   let currentBatch: CSLBContractor[] = [];
   let lineNumber = 0;
   let processedInThisRun = 0;
+  let headersProcessed = false;
   
   try {
     while (true) {
@@ -375,37 +392,42 @@ async function processCSVIngestion(
       for (const line of lines) {
         lineNumber++;
         
-        // Skip lines before offset
-        if (lineNumber <= offset) continue;
-        
-        // Check if we've hit the per-invocation limit
-        if (processedInThisRun >= effectiveLimit) {
-          stats.next_offset = lineNumber;
-          console.log(`[cslb-ingest-master] Reached limit (${effectiveLimit}), next_offset: ${lineNumber}`);
-          break;
-        }
-        
         const trimmedLine = line.trim();
         if (!trimmedLine) continue;
         
         const fields = parseCSVLine(trimmedLine);
         
-        // First line is headers
-        if (!headers) {
+        // ALWAYS parse the first line as headers (regardless of offset)
+        if (!headersProcessed) {
           headers = new Map();
           fields.forEach((field, idx) => {
             // Store lowercase for case-insensitive matching
             headers!.set(field.trim().toLowerCase(), idx);
           });
+          headersProcessed = true;
           console.log(`[cslb-ingest-master] CSV Headers found: ${fields.length}`);
-          console.log(`[cslb-ingest-master] Headers: ${fields.slice(0, 10).join(', ')}...`);
+          console.log(`[cslb-ingest-master] Headers: ${fields.slice(0, 15).join(', ')}...`);
+          
+          // Log all headers for debugging license status column
+          console.log(`[cslb-ingest-master] All headers: ${Array.from(headers.keys()).join(', ')}`);
           continue;
+        }
+        
+        // Skip lines before offset (offset is 1-based, lineNumber starts at 1)
+        // offset 0 means start from beginning, offset 100 means skip first 100 data rows
+        if (lineNumber <= offset + 1) continue; // +1 to account for header row
+        
+        // Check if we've hit the per-invocation limit
+        if (processedInThisRun >= effectiveLimit) {
+          stats.next_offset = lineNumber - 1; // Store the data row offset (not counting header)
+          console.log(`[cslb-ingest-master] Reached limit (${effectiveLimit}), next_offset: ${stats.next_offset}`);
+          break;
         }
         
         stats.rows_parsed++;
         processedInThisRun++;
         
-        const contractor = mapRowToContractor(fields, headers);
+        const contractor = mapRowToContractor(fields, headers!);
         if (contractor) {
           stats.rows_active++;
           currentBatch.push(contractor);
