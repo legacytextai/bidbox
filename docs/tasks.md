@@ -1509,12 +1509,22 @@ This phase documents the strategic initiative to populate the BidBox Network Poo
 
 ---
 
-### Phase 7.6: Compliance & Nightly Jobs
+### Phase 7.6: Compliance & Scheduled Jobs
 
 **Objective:** Keep network data fresh and alert GCs to compliance issues.
 
+#### ✅ COMPLETED: Weekly CSLB Data Refresh
+
+- [x] 7.6.0 Weekly CSLB data refresh cron job
+  - **Schedule:** Every Sunday at 2:00 AM UTC (`0 2 * * 0`)
+  - **Job Name:** `cslb-weekly-refresh`
+  - **Endpoint:** `cslb-ingest-master` with `offset: 0`
+  - **Purpose:** Full re-sync of all active CSLB contractors
+  - **Implementation:** pg_cron + pg_net extensions
+  - **Date Completed:** 2024-12-28
+
 **Tasks:**
-- [ ] 7.6.1 Create nightly cron job for license expiration checks
+- [x] 7.6.1 Create weekly cron job for full CSLB refresh
   - Query CSLB for status changes
   - Update `license_status` and `license_expiration`
 
