@@ -402,85 +402,121 @@ async function processCSVIngestion(
   let headersProcessed = false;
   
   try {
+    const countNewlines = (s: string) => {
+      let c = 0;
+      for (let i = 0; i < s.length; i++) if (s.charCodeAt(i) === 10) c++; // '\n'
+      return c;
+    };
+
+    const targetLineNumber = offset + 1; // header is line 1; data row offset N starts at line N+1
+
     while (true) {
       const { done, value } = await reader.read();
-      
+
       if (done) {
-        // Process remaining buffer
+        // Process remaining buffer (single last line)
         if (buffer.trim() && headers) {
-          const fields = parseCSVLine(buffer);
-          const contractor = mapRowToContractor(fields, headers);
-          if (contractor) {
-            stats.rows_active++;
-            currentBatch.push(contractor);
-          } else {
-            stats.skipped_inactive++;
+          // If we never reached offset, nothing to do
+          if (lineNumber > targetLineNumber) {
+            const fields = parseCSVLine(buffer);
+            const contractor = mapRowToContractor(fields, headers);
+            if (contractor) {
+              stats.rows_active++;
+              currentBatch.push(contractor);
+            } else {
+              stats.skipped_inactive++;
+            }
+            stats.rows_parsed++;
           }
-          stats.rows_parsed++;
           lineNumber++;
         }
         break;
       }
-      
+
       buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-      
-      for (const line of lines) {
+
+      // First, ensure headers are processed with minimal work
+      if (!headersProcessed) {
+        const headerEnd = buffer.indexOf('\n');
+        if (headerEnd === -1) continue; // need more bytes
+
+        const headerLine = buffer.slice(0, headerEnd).trim();
+        buffer = buffer.slice(headerEnd + 1);
         lineNumber++;
-        
-        const trimmedLine = line.trim();
-        if (!trimmedLine) continue;
-        
-        const fields = parseCSVLine(trimmedLine);
-        
-        // ALWAYS parse the first line as headers (regardless of offset)
-        if (!headersProcessed) {
+
+        if (headerLine) {
+          const headerFields = parseCSVLine(headerLine);
           headers = new Map();
-          fields.forEach((field, idx) => {
-            // Store lowercase for case-insensitive matching
+          headerFields.forEach((field, idx) => {
             headers!.set(field.trim().toLowerCase(), idx);
           });
           headersProcessed = true;
-          console.log(`[cslb-ingest-master] CSV Headers found: ${fields.length}`);
-          console.log(`[cslb-ingest-master] Headers: ${fields.slice(0, 15).join(', ')}...`);
-          
-          // Log all headers for debugging license status column
+          console.log(`[cslb-ingest-master] CSV Headers found: ${headerFields.length}`);
+          console.log(`[cslb-ingest-master] Headers: ${headerFields.slice(0, 15).join(', ')}...`);
           console.log(`[cslb-ingest-master] All headers: ${Array.from(headers.keys()).join(', ')}`);
+        }
+      }
+
+      // If we still don't have headers, keep reading
+      if (!headersProcessed || !headers) continue;
+
+      // Only process complete lines in buffer
+      const lastNl = buffer.lastIndexOf('\n');
+      if (lastNl === -1) continue;
+
+      const chunk = buffer.slice(0, lastNl);
+      buffer = buffer.slice(lastNl + 1);
+
+      // FAST PATH: skip whole chunks without splitting/parsing until we're close to the offset
+      if (lineNumber < targetLineNumber) {
+        const nlCount = countNewlines(chunk);
+        if (lineNumber + nlCount <= targetLineNumber) {
+          lineNumber += nlCount;
           continue;
         }
-        
-        // Skip lines before offset (offset is 1-based, lineNumber starts at 1)
-        // offset 0 means start from beginning, offset 100 means skip first 100 data rows
-        if (lineNumber <= offset + 1) continue; // +1 to account for header row
-        
-        // Check if we've hit the per-invocation limit
+        // else fall through to line-by-line for the remaining few lines in this chunk
+      }
+
+      const lines = chunk.split('\n');
+      for (const rawLine of lines) {
+        lineNumber++;
+
+        const trimmedLine = rawLine.trim();
+        if (!trimmedLine) continue;
+
+        // Skip lines before offset (do not parse)
+        if (lineNumber <= targetLineNumber) continue;
+
+        // Check if we've hit the per-invocation limit BEFORE parsing
         if (processedInThisRun >= effectiveLimit) {
-          stats.next_offset = lineNumber - 1; // Store the data row offset (not counting header)
+          stats.next_offset = lineNumber - 1; // data row offset (not counting header)
           console.log(`[cslb-ingest-master] Reached limit (${effectiveLimit}), next_offset: ${stats.next_offset}`);
           break;
         }
-        
+
+        const fields = parseCSVLine(trimmedLine);
+
         stats.rows_parsed++;
         processedInThisRun++;
-        
-        const contractor = mapRowToContractor(fields, headers!);
+
+        const contractor = mapRowToContractor(fields, headers);
         if (contractor) {
           stats.rows_active++;
           currentBatch.push(contractor);
         } else {
           stats.skipped_inactive++;
         }
-        
-        // Process batch when full
+
         if (currentBatch.length >= BATCH_SIZE) {
-          console.log(`[cslb-ingest-master] Processing batch of ${currentBatch.length} contractors (total active: ${stats.rows_active})...`);
+          console.log(
+            `[cslb-ingest-master] Processing batch of ${currentBatch.length} contractors (total active: ${stats.rows_active})...`,
+          );
           const licenseToIdMap = await batchUpsertContractors(supabase, currentBatch, stats);
           await batchProcessMappings(supabase, currentBatch, licenseToIdMap, tradeTypeCache, stats);
           currentBatch = [];
         }
       }
-      
+
       // Check if we hit the limit during line processing
       if (stats.next_offset) break;
     }
