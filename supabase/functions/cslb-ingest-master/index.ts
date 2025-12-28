@@ -5,23 +5,28 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Processing configuration
-const BATCH_SIZE = 1000; // Rows per batch for DB operations
-const MAX_ROWS_PER_INVOCATION = 50000; // Chunked execution limit
+// ============================================
+// HARDCODED CANONICAL URL - DO NOT CHANGE
+// ============================================
+const CSLB_MASTER_CSV_URL = 'https://cslb.ca.gov/OnlineServices/DataPortal/DownLoadFile.ashx?fName=MasterLicenseData&type=C';
 
-// CSLB Portal page - CSV URL must be discovered via browser network tab
-// The actual download URL is dynamic and session-based
-const CSLB_PORTAL_URL = 'https://www.cslb.ca.gov/onlineservices/dataportal/ContractorList';
+// Processing configuration
+const BATCH_SIZE = 500;
+const MAX_ROWS_PER_INVOCATION = 50000;
+
+// Safety cap for initial testing - set to 0 for full ingestion
+const SAFETY_CAP = 5000;
 
 interface IngestionStats {
   rows_parsed: number;
   rows_active: number;
   rows_inserted: number;
-  rows_updated: number;
   mappings_created: number;
   mappings_deleted: number;
+  skipped_inactive: number;
   errors: number;
   error_details: string[];
+  unknown_codes: string[];
   start_time: number;
   end_time?: number;
   offset_used: number;
@@ -103,28 +108,28 @@ function parseClassifications(classificationsStr: string): string[] {
 // Map a CSV row to contractor data
 function mapRowToContractor(fields: string[], headers: Map<string, number>): CSLBContractor | null {
   const get = (name: string): string => {
-    const idx = headers.get(name);
+    const idx = headers.get(name.toLowerCase());
     return idx !== undefined && idx < fields.length ? fields[idx] : '';
   };
   
-  const licenseNumber = get('LicenseNo') || get('LICENSE_NBR') || get('LICNBR');
-  const licenseStatus = get('LicenseStatus') || get('LICENSE_STATUS') || get('STATUS');
+  const licenseNumber = get('licenseno') || get('license_nbr') || get('licnbr');
+  const licenseStatus = get('licensestatus') || get('license_status') || get('status');
   
   if (!licenseNumber) return null;
   
   // Only process ACTIVE licenses
   if (licenseStatus.toUpperCase() !== 'ACTIVE') return null;
   
-  const classificationsRaw = get('Classifications') || get('CLASSIFICATION') || get('CLASS');
+  const classificationsRaw = get('classifications') || get('classification') || get('class');
   
   return {
     license_number: licenseNumber.trim(),
-    company_name: (get('BusinessName') || get('BUSINESS_NAME') || get('NAME') || 'Unknown').trim(),
-    city: get('City') || get('CITY') || null,
-    county: get('County') || get('COUNTY') || null,
-    phone: normalizePhone(get('BusinessPhone') || get('PHONE') || get('BUSPHONE')),
+    company_name: (get('businessname') || get('business_name') || get('name') || 'Unknown').trim(),
+    city: get('city') || null,
+    county: get('county') || null,
+    phone: normalizePhone(get('businessphone') || get('phone') || get('busphone')),
     license_status: licenseStatus.toUpperCase(),
-    last_cslb_update: get('LastUpdate') || get('LAST_UPDATE') || null,
+    last_cslb_update: get('lastupdate') || get('last_update') || null,
     classifications: parseClassifications(classificationsRaw),
   };
 }
@@ -208,7 +213,7 @@ async function batchProcessMappings(
     return;
   }
   
-  stats.mappings_deleted += subIds.length; // Approximate
+  stats.mappings_deleted += subIds.length;
   
   // Prepare all new mappings
   const mappingsToInsert: { sub_id: string; trade_type_id: string }[] = [];
@@ -221,6 +226,8 @@ async function batchProcessMappings(
       const tradeTypeId = tradeTypeCache.get(code);
       if (tradeTypeId) {
         mappingsToInsert.push({ sub_id: subId, trade_type_id: tradeTypeId });
+      } else if (!stats.unknown_codes.includes(code)) {
+        stats.unknown_codes.push(code);
       }
     }
   }
@@ -243,9 +250,7 @@ async function batchProcessMappings(
 }
 
 // Load trade types into cache for fast lookup
-async function loadTradeTypeCache(
-  supabase: any
-): Promise<Map<string, string>> {
+async function loadTradeTypeCache(supabase: any): Promise<Map<string, string>> {
   const cache = new Map<string, string>();
   
   const { data, error } = await supabase
@@ -271,32 +276,40 @@ async function loadTradeTypeCache(
 // Main ingestion function
 async function processCSVIngestion(
   supabase: any,
-  csvUrl: string,
   offset: number = 0
 ): Promise<IngestionStats> {
   const stats: IngestionStats = {
     rows_parsed: 0,
     rows_active: 0,
     rows_inserted: 0,
-    rows_updated: 0,
     mappings_created: 0,
     mappings_deleted: 0,
+    skipped_inactive: 0,
     errors: 0,
     error_details: [],
+    unknown_codes: [],
     start_time: Date.now(),
     offset_used: offset,
     is_complete: false,
   };
   
-  console.log(`[cslb-ingest-master] Starting ingestion from offset ${offset}`);
+  const effectiveLimit = SAFETY_CAP > 0 ? Math.min(SAFETY_CAP, MAX_ROWS_PER_INVOCATION) : MAX_ROWS_PER_INVOCATION;
+  
+  console.log(`[cslb-ingest-master] ========================================`);
+  console.log(`[cslb-ingest-master] CSLB Master License Ingestion Starting`);
+  console.log(`[cslb-ingest-master] ========================================`);
+  console.log(`[cslb-ingest-master] URL: ${CSLB_MASTER_CSV_URL}`);
+  console.log(`[cslb-ingest-master] Offset: ${offset}`);
+  console.log(`[cslb-ingest-master] Safety Cap: ${SAFETY_CAP > 0 ? SAFETY_CAP : 'DISABLED (full ingestion)'}`);
+  console.log(`[cslb-ingest-master] Effective Limit: ${effectiveLimit} rows`);
   
   // Load trade types for classification mapping
   const tradeTypeCache = await loadTradeTypeCache(supabase);
   
-  // Fetch CSV directly
-  console.log(`[cslb-ingest-master] Fetching CSV from ${csvUrl}`);
+  // Fetch CSV directly from hardcoded URL
+  console.log(`[cslb-ingest-master] Fetching CSV...`);
   
-  const response = await fetch(csvUrl, {
+  const response = await fetch(CSLB_MASTER_CSV_URL, {
     headers: {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       'Accept': 'text/csv,application/csv,*/*',
@@ -312,7 +325,11 @@ async function processCSVIngestion(
     return stats;
   }
   
-  console.log(`[cslb-ingest-master] CSV response received, processing...`);
+  const contentType = response.headers.get('content-type');
+  const contentLength = response.headers.get('content-length');
+  console.log(`[cslb-ingest-master] Response received`);
+  console.log(`[cslb-ingest-master] Content-Type: ${contentType}`);
+  console.log(`[cslb-ingest-master] Content-Length: ${contentLength ? `${(parseInt(contentLength) / 1024 / 1024).toFixed(2)} MB` : 'unknown'}`);
   
   // Stream and parse CSV
   const reader = response.body?.getReader();
@@ -336,14 +353,14 @@ async function processCSVIngestion(
       
       if (done) {
         // Process remaining buffer
-        if (buffer.trim()) {
+        if (buffer.trim() && headers) {
           const fields = parseCSVLine(buffer);
-          if (headers) {
-            const contractor = mapRowToContractor(fields, headers);
-            if (contractor) {
-              stats.rows_active++;
-              currentBatch.push(contractor);
-            }
+          const contractor = mapRowToContractor(fields, headers);
+          if (contractor) {
+            stats.rows_active++;
+            currentBatch.push(contractor);
+          } else {
+            stats.skipped_inactive++;
           }
           stats.rows_parsed++;
           lineNumber++;
@@ -362,9 +379,9 @@ async function processCSVIngestion(
         if (lineNumber <= offset) continue;
         
         // Check if we've hit the per-invocation limit
-        if (processedInThisRun >= MAX_ROWS_PER_INVOCATION) {
+        if (processedInThisRun >= effectiveLimit) {
           stats.next_offset = lineNumber;
-          console.log(`[cslb-ingest-master] Reached limit, next_offset: ${lineNumber}`);
+          console.log(`[cslb-ingest-master] Reached limit (${effectiveLimit}), next_offset: ${lineNumber}`);
           break;
         }
         
@@ -377,9 +394,11 @@ async function processCSVIngestion(
         if (!headers) {
           headers = new Map();
           fields.forEach((field, idx) => {
-            headers!.set(field.trim(), idx);
+            // Store lowercase for case-insensitive matching
+            headers!.set(field.trim().toLowerCase(), idx);
           });
-          console.log(`[cslb-ingest-master] Headers: ${Array.from(headers.keys()).join(', ')}`);
+          console.log(`[cslb-ingest-master] CSV Headers found: ${fields.length}`);
+          console.log(`[cslb-ingest-master] Headers: ${fields.slice(0, 10).join(', ')}...`);
           continue;
         }
         
@@ -390,11 +409,13 @@ async function processCSVIngestion(
         if (contractor) {
           stats.rows_active++;
           currentBatch.push(contractor);
+        } else {
+          stats.skipped_inactive++;
         }
         
         // Process batch when full
         if (currentBatch.length >= BATCH_SIZE) {
-          console.log(`[cslb-ingest-master] Processing batch of ${currentBatch.length} contractors...`);
+          console.log(`[cslb-ingest-master] Processing batch of ${currentBatch.length} contractors (total active: ${stats.rows_active})...`);
           const licenseToIdMap = await batchUpsertContractors(supabase, currentBatch, stats);
           await batchProcessMappings(supabase, currentBatch, licenseToIdMap, tradeTypeCache, stats);
           currentBatch = [];
@@ -424,16 +445,23 @@ async function processCSVIngestion(
   stats.end_time = Date.now();
   const duration = ((stats.end_time - stats.start_time) / 1000).toFixed(2);
   
-  console.log(`[cslb-ingest-master] Ingestion complete!`);
-  console.log(`  - Duration: ${duration}s`);
-  console.log(`  - Rows parsed: ${stats.rows_parsed}`);
-  console.log(`  - Active contractors: ${stats.rows_active}`);
-  console.log(`  - Inserted/Updated: ${stats.rows_inserted}`);
-  console.log(`  - Mappings created: ${stats.mappings_created}`);
-  console.log(`  - Errors: ${stats.errors}`);
-  console.log(`  - Is complete: ${stats.is_complete}`);
+  console.log(`[cslb-ingest-master] ========================================`);
+  console.log(`[cslb-ingest-master] INGESTION COMPLETE`);
+  console.log(`[cslb-ingest-master] ========================================`);
+  console.log(`[cslb-ingest-master] Duration: ${duration}s`);
+  console.log(`[cslb-ingest-master] Rows parsed: ${stats.rows_parsed}`);
+  console.log(`[cslb-ingest-master] Skipped (inactive): ${stats.skipped_inactive}`);
+  console.log(`[cslb-ingest-master] Active contractors: ${stats.rows_active}`);
+  console.log(`[cslb-ingest-master] Upserted: ${stats.rows_inserted}`);
+  console.log(`[cslb-ingest-master] Mappings created: ${stats.mappings_created}`);
+  console.log(`[cslb-ingest-master] Unknown codes: ${stats.unknown_codes.length}`);
+  if (stats.unknown_codes.length > 0) {
+    console.log(`[cslb-ingest-master] Unknown codes (first 20): ${stats.unknown_codes.slice(0, 20).join(', ')}`);
+  }
+  console.log(`[cslb-ingest-master] Errors: ${stats.errors}`);
+  console.log(`[cslb-ingest-master] Is complete: ${stats.is_complete}`);
   if (stats.next_offset) {
-    console.log(`  - Next offset: ${stats.next_offset}`);
+    console.log(`[cslb-ingest-master] Next offset for continuation: ${stats.next_offset}`);
   }
   
   return stats;
@@ -451,49 +479,46 @@ Deno.serve(async (req) => {
     
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
-    // Parse request body for offset and csv_url
+    // Parse request body for optional offset
     let offset = 0;
-    let csvUrl: string | null = null;
     
     if (req.method === 'POST') {
       try {
         const body = await req.json();
         offset = body.offset || 0;
-        csvUrl = body.csv_url || null;
       } catch {
         // No body or invalid JSON, use defaults
       }
     }
     
-    // CSV URL is required - must be captured from browser network tab
-    if (!csvUrl) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: 'csv_url is required. The CSLB portal uses ASP.NET forms that require browser interaction. To get the URL: 1) Open browser dev tools (Network tab), 2) Go to ' + CSLB_PORTAL_URL + ', 3) Select "License Master" and CSV format, 4) Click download and copy the request URL from Network tab, 5) Pass that URL as csv_url parameter.',
-          portal_url: CSLB_PORTAL_URL,
-        }),
-        {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 400,
-        }
-      );
-    }
-    
     console.log(`[cslb-ingest-master] Starting CSLB Master License ingestion...`);
-    console.log(`[cslb-ingest-master] CSV URL: ${csvUrl}`);
-    console.log(`[cslb-ingest-master] Offset: ${offset}`);
     
-    // Run ingestion
-    const stats = await processCSVIngestion(supabase, csvUrl, offset);
+    // Run ingestion with hardcoded URL
+    const stats = await processCSVIngestion(supabase, offset);
     
     return new Response(
       JSON.stringify({
         success: stats.errors === 0 || stats.rows_inserted > 0,
         message: stats.is_complete 
-          ? 'Ingestion complete' 
-          : `Partial ingestion, continue from offset ${stats.next_offset}`,
-        stats,
+          ? SAFETY_CAP > 0 
+            ? `Ingestion complete (safety cap: ${SAFETY_CAP} rows)`
+            : 'Full ingestion complete'
+          : `Partial ingestion complete. Continue with offset: ${stats.next_offset}`,
+        stats: {
+          duration_seconds: stats.end_time ? ((stats.end_time - stats.start_time) / 1000).toFixed(2) : null,
+          rows_parsed: stats.rows_parsed,
+          skipped_inactive: stats.skipped_inactive,
+          active_contractors: stats.rows_active,
+          upserted: stats.rows_inserted,
+          mappings_created: stats.mappings_created,
+          unknown_codes_count: stats.unknown_codes.length,
+          errors: stats.errors,
+          is_complete: stats.is_complete,
+          offset_used: stats.offset_used,
+          next_offset: stats.next_offset || null,
+        },
+        unknown_codes: stats.unknown_codes.slice(0, 50),
+        error_details: stats.error_details.slice(0, 10),
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -501,14 +526,14 @@ Deno.serve(async (req) => {
       }
     );
     
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error(`[cslb-ingest-master] Fatal error: ${errorMessage}`);
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error(`[cslb-ingest-master] Fatal error: ${errorMsg}`);
     
     return new Response(
       JSON.stringify({
         success: false,
-        error: errorMessage,
+        error: errorMsg,
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
