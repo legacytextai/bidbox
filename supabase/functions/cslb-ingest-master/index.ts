@@ -12,7 +12,7 @@ const CSLB_MASTER_CSV_URL = 'https://cslb.ca.gov/OnlineServices/DataPortal/DownL
 
 // Processing configuration
 const BATCH_SIZE = 500;
-const MAX_ROWS_PER_INVOCATION = 40000; // Reduced to avoid CPU timeout
+const MAX_ROWS_PER_INVOCATION = 30000; // Reduced further to avoid CPU timeout
 
 // Safety cap for initial testing - set to 0 for full ingestion
 const SAFETY_CAP = 0;
