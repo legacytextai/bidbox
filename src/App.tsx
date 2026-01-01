@@ -19,6 +19,7 @@ import AdminAnalytics from "./pages/AdminAnalytics";
 import AdminNetworkSubs from "./pages/AdminNetworkSubs";
 import SubcontractorDirectory from "./pages/SubcontractorDirectory";
 import CalendarDashboard from "./pages/CalendarDashboard";
+import SubsNetwork from "./pages/SubsNetwork";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -46,6 +47,7 @@ const App = () => (
             <Route path="/admin/analytics" element={<AdminAnalytics />} />
             <Route path="/admin/network-subs" element={<AdminNetworkSubs />} />
             <Route path="/settings/subcontractors" element={<SubcontractorDirectory />} />
+            <Route path="/subs-network" element={<SubsNetwork />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
