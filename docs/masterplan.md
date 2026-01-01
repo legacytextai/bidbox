@@ -237,11 +237,12 @@ Fast to scaffold, secure by default, and matches Lovable's strengths.
 - Track file downloads
 - Display engagement status per sub
 
-**Phase 6: Call List Generator** 📋 Planned  
-- Build ranking logic (Not opened → Viewed → Downloaded → Submitted)
-- Merge two pools for project coverage
-- Generate Excel (.xlsx) grouped by trade
-- Add "Generate Call List (Excel)" button
+**Phase 6: Bid List Generator** ✅ Complete  
+- ✅ Merge two pools (Private + Network) for project coverage
+- ✅ Generate Excel (.xlsx) with two sheets ("My Subs" and "Network Subs")
+- ✅ Filter by project's selected trades
+- ✅ Regional filtering: Network Subs filtered by project county → region mapping
+- ✅ Fix trade bias bug (per-trade iteration vs single `.in()` query)
 
 **v2+ (future)**    
 - Sub invite batching (email/SMS)    
@@ -432,5 +433,27 @@ BidBox is building a long-term competitive moat by populating the Network Pool w
 | **7.6** | Compliance Jobs | Keep data fresh |
 
 See `docs/tasks.md` Phase 7 for detailed implementation tasks.
+
+---
+
+### 🗺️ Regional Filtering for California Projects
+
+BidBox uses county-based regional filtering to provide GCs with geographically relevant Network Subs:
+
+**Three California Regions:**
+- **Southern CA** (7 counties): Imperial, Los Angeles, Orange, Riverside, San Bernardino, San Diego, Ventura
+- **Central CA** (17 counties): Fresno, Inyo, Kern, Kings, Madera, Mariposa, Merced, Mono, Monterey, San Benito, San Joaquin, San Luis Obispo, Santa Barbara, Santa Cruz, Stanislaus, Tulare, Tuolumne
+- **Northern CA** (34 counties): Alameda, Alpine, Amador, Butte, Calaveras, Colusa, Contra Costa, Del Norte, El Dorado, Glenn, Humboldt, Lake, Lassen, Marin, Mendocino, Modoc, Napa, Nevada, Placer, Plumas, Sacramento, San Francisco, San Mateo, Santa Clara, Shasta, Sierra, Siskiyou, Solano, Sonoma, Sutter, Tehama, Trinity, Yolo, Yuba
+
+**Filtering Rules:**
+- Projects require a county selection (dropdown on create/edit)
+- Network Pool subs filtered to same region as project county
+- Private Pool subs remain unfiltered (GC's trusted contacts have no geographic restriction)
+- Region is derived at runtime from static mapping (not stored in DB)
+
+**Implementation Files:**
+- `src/lib/californiaRegions.ts` — Region mapping and utility functions
+- `src/components/CountySelect.tsx` — Searchable county dropdown
+- `src/lib/bidListGenerator.ts` — Regional filtering logic
 
 ---
