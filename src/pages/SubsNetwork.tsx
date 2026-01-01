@@ -124,10 +124,12 @@ export default function SubsNetwork() {
         }
       } else {
         // Trade search: find subs with matching trades
+        // Limit upstream to prevent URL overflow when passing IDs to .in() query
         const { data: mappings, error: mappingError } = await supabase
           .from("sub_trade_mappings")
           .select("sub_id")
-          .in("trade_type_id", selectedTradeIds);
+          .in("trade_type_id", selectedTradeIds)
+          .limit(100);
 
         if (mappingError) throw mappingError;
 
@@ -139,8 +141,7 @@ export default function SubsNetwork() {
           const { data: subs, error: subError } = await supabase
             .from("subcontractors")
             .select("id, company_name, license_number, license_status, phone, city")
-            .in("id", uniqueSubIds)
-            .limit(100);
+            .in("id", uniqueSubIds);
 
           if (subError) throw subError;
 
