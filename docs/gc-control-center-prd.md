@@ -1,7 +1,7 @@
 # BidBox GC Control Center PRD
 
 **Strategic Product Requirements Document**  
-Last Updated: 2025-12-07
+Last Updated: 2025-12-28
 
 ---
 
@@ -116,15 +116,26 @@ The Call List Generator pulls from **two distinct pools**:
 
 ### Target User Flow
 1. GC creates project → uploads plans
-2. GC selects required trades (license types)
-3. BidBox maps subs from **both pools** to selected trades
-4. GC clicks **"Generate Call List (Excel)"**
-5. BidBox outputs `.xlsx` with:
-   - Grouped by trade
-   - Sorted by engagement priority
-   - Contains: Name, Company, Phone, Email, Engagement Status
+2. GC selects project county (required for regional filtering)
+3. GC selects required trades (license types)
+4. BidBox maps subs from **both pools** to selected trades
+5. GC clicks **"Export Bid List (Excel)"**
+6. BidBox outputs `.xlsx` with two sheets:
+   - **My Subs**: GC's private pool contacts (unfiltered by region)
+   - **Network Subs**: CSLB-sourced subs filtered by same region as project county
 
-**Result:** GC has an actionable call sheet ready immediately.
+**Result:** GC has a geographically-relevant, trade-filtered contact list ready immediately.
+
+### Regional Filtering (NEW - 2025-12-28)
+
+The Network Pool is filtered by California region to reduce noise and provide locally-relevant results:
+
+- **County Selection**: Required field on project creation/edit
+- **Region Mapping**: 58 CA counties → 3 regions (Southern, Central, Northern)
+- **Filtering Rules**:
+  - Network Subs: Filtered to same region as project county
+  - Private Pool: Remains unfiltered (GC's trusted contacts work statewide)
+- **Typical Results**: ~1,000-2,500 Network Subs per region (vs ~6,500 statewide)
 
 ### Security Model (Audit Reference)
 

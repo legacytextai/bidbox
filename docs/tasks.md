@@ -1,7 +1,7 @@
 # BidBox Implementation Tasks
 
 **Source of Truth for Feature Implementation**  
-Last Updated: 2025-12-14
+Last Updated: 2025-12-28
 
 ---
 
@@ -1272,7 +1272,7 @@ Before marking MVP complete:
 
 ## 🎯 Phase 6: Bid List Generator [✅ COMPLETED]
 
-> **Status**: Completed 2024-12-28
+> **Status**: Completed 2025-12-28
 
 ### Task 6.1: Build Bid List Generator Service [✅ COMPLETED]
 
@@ -1309,6 +1309,64 @@ Before marking MVP complete:
 - Network pool only returns CLEAR license status subs
 - Both sheets created even if one pool is empty
 - Export blocked with helpful toast if no trades selected
+
+---
+
+### Task 6.4.1: Fix Network Subs Trade Bias Bug [✅ COMPLETED]
+
+**Problem**: Network Subs export was dominated by C-20 (HVAC) contractors even when multiple trades were selected.
+
+**Root Cause**: Supabase's default 1000-row limit on `.in('trade_type_id', tradeIds)` query was truncating results, creating bias toward first trades in insertion order.
+
+**Solution**: 
+- Changed from single `.in()` query to per-trade iteration
+- Each trade queried separately with limit(50000)
+- Results unioned via Set for deduplication
+- All trades now represented proportionally
+
+**Files Modified**: `src/lib/bidListGenerator.ts`
+
+---
+
+### Task 6.5: California County-Based Regional Filtering [✅ COMPLETED]
+
+**Objective**: Reduce Network Subs export from thousands to a geographically-relevant subset based on project county.
+
+**Implementation**:
+- [x] 6.5.1 Database migration: `projects.county` column (text, nullable for legacy)
+- [x] 6.5.2 Create `src/lib/californiaRegions.ts`
+  - Static mapping of 58 CA counties to 3 regions
+  - Regions: Southern CA (7 counties), Central CA (17 counties), Northern CA (34 counties)
+  - Utility functions: `getRegionForCounty()`, `getCountiesInRegion()`, `isValidCACounty()`
+- [x] 6.5.3 Create `src/components/CountySelect.tsx`
+  - Searchable dropdown (type-ahead)
+  - Shows county name with region indicator
+- [x] 6.5.4 Update NewProject.tsx
+  - Replace free-form "Location" with required county selector
+  - County stored in `projects.county`
+- [x] 6.5.5 Update ProjectDetail.tsx
+  - Add county editing capability
+  - Pass county to BidListButton
+- [x] 6.5.6 Update BidListButton.tsx
+  - Block export if county missing with guidance toast
+  - Validate county is in CA_COUNTIES list
+- [x] 6.5.7 Update bidListGenerator.ts
+  - Derive region from project county
+  - Filter Network Subs by `.in('county', allowedCounties)`
+  - My Subs remain unfiltered (geographic freedom for private pool)
+
+**Expected Outcome**:
+- Network Subs reduced from ~6,500 to ~1,000-2,500 per region
+- Legacy projects (no county) blocked with guidance
+- Logs show region filtering behavior
+
+**Files Created/Modified**:
+- `src/lib/californiaRegions.ts` (new)
+- `src/components/CountySelect.tsx` (new)
+- `src/pages/NewProject.tsx`
+- `src/pages/ProjectDetail.tsx`
+- `src/components/BidListButton.tsx`
+- `src/lib/bidListGenerator.ts`
 
 ---
 
