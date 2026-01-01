@@ -42,8 +42,8 @@ const CalendarDashboard = () => {
   });
 
   if (authLoading || isLoading) {
-    return (
-      <Layout>
+  return (
+    <Layout showSidebar>
         <div className="flex items-center justify-center h-64">
           <div className="text-muted-foreground">Loading...</div>
         </div>
