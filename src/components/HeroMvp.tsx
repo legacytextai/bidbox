@@ -28,7 +28,10 @@ const HeroMvp = () => {
             {/* Left: Copy */}
             <div className="space-y-4 animate-slide-in-left">
               <div className="space-y-4">
-              <h1 className="text-4xl md:text-5xl font-bold text-foreground leading-tight"><span className="text-black dark:text-white">The #1</span> Estimating Bid Desk  for Public Works General Contractors.<span className="text-[hsl(var(--bidbox-blue))]">Simple Bid Room</span> for General Contractors.
+              <h1 className="text-4xl md:text-5xl font-bold leading-tight">
+                <span className="text-black dark:text-white">The #1 </span>
+                <span className="text-[hsl(var(--bidbox-blue))]">Estimating Bid Desk</span>
+                <span className="text-black dark:text-white"> for Public Works General Contractors.</span>
               </h1>
 
                 <p className="text-xl text-muted-foreground leading-relaxed">Share project files. Collect quotes. Stay in control on bid day — without chasing down emails or wrestling complicated software.</p>
