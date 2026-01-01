@@ -116,6 +116,46 @@ export function exportBidListToExcel(
 }
 
 /**
+ * Export network subcontractors search results to Excel
+ */
+export interface NetworkSubExportEntry {
+  company_name: string;
+  license_number: string | null;
+  license_status: string | null;
+  phone: string | null;
+  city: string | null;
+  trades: string;
+}
+
+export function exportNetworkSubsToExcel(subs: NetworkSubExportEntry[]): void {
+  const data = subs.map((sub) => ({
+    'Company Name': sub.company_name || '',
+    'License #': sub.license_number || '',
+    'License Status': sub.license_status || '',
+    'Phone': sub.phone || '',
+    'City': sub.city || '',
+    'Trades': sub.trades || '',
+  }));
+
+  const ws = XLSX.utils.json_to_sheet(data);
+
+  ws['!cols'] = [
+    { wch: 30 }, // Company Name
+    { wch: 12 }, // License #
+    { wch: 12 }, // License Status
+    { wch: 15 }, // Phone
+    { wch: 15 }, // City
+    { wch: 40 }, // Trades
+  ];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Network Subs');
+
+  const date = new Date().toISOString().split('T')[0];
+  XLSX.writeFile(wb, `Subcontractor_Network_Export_${date}.xlsx`);
+}
+
+/**
  * Create and download a template Excel file for subcontractor import
  */
 export function downloadImportTemplate(): void {
