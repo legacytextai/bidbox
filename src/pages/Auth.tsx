@@ -52,7 +52,7 @@ const Auth = () => {
           }
           
           // Session is valid, redirect to projects
-          navigate("/projects");
+          navigate("/calendar");
         }
       } catch (err) {
         console.error("Auth check error:", err);
@@ -85,7 +85,7 @@ const Auth = () => {
           title: "Success",
           description: "Logged in successfully",
         });
-        navigate("/projects");
+        navigate("/calendar");
       } else {
         const { error } = await supabase.auth.signUp({
           email: validation.email,
@@ -94,7 +94,7 @@ const Auth = () => {
             data: {
               company_name: validation.company_name,
             },
-            emailRedirectTo: `${window.location.origin}/projects`,
+            emailRedirectTo: `${window.location.origin}/calendar`,
           },
         });
 
@@ -104,7 +104,7 @@ const Auth = () => {
           title: "Success",
           description: "Account created successfully",
         });
-        navigate("/projects");
+        navigate("/calendar");
       }
     } catch (error: any) {
       if (error instanceof z.ZodError) {
