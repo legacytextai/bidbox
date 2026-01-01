@@ -54,8 +54,8 @@ const CalendarDashboard = () => {
   const projectCount = projects.length;
 
   return (
-    <Layout>
-      <div className="space-y-8">
+    <Layout showSidebar>
+      <div className="space-y-8 p-6">
         {/* Top Metrics Row */}
         <div className="flex justify-center">
           <div className="flex items-center justify-center gap-16 max-w-3xl w-full">
