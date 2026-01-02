@@ -503,13 +503,21 @@ async function processCSVIngestion(
         if (contractor) {
           stats.rows_active++;
           currentBatch.push(contractor);
+          
+          // Enhanced logging for gap detection - log every 1000 active contractors
+          if (stats.rows_active % 1000 === 0) {
+            console.log(`[cslb-ingest-master] PROGRESS: ${stats.rows_active} active | last license: ${contractor.license_number} | line: ${lineNumber}`);
+          }
         } else {
           stats.skipped_inactive++;
         }
 
         if (currentBatch.length >= BATCH_SIZE) {
+          // Log license range in this batch for tracking
+          const firstLicense = currentBatch[0]?.license_number;
+          const lastLicense = currentBatch[currentBatch.length - 1]?.license_number;
           console.log(
-            `[cslb-ingest-master] Processing batch of ${currentBatch.length} contractors (total active: ${stats.rows_active})...`,
+            `[cslb-ingest-master] Batch: ${currentBatch.length} contractors | range: ${firstLicense}-${lastLicense} | total: ${stats.rows_active}`,
           );
           const licenseToIdMap = await batchUpsertContractors(supabase, currentBatch, stats);
           await batchProcessMappings(supabase, currentBatch, licenseToIdMap, tradeTypeCache, stats);
@@ -541,22 +549,25 @@ async function processCSVIngestion(
   const duration = ((stats.end_time - stats.start_time) / 1000).toFixed(2);
   
   console.log(`[cslb-ingest-master] ========================================`);
-  console.log(`[cslb-ingest-master] INGESTION COMPLETE`);
+  console.log(`[cslb-ingest-master] INGESTION RUN COMPLETE`);
   console.log(`[cslb-ingest-master] ========================================`);
   console.log(`[cslb-ingest-master] Duration: ${duration}s`);
-  console.log(`[cslb-ingest-master] Rows parsed: ${stats.rows_parsed}`);
+  console.log(`[cslb-ingest-master] Offset used: ${stats.offset_used}`);
+  console.log(`[cslb-ingest-master] Rows parsed this run: ${stats.rows_parsed}`);
   console.log(`[cslb-ingest-master] Skipped (inactive): ${stats.skipped_inactive}`);
-  console.log(`[cslb-ingest-master] Active contractors: ${stats.rows_active}`);
-  console.log(`[cslb-ingest-master] Upserted: ${stats.rows_inserted}`);
+  console.log(`[cslb-ingest-master] Active contractors this run: ${stats.rows_active}`);
+  console.log(`[cslb-ingest-master] Upserted to DB: ${stats.rows_inserted}`);
   console.log(`[cslb-ingest-master] Mappings created: ${stats.mappings_created}`);
   console.log(`[cslb-ingest-master] Unknown codes: ${stats.unknown_codes.length}`);
   if (stats.unknown_codes.length > 0) {
     console.log(`[cslb-ingest-master] Unknown codes (first 20): ${stats.unknown_codes.slice(0, 20).join(', ')}`);
   }
   console.log(`[cslb-ingest-master] Errors: ${stats.errors}`);
-  console.log(`[cslb-ingest-master] Is complete: ${stats.is_complete}`);
+  console.log(`[cslb-ingest-master] All data processed: ${stats.is_complete}`);
   if (stats.next_offset) {
-    console.log(`[cslb-ingest-master] Next offset for continuation: ${stats.next_offset}`);
+    console.log(`[cslb-ingest-master] *** CONTINUE WITH: offset=${stats.next_offset} ***`);
+  } else {
+    console.log(`[cslb-ingest-master] *** FULL INGESTION COMPLETE - NO MORE DATA ***`);
   }
   
   return stats;
