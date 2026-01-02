@@ -1,7 +1,7 @@
 # BidBox Implementation Tasks
 
 **Source of Truth for Feature Implementation**  
-Last Updated: 2025-12-28
+Last Updated: 2026-01-01
 
 ---
 
@@ -261,6 +261,19 @@ CREATE POLICY "Anyone can view projects by public token"
   - Verified via auth logs: "Pwned passwords cache is 292.77 KB"
 
 **References**: supabase-info docs
+
+---
+
+### Task 0.8: Fix Subs Network Trade Search URL Overflow [✅ COMPLETED]
+
+**Date**: 2026-01-01  
+**Problem**: Searching by trade type on `/subs-network` page caused 400 Bad Request errors due to excessive URL length when querying `sub_trade_mappings`.
+
+**Root Cause**: Unbounded query to `sub_trade_mappings` table returned thousands of rows, exceeding URL length limits.
+
+**Solution**: Added `.limit(100)` to the `sub_trade_mappings` query to prevent URL overflow during trade type searches.
+
+**Files Modified**: `src/pages/SubsNetwork.tsx`
 
 ---
 
@@ -1408,7 +1421,12 @@ This phase documents the strategic initiative to populate the BidBox Network Poo
 - [x] 7.1.3 `cslb_cache` table for lookup caching (30-day TTL)
 - [x] 7.1.4 State-agnostic `trade_type_id` FK architecture
 - [x] 7.1.5 `lookup-cslb` edge function with HTML parsing
-- [x] 7.1.X Optimized `cslb-ingest-master` to skip offsets without parsing (prevents CPU timeouts at 200k+ offsets)
+- [x] 7.1.6 Optimized `cslb-ingest-master` to skip offsets without parsing (prevents CPU timeouts at 200k+ offsets)
+- [x] 7.1.9 Enhanced `cslb-ingest-master` progress logging
+  - Added license range logging per batch (e.g., "Batch: 250 contractors | range: 1126353-1126654")
+  - Added milestone logging every 1000 active contractors
+  - Added clear continuation instructions in summary output
+  - Date Completed: 2026-01-01
 
 **Planned Extensions:**
 - [ ] 7.1.6 Document CSLB classification → `trade_type_id` mapping rules
@@ -1589,6 +1607,36 @@ This phase documents the strategic initiative to populate the BidBox Network Poo
   - **Purpose:** Full re-sync of all active CSLB contractors
   - **Implementation:** pg_cron + pg_net extensions
   - **Date Completed:** 2024-12-28
+
+#### 🔄 IN PROGRESS: Network Pool Gap Recovery (Task 7.6.4)
+
+**Issue Identified:** 2026-01-01  
+**Problem:** Data coverage gap in license range ~949,979 to ~961,145 (approximately 11,000+ missing licenses including verified license #959988).
+
+**Root Cause:** CSLB master ingestion was interrupted before completing full dataset traversal.
+
+**Recovery Status:**
+- [x] Identified gap via database query analysis
+- [x] Enhanced edge function logging for progress tracking
+- [x] Re-deployed `cslb-ingest-master` edge function
+- [x] Initiated full re-ingestion from offset 0
+- [ ] Complete ingestion through all ~290,000 rows (currently at offset 90,018)
+
+**Progress Tracking** (Updated: 2026-01-01):
+| Run | Offset Range | New Contractors | Total Pool |
+|-----|--------------|-----------------|------------|
+| 1-6 | 0 → 30,006 | +77 | 224,606 |
+| 7-10 | 30,006 → 55,011 | +38 | 224,644 |
+| 11-17 | 55,011 → 90,018 | +127 | 224,771 |
+
+**Next Steps:**
+- Continue ingestion from offset 90,018
+- Verify license 959988 appears after gap range is processed
+- Expect completion at approximately offset ~290,000
+
+**Files Modified:** `supabase/functions/cslb-ingest-master/index.ts`
+
+---
 
 **Tasks:**
 - [x] 7.6.1 Create weekly cron job for full CSLB refresh
