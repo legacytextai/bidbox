@@ -533,11 +533,7 @@ export default function SubsNetwork() {
                             <span className="font-mono text-sm">{sub.license_number}</span>
                       {sub.license_status && (
                         <Badge
-                          variant={
-                            sub.license_status === "ACTIVE" || sub.license_status === "CLEAR"
-                              ? "default"
-                              : "destructive"
-                          }
+                          variant="destructive"
                           className="text-xs"
                         >
                           {sub.license_status === "CLEAR" ? "active" : sub.license_status.toLowerCase()}
