@@ -22,6 +22,16 @@ interface Project {
   name: string;
   agency: string | null;
   bid_due_at: string;
+  job_walk_at: string | null;
+}
+
+interface CalendarEvent {
+  id: string;
+  projectId: string;
+  projectName: string;
+  agency: string | null;
+  type: 'bid_due' | 'job_walk';
+  datetime: string;
 }
 
 interface CalendarGridProps {
@@ -34,6 +44,35 @@ const CalendarGrid = ({ projects }: CalendarGridProps) => {
 
   const handlePrevMonth = () => setCurrentMonth(subMonths(currentMonth, 1));
   const handleNextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));
+
+  // Transform projects into calendar events
+  const calendarEvents: CalendarEvent[] = projects.flatMap((project) => {
+    const events: CalendarEvent[] = [];
+    
+    if (project.bid_due_at) {
+      events.push({
+        id: `${project.id}-bid`,
+        projectId: project.id,
+        projectName: project.name,
+        agency: project.agency,
+        type: 'bid_due',
+        datetime: project.bid_due_at,
+      });
+    }
+    
+    if (project.job_walk_at) {
+      events.push({
+        id: `${project.id}-walk`,
+        projectId: project.id,
+        projectName: project.name,
+        agency: project.agency,
+        type: 'job_walk',
+        datetime: project.job_walk_at,
+      });
+    }
+    
+    return events;
+  });
 
   // Get all days for the calendar grid (Mon-Fri only)
   const monthStart = startOfMonth(currentMonth);
@@ -59,7 +98,7 @@ const CalendarGrid = ({ projects }: CalendarGridProps) => {
 
   // Get events for a specific day
   const eventsForDay = (day: Date) =>
-    projects.filter((p) => isSameDay(new Date(p.bid_due_at), day));
+    calendarEvents.filter((e) => isSameDay(new Date(e.datetime), day));
 
   const handleEventClick = (projectId: string) => {
     navigate(`/projects/${projectId}`);
@@ -126,21 +165,29 @@ const CalendarGrid = ({ projects }: CalendarGridProps) => {
 
                   {/* Events */}
                   <div className="space-y-1">
-                    {dayEvents.map((event) => (
-                      <button
-                        key={event.id}
-                        onClick={() => handleEventClick(event.id)}
-                        className="w-full text-left bg-destructive text-destructive-foreground rounded px-2 py-1 text-xs hover:bg-destructive/90 transition-colors cursor-pointer"
-                      >
-                        <div className="font-medium truncate">
-                          {event.agency ? `${event.agency} – ` : ""}
-                          {event.name}
-                        </div>
-                        <div className="text-destructive-foreground/80 text-[10px]">
-                          Bid Due: {format(new Date(event.bid_due_at), "MM/dd @ h:mm a")}
-                        </div>
-                      </button>
-                    ))}
+                    {dayEvents.map((event) => {
+                      const isBidDue = event.type === 'bid_due';
+                      const label = isBidDue ? 'Bid Due' : 'Job Walk';
+                      
+                      return (
+                        <button
+                          key={event.id}
+                          onClick={() => handleEventClick(event.projectId)}
+                          className={`w-full text-left rounded px-2 py-1 text-xs transition-colors cursor-pointer ${
+                            isBidDue
+                              ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
+                              : 'bg-gray-600 text-white hover:bg-gray-700'
+                          }`}
+                        >
+                          <div className="font-medium truncate">
+                            {label} – {event.agency ? `${event.agency} – ` : ""}{event.projectName}
+                          </div>
+                          <div className={`text-[10px] ${isBidDue ? 'text-destructive-foreground/80' : 'text-white/80'}`}>
+                            {label}: {format(new Date(event.datetime), "MM/dd @ h:mm a")}
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               );

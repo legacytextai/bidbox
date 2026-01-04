@@ -11,6 +11,7 @@ interface Project {
   name: string;
   agency: string | null;
   bid_due_at: string;
+  job_walk_at: string | null;
 }
 
 const CalendarDashboard = () => {
@@ -28,11 +29,12 @@ const CalendarDashboard = () => {
     queryFn: async () => {
       if (!user) return [];
       
+      const now = new Date().toISOString();
       const { data, error } = await supabase
         .from("projects")
-        .select("id, name, agency, bid_due_at")
+        .select("id, name, agency, bid_due_at, job_walk_at")
         .eq("gc_id", user.id)
-        .gte("bid_due_at", new Date().toISOString())
+        .or(`bid_due_at.gte.${now},job_walk_at.gte.${now}`)
         .order("bid_due_at", { ascending: true });
 
       if (error) throw error;
