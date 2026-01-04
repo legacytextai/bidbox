@@ -32,6 +32,7 @@ interface NetworkSubcontractor {
 }
 
 const PAGE_SIZE = 50;
+const UI_MAX_RESULTS = 1000; // Cap UI display, export fetches all
 
 export default function SubsNetwork() {
   const navigate = useNavigate();
@@ -44,6 +45,7 @@ export default function SubsNetwork() {
   const [hasSearched, setHasSearched] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isTruncated, setIsTruncated] = useState(false);
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -77,11 +79,12 @@ export default function SubsNetwork() {
 
         return await enrichWithTrades(data || []);
       } else {
-        // Trade search with pagination
+        // Trade search with pagination (capped at UI_MAX_RESULTS)
         const { data: mappings, error: mappingError } = await supabase
           .from("sub_trade_mappings")
           .select("sub_id")
-          .in("trade_type_id", selectedTradeIds);
+          .in("trade_type_id", selectedTradeIds)
+          .limit(UI_MAX_RESULTS);
 
         if (mappingError) throw mappingError;
 
@@ -121,10 +124,12 @@ export default function SubsNetwork() {
         if (error) throw error;
         return count || 0;
       } else {
+        // Trade search: cap at UI_MAX_RESULTS for display
         const { data: mappings, error: mappingError } = await supabase
           .from("sub_trade_mappings")
           .select("sub_id")
-          .in("trade_type_id", selectedTradeIds);
+          .in("trade_type_id", selectedTradeIds)
+          .limit(UI_MAX_RESULTS);
 
         if (mappingError) throw mappingError;
 
@@ -202,6 +207,9 @@ export default function SubsNetwork() {
 
       setTotalCount(count);
       setResults(pageData);
+      
+      // Detect if results are truncated (trade mode hits UI cap)
+      setIsTruncated(searchMode === "trade" && count >= UI_MAX_RESULTS);
     } catch (error) {
       console.error("Search error:", error);
       toast({
@@ -241,6 +249,7 @@ export default function SubsNetwork() {
     setHasSearched(false);
     setCurrentPage(1);
     setTotalCount(0);
+    setIsTruncated(false);
   };
 
   // Fetch ALL matching results for export (not just current page)
@@ -272,17 +281,33 @@ export default function SubsNetwork() {
           }
         }
       } else {
-        // Trade search: get all matching sub IDs first
-        const { data: mappings, error: mappingError } = await supabase
-          .from("sub_trade_mappings")
-          .select("sub_id")
-          .in("trade_type_id", selectedTradeIds);
+        // Trade search: batch-fetch ALL matching sub IDs (no UI cap)
+        const subIdSet = new Set<string>();
+        let mappingOffset = 0;
+        const mappingBatchSize = 1000;
+        let hasMoreMappings = true;
 
-        if (mappingError) throw mappingError;
+        while (hasMoreMappings) {
+          const { data: mappings, error: mappingError } = await supabase
+            .from("sub_trade_mappings")
+            .select("sub_id")
+            .in("trade_type_id", selectedTradeIds)
+            .range(mappingOffset, mappingOffset + mappingBatchSize - 1);
 
-        const uniqueSubIds = [...new Set(mappings?.map((m) => m.sub_id) || [])];
+          if (mappingError) throw mappingError;
 
-        // Fetch subs in batches
+          if (mappings && mappings.length > 0) {
+            mappings.forEach(m => subIdSet.add(m.sub_id));
+            mappingOffset += mappingBatchSize;
+            hasMoreMappings = mappings.length === mappingBatchSize;
+          } else {
+            hasMoreMappings = false;
+          }
+        }
+
+        const uniqueSubIds = Array.from(subIdSet);
+
+        // Fetch subs in batches using complete ID list
         for (let i = 0; i < uniqueSubIds.length; i += batchSize) {
           const batchIds = uniqueSubIds.slice(i, i + batchSize);
           
@@ -441,7 +466,7 @@ export default function SubsNetwork() {
               </Button>
               {hasSearched && totalCount > 0 && (
                 <span className="text-xs text-muted-foreground mt-1">
-                  Exports all {totalCount.toLocaleString()} results
+                  {isTruncated ? "Exports complete result set" : `Exports all ${totalCount.toLocaleString()} results`}
                 </span>
               )}
             </div>
@@ -469,8 +494,14 @@ export default function SubsNetwork() {
           <div className="border border-border rounded-lg overflow-hidden">
             <div className="px-4 py-3 bg-muted/50 border-b border-border flex items-center justify-between">
               <span className="text-sm text-muted-foreground">
-                {totalCount.toLocaleString()} {totalCount === 1 ? "result" : "results"} found
-                {totalPages > 1 && ` • Page ${currentPage} of ${totalPages}`}
+                {isTruncated ? (
+                  <>Showing first 1,000 results. <strong>Export for full list.</strong></>
+                ) : (
+                  <>
+                    {totalCount.toLocaleString()} {totalCount === 1 ? "result" : "results"} found
+                    {totalPages > 1 && ` • Page ${currentPage} of ${totalPages}`}
+                  </>
+                )}
               </span>
             </div>
             <Table>
