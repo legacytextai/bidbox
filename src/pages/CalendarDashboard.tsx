@@ -57,7 +57,7 @@ const CalendarDashboard = () => {
 
   return (
     <Layout showSidebar>
-      <div className="space-y-8 p-6">
+      <div className="space-y-6 p-4">
         {/* Top Metrics Row */}
         <div className="flex justify-center">
           <div className="flex items-center justify-center gap-8 max-w-4xl w-full">
