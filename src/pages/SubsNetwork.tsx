@@ -531,14 +531,18 @@ export default function SubsNetwork() {
                         {sub.license_number ? (
                           <div className="flex items-center gap-2">
                             <span className="font-mono text-sm">{sub.license_number}</span>
-                            {sub.license_status && (
-                              <Badge
-                                variant={sub.license_status === "ACTIVE" ? "default" : "destructive"}
-                                className="text-xs"
-                              >
-                                {sub.license_status}
-                              </Badge>
-                            )}
+                      {sub.license_status && (
+                        <Badge
+                          variant={
+                            sub.license_status === "ACTIVE" || sub.license_status === "CLEAR"
+                              ? "default"
+                              : "destructive"
+                          }
+                          className="text-xs"
+                        >
+                          {sub.license_status === "CLEAR" ? "active" : sub.license_status.toLowerCase()}
+                        </Badge>
+                      )}
                           </div>
                         ) : (
                           <span className="text-muted-foreground">—</span>
