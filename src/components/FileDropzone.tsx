@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useId } from "react";
 import { cn } from "@/lib/utils";
 
 interface FileDropzoneProps {
@@ -19,6 +19,7 @@ export function FileDropzone({
   children,
 }: FileDropzoneProps) {
   const [isDragging, setIsDragging] = useState(false);
+  const inputId = useId();
 
   const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -76,12 +77,12 @@ export function FileDropzone({
         multiple={multiple}
         onChange={handleFileSelect}
         className="hidden"
-        id="file-dropzone-input"
+        id={inputId}
         accept={accept}
         disabled={disabled}
       />
       <label
-        htmlFor="file-dropzone-input"
+        htmlFor={inputId}
         className={cn(
           "flex flex-col items-center justify-center h-full",
           disabled ? "cursor-not-allowed" : "cursor-pointer"
