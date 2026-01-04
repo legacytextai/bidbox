@@ -155,7 +155,7 @@ const Settings = () => {
                 <p className="text-sm text-muted-foreground">
                   You're on the free plan with 3 project limit.
                 </p>
-                <Button onClick={handleUpgrade} disabled={checkoutLoading}>
+                <Button onClick={handleUpgrade} disabled={checkoutLoading} className="bg-[hsl(var(--bidbox-blue))] hover:bg-[hsl(var(--bidbox-blue))]/90 text-white">
                   {checkoutLoading ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
