@@ -20,6 +20,7 @@ import { useToast } from "@/hooks/use-toast";
 import { TradeMultiSelect } from "@/components/TradeMultiSelect";
 import { exportNetworkSubsToExcel } from "@/lib/excelExport";
 import { getCategoryColor } from "@/lib/tradeTypes";
+import { getLicenseStatusBadge } from "@/lib/licenseStatusBadge";
 
 interface NetworkSubcontractor {
   id: string;
@@ -531,14 +532,14 @@ export default function SubsNetwork() {
                         {sub.license_number ? (
                           <div className="flex items-center gap-2">
                             <span className="font-mono text-sm">{sub.license_number}</span>
-                      {sub.license_status && (
-                        <Badge
-                          variant="destructive"
-                          className="text-xs"
-                        >
-                          {sub.license_status === "CLEAR" ? "active" : sub.license_status.toLowerCase()}
-                        </Badge>
-                      )}
+                      {(() => {
+                        const badge = getLicenseStatusBadge(sub.license_status);
+                        return badge ? (
+                          <Badge variant={badge.variant} className="text-xs">
+                            {badge.label}
+                          </Badge>
+                        ) : null;
+                      })()}
                           </div>
                         ) : (
                           <span className="text-muted-foreground">—</span>
