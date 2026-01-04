@@ -214,10 +214,10 @@ const Projects = () => {
               {isOverLimit ? (
                 <>
                   <Lock className="h-12 w-12 text-[hsl(var(--bidbox-blue))] mb-2" />
-                  <p className="text-lg font-semibold text-foreground">
-                    <span className="text-[hsl(var(--bidbox-blue))]">Upgrade</span> to Add More
+                  <p className="text-lg font-semibold text-[hsl(var(--bidbox-blue))]">
+                    Upgrade to Add More
                   </p>
-                  <p className="text-sm text-muted-foreground text-center mt-1">
+                  <p className="text-sm text-[hsl(var(--bidbox-blue))] text-center mt-1">
                     Free plan limited to {FREE_PROJECT_LIMIT} projects
                   </p>
                 </>
