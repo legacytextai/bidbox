@@ -14,3 +14,6 @@ verify_jwt = false
 
 [functions.cslb-ingest-master]
 verify_jwt = false
+
+[functions.cslb-verify-count]
+verify_jwt = false
