@@ -105,7 +105,7 @@ const CalendarGrid = ({ projects }: CalendarGridProps) => {
   };
 
   return (
-    <div className="w-full max-w-5xl mx-auto">
+    <div className="w-full max-w-7xl mx-auto">
       {/* Month Navigation */}
       <div className="flex items-center justify-between mb-6">
         <Button variant="outline" size="icon" onClick={handlePrevMonth}>
@@ -146,7 +146,7 @@ const CalendarGrid = ({ projects }: CalendarGridProps) => {
               return (
                 <div
                   key={day.toISOString()}
-                  className={`min-h-[120px] p-2 ${
+                  className={`min-h-[160px] p-3 ${
                     isCurrentMonth ? "bg-background" : "bg-muted/30"
                   }`}
                 >
@@ -164,7 +164,7 @@ const CalendarGrid = ({ projects }: CalendarGridProps) => {
                   </div>
 
                   {/* Events */}
-                  <div className="space-y-1">
+                  <div className="space-y-1.5">
                     {dayEvents.map((event) => {
                       const isBidDue = event.type === 'bid_due';
                       const label = isBidDue ? 'Bid Due' : 'Job Walk';
@@ -173,23 +173,23 @@ const CalendarGrid = ({ projects }: CalendarGridProps) => {
                         <button
                           key={event.id}
                           onClick={() => handleEventClick(event.projectId)}
-                          className={`w-full text-left rounded px-2 py-1.5 text-xs transition-colors cursor-pointer ${
+                          className={`w-full text-left rounded px-2.5 py-2 text-sm transition-colors cursor-pointer ${
                             isBidDue
                               ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
                               : 'bg-gray-600 text-white hover:bg-gray-700'
                           }`}
                         >
-                          <span className={`inline-block text-[9px] font-semibold uppercase tracking-wide px-1 py-0.5 rounded mb-0.5 ${
+                          <span className={`inline-block text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded mb-1 ${
                             isBidDue
                               ? 'bg-destructive-foreground/20'
                               : 'bg-white/20'
                           }`}>
                             {label}
                           </span>
-                          <div className="font-medium truncate">
+                          <div className="font-medium truncate leading-snug">
                             {event.projectName}
                           </div>
-                          <div className={`text-[10px] ${isBidDue ? 'text-destructive-foreground/80' : 'text-white/80'}`}>
+                          <div className={`text-xs ${isBidDue ? 'text-destructive-foreground/80' : 'text-white/80'}`}>
                             {format(new Date(event.datetime), "MM/dd @ h:mm a")}
                           </div>
                         </button>
