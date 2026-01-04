@@ -41,6 +41,7 @@ import {
   GCSubcontractor,
 } from "@/lib/subcontractorMatching";
 import { getCategoryColor } from "@/lib/tradeTypes";
+import { getLicenseStatusBadge } from "@/lib/licenseStatusBadge";
 
 export default function SubcontractorDirectory() {
   const navigate = useNavigate();
@@ -285,14 +286,14 @@ export default function SubcontractorDirectory() {
                       {sub.license_number ? (
                         <div className="flex items-center gap-2">
                           <span className="font-mono text-sm">{sub.license_number}</span>
-                          {sub.license_status && (
-                            <Badge
-                              variant={sub.license_status === "ACTIVE" ? "default" : "destructive"}
-                              className="text-xs"
-                            >
-                              {sub.license_status}
-                            </Badge>
-                          )}
+                          {(() => {
+                            const badge = getLicenseStatusBadge(sub.license_status);
+                            return badge ? (
+                              <Badge variant={badge.variant} className="text-xs">
+                                {badge.label}
+                              </Badge>
+                            ) : null;
+                          })()}
                         </div>
                       ) : (
                         <span className="text-muted-foreground">—</span>

@@ -8,6 +8,7 @@ import { TradeMultiSelect } from "@/components/TradeMultiSelect";
 import { Search, Loader2, CheckCircle, AlertCircle, ExternalLink } from "lucide-react";
 import { lookupCSLBLicense } from "@/lib/subcontractorMatching";
 import { getCategoryColor } from "@/lib/tradeTypes";
+import { getLicenseStatusBadge } from "@/lib/licenseStatusBadge";
 
 interface SubcontractorFormData {
   company_name: string;
@@ -208,18 +209,21 @@ export function SubcontractorForm({
           </div>
         )}
 
-        {formData.license_status && (
-          <div className="flex items-center gap-2">
-            <Badge variant={formData.license_status === "ACTIVE" ? "default" : "destructive"}>
-              {formData.license_status}
-            </Badge>
-            {formData.license_expiration && (
-              <span className="text-sm text-muted-foreground">
-                Expires: {formData.license_expiration}
-              </span>
-            )}
-          </div>
-        )}
+        {(() => {
+          const badge = getLicenseStatusBadge(formData.license_status);
+          return badge ? (
+            <div className="flex items-center gap-2">
+              <Badge variant={badge.variant}>
+                {badge.label}
+              </Badge>
+              {formData.license_expiration && (
+                <span className="text-sm text-muted-foreground">
+                  Expires: {formData.license_expiration}
+                </span>
+              )}
+            </div>
+          ) : null;
+        })()}
       </div>
 
       {/* Company Information */}
