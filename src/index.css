@@ -111,3 +111,44 @@ All colors MUST be HSL.
     @apply bg-background text-foreground;
   }
 }
+
+/* Print Styles */
+@media print {
+  /* Hide all UI chrome */
+  [data-sidebar],
+  header,
+  .print\:hidden {
+    display: none !important;
+  }
+  
+  /* Reset page layout */
+  body {
+    background: white !important;
+    color: black !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  
+  /* Calendar container fills page */
+  .print-calendar-container {
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  
+  /* Ensure calendar fits on one page */
+  .print-calendar-grid {
+    page-break-inside: avoid;
+  }
+  
+  /* Simplify event colors for black & white printing */
+  .print-calendar-grid button {
+    background: #333 !important;
+    color: white !important;
+    cursor: default !important;
+  }
+  
+  .print-calendar-grid button span {
+    background: rgba(255, 255, 255, 0.2) !important;
+  }
+}

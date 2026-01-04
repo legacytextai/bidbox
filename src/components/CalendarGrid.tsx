@@ -14,7 +14,7 @@ import {
   isToday,
   getDay,
 } from "date-fns";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface Project {
@@ -105,18 +105,28 @@ const CalendarGrid = ({ projects }: CalendarGridProps) => {
   };
 
   return (
-    <div className="w-full max-w-7xl mx-auto">
+    <div className="w-full max-w-7xl mx-auto print-calendar-container">
       {/* Month Navigation */}
       <div className="flex items-center justify-between mb-6">
-        <Button variant="outline" size="icon" onClick={handlePrevMonth}>
+        <Button variant="outline" size="icon" onClick={handlePrevMonth} className="print:hidden">
           <ChevronLeft className="h-5 w-5" />
         </Button>
         <h2 className="text-2xl font-semibold text-foreground">
           {format(currentMonth, "MMMM yyyy")}
         </h2>
-        <Button variant="outline" size="icon" onClick={handleNextMonth}>
-          <ChevronRight className="h-5 w-5" />
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="icon" onClick={handleNextMonth} className="print:hidden">
+            <ChevronRight className="h-5 w-5" />
+          </Button>
+          <Button 
+            variant="outline" 
+            onClick={() => window.print()} 
+            className="print:hidden ml-4"
+          >
+            <Printer className="h-4 w-4 mr-2" />
+            Print
+          </Button>
+        </div>
       </div>
 
       {/* Day Headers (Mon-Fri) */}
@@ -132,7 +142,7 @@ const CalendarGrid = ({ projects }: CalendarGridProps) => {
       </div>
 
       {/* Calendar Grid */}
-      <div className="border border-border rounded-lg overflow-hidden">
+      <div className="border border-border rounded-lg overflow-hidden print-calendar-grid">
         {weeks.map((week, weekIndex) => (
           <div
             key={weekIndex}

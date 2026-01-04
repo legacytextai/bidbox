@@ -59,7 +59,7 @@ const CalendarDashboard = () => {
     <Layout showSidebar>
       <div className="space-y-6 p-4">
         {/* Top Metrics Row */}
-        <div className="flex justify-center">
+        <div className="flex justify-center print:hidden">
           <div className="flex items-center justify-center gap-8 max-w-4xl w-full">
             {/* Projects Scheduled */}
             <div className="text-center bg-card border border-border rounded-xl px-8 py-6 min-w-[180px]">
