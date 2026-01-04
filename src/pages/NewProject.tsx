@@ -42,6 +42,7 @@ const NewProject = () => {
     county: "",
     agency: "",
     bid_due_at: "",
+    job_walk_at: "",
     instructions: "",
     timezone: "America/Los_Angeles",
   });
@@ -105,6 +106,7 @@ const NewProject = () => {
           county: validation.county,
           agency: validation.agency || null,
           bid_due_at: localDateTimeToUtc(validation.bid_due_at, validation.timezone),
+          job_walk_at: formData.job_walk_at ? localDateTimeToUtc(formData.job_walk_at, validation.timezone) : null,
           instructions: validation.instructions || null,
           timezone: validation.timezone,
         })
@@ -239,6 +241,18 @@ const NewProject = () => {
                       setFormData({ ...formData, bid_due_at: e.target.value })
                     }
                     required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="job_walk_at">Job Walk Date & Time (optional)</Label>
+                  <Input
+                    id="job_walk_at"
+                    type="datetime-local"
+                    value={formData.job_walk_at}
+                    onChange={(e) =>
+                      setFormData({ ...formData, job_walk_at: e.target.value })
+                    }
                   />
                 </div>
 

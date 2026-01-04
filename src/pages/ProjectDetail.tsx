@@ -109,6 +109,7 @@ const ProjectDetail = () => {
   const [editedAgency, setEditedAgency] = useState("");
   const [editedInstructions, setEditedInstructions] = useState("");
   const [editedBidDueAt, setEditedBidDueAt] = useState("");
+  const [editedJobWalkAt, setEditedJobWalkAt] = useState("");
   const [editedTimezone, setEditedTimezone] = useState("America/Los_Angeles");
   const [isSaving, setIsSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
@@ -122,16 +123,18 @@ const ProjectDetail = () => {
     if (project) {
       const projectTimezone = project.timezone || "America/Los_Angeles";
       const originalBidDue = project.bid_due_at ? utcToLocalDateTime(project.bid_due_at, projectTimezone) : "";
+      const originalJobWalk = project.job_walk_at ? utcToLocalDateTime(project.job_walk_at, projectTimezone) : "";
       const changed = 
         editedName !== project.name ||
         editedCounty !== (project.county || "") ||
         editedAgency !== (project.agency || "") ||
         editedInstructions !== (project.instructions || "") ||
         editedBidDueAt !== originalBidDue ||
+        editedJobWalkAt !== originalJobWalk ||
         editedTimezone !== projectTimezone;
       setHasChanges(changed);
     }
-  }, [editedName, editedCounty, editedAgency, editedInstructions, editedBidDueAt, editedTimezone, project]);
+  }, [editedName, editedCounty, editedAgency, editedInstructions, editedBidDueAt, editedJobWalkAt, editedTimezone, project]);
 
   const loadProject = async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -164,6 +167,7 @@ const ProjectDetail = () => {
     setEditedAgency(projectData.agency || "");
     setEditedInstructions(projectData.instructions || "");
     setEditedBidDueAt(projectData.bid_due_at ? utcToLocalDateTime(projectData.bid_due_at, projectTimezone) : "");
+    setEditedJobWalkAt(projectData.job_walk_at ? utcToLocalDateTime(projectData.job_walk_at, projectTimezone) : "");
     setEditedTimezone(projectTimezone);
 
     const { data: filesData } = await supabase
@@ -269,6 +273,7 @@ const ProjectDetail = () => {
       agency: editedAgency || null,
       instructions: editedInstructions || null,
       bid_due_at: editedBidDueAt ? localDateTimeToUtc(editedBidDueAt, editedTimezone) : project.bid_due_at,
+      job_walk_at: editedJobWalkAt ? localDateTimeToUtc(editedJobWalkAt, editedTimezone) : null,
       timezone: editedTimezone,
     };
 
@@ -654,6 +659,15 @@ const ProjectDetail = () => {
                 type="datetime-local"
                 value={editedBidDueAt}
                 onChange={(e) => setEditedBidDueAt(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Job Walk Date (optional)</Label>
+              <Input
+                type="datetime-local"
+                value={editedJobWalkAt}
+                onChange={(e) => setEditedJobWalkAt(e.target.value)}
               />
             </div>
 

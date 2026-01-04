@@ -291,6 +291,7 @@ export type Database = {
           gc_id: string
           id: string
           instructions: string | null
+          job_walk_at: string | null
           location: string | null
           name: string
           public_token: string
@@ -307,6 +308,7 @@ export type Database = {
           gc_id: string
           id?: string
           instructions?: string | null
+          job_walk_at?: string | null
           location?: string | null
           name: string
           public_token?: string
@@ -323,6 +325,7 @@ export type Database = {
           gc_id?: string
           id?: string
           instructions?: string | null
+          job_walk_at?: string | null
           location?: string | null
           name?: string
           public_token?: string
