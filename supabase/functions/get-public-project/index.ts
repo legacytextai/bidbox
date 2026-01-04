@@ -33,12 +33,12 @@ serve(async (req) => {
 
     console.log('Fetching project with token:', token);
 
-    // Fetch project by public token with GC company name
+    // Fetch project by public token with GC profile info
     const { data: projectData, error: projectError } = await supabase
       .from('projects')
       .select(`
         *,
-        profiles!projects_gc_id_fkey(company_name)
+        profiles!projects_gc_id_fkey(company_name, estimating_email, email)
       `)
       .eq('public_token', token)
       .eq('status', 'LIVE')
@@ -88,8 +88,10 @@ serve(async (req) => {
 
     console.log('Files found:', filesData?.length || 0);
 
-    // Extract GC company name from joined data
+    // Extract GC profile info from joined data
     const gcCompanyName = projectData.profiles?.company_name || null;
+    const gcEstimatingEmail = projectData.profiles?.estimating_email || null;
+    const gcEmail = projectData.profiles?.email || null;
     
     // Remove the nested profiles object from projectData
     const { profiles, ...project } = projectData;
@@ -98,7 +100,9 @@ serve(async (req) => {
       JSON.stringify({
         project: {
           ...project,
-          gc_company_name: gcCompanyName
+          gc_company_name: gcCompanyName,
+          gc_estimating_email: gcEstimatingEmail,
+          gc_email: gcEmail
         },
         files: filesData || []
       }), 

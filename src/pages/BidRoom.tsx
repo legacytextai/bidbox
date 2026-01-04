@@ -337,6 +337,17 @@ const BidRoom = () => {
                     <span className="text-red-500 font-medium">Add GC Info Here</span>
                   )}
                 </p>
+                {(project.gc_estimating_email || project.gc_email) && (
+                  <p>
+                    <span className="text-muted-foreground">Estimating Contact:</span>{" "}
+                    <a 
+                      href={`mailto:${project.gc_estimating_email || project.gc_email}`}
+                      className="text-primary hover:underline"
+                    >
+                      {project.gc_estimating_email || project.gc_email}
+                    </a>
+                  </p>
+                )}
                 <p><span className="text-muted-foreground">Location:</span> {project.location}</p>
                 <p><span className="text-muted-foreground">Agency:</span> {project.agency}</p>
                 <p><span className="text-muted-foreground">Bid Due:</span> {formatInProjectTimezone(project.bid_due_at, project.timezone || "America/Los_Angeles", "MMMM d, yyyy 'at' h:mm a zzz")}</p>

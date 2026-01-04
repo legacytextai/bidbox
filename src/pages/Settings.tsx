@@ -13,6 +13,7 @@ import { CheckCircle2, Crown, Loader2 } from "lucide-react";
 const Settings = () => {
   const [profile, setProfile] = useState<any>(null);
   const [companyName, setCompanyName] = useState("");
+  const [estimatingEmail, setEstimatingEmail] = useState("");
   const [loading, setLoading] = useState(true);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const navigate = useNavigate();
@@ -39,6 +40,7 @@ const Settings = () => {
     if (data) {
       setProfile(data);
       setCompanyName(data.company_name || "");
+      setEstimatingEmail(data.estimating_email || "");
     }
     setLoading(false);
   };
@@ -49,7 +51,10 @@ const Settings = () => {
 
     const { error } = await supabase
       .from("profiles")
-      .update({ company_name: companyName })
+      .update({ 
+        company_name: companyName,
+        estimating_email: estimatingEmail || null
+      })
       .eq("id", session.user.id);
 
     if (error) {
@@ -183,6 +188,20 @@ const Settings = () => {
                   value={companyName}
                   onChange={(e) => setCompanyName(e.target.value)}
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="estimating-email">Estimating Email</Label>
+                <Input
+                  id="estimating-email"
+                  type="email"
+                  placeholder="estimating@yourcompany.com"
+                  value={estimatingEmail}
+                  onChange={(e) => setEstimatingEmail(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  This email will be displayed on your public bid rooms for subcontractor contact.
+                </p>
               </div>
 
               <Button onClick={updateProfile}>Save Changes</Button>
