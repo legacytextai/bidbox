@@ -88,6 +88,35 @@ serve(async (req) => {
 
     console.log('Files found:', filesData?.length || 0);
 
+    // Fetch associated trades with trade type info
+    const { data: tradesData, error: tradesError } = await supabase
+      .from('project_trades')
+      .select(`
+        trade_type_id,
+        trade_types!inner(
+          id,
+          code,
+          name,
+          category
+        )
+      `)
+      .eq('project_id', projectData.id);
+
+    if (tradesError) {
+      console.error('Error fetching trades:', tradesError);
+      // Don't fail the request, just log and continue with empty trades
+    }
+
+    // Transform trades data to a simple array
+    const trades = (tradesData || []).map((t: any) => ({
+      id: t.trade_types.id,
+      code: t.trade_types.code,
+      name: t.trade_types.name,
+      category: t.trade_types.category
+    }));
+
+    console.log('Trades found:', trades.length);
+
     // Extract GC profile info from joined data
     const gcCompanyName = projectData.profiles?.company_name || null;
     const gcEstimatingEmail = projectData.profiles?.estimating_email || null;
@@ -104,7 +133,8 @@ serve(async (req) => {
           gc_estimating_email: gcEstimatingEmail,
           gc_email: gcEmail
         },
-        files: filesData || []
+        files: filesData || [],
+        trades
       }), 
       {
         status: 200,
