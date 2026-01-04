@@ -371,7 +371,7 @@ const NewProject = () => {
                     Generating...
                   </>
                 ) : (
-                  "Generate Project BidBox Link"
+                  "Generate Project BidBox"
                 )}
               </Button>
             </div>
