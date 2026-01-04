@@ -120,7 +120,12 @@ const CalendarGrid = ({ projects }: CalendarGridProps) => {
           </Button>
           <Button 
             variant="outline" 
-            onClick={() => window.print()} 
+            onClick={() => {
+              const originalTitle = document.title;
+              document.title = `Bid_Calendar_${format(currentMonth, "yyyy-MM")}`;
+              window.print();
+              document.title = originalTitle;
+            }} 
             className="print:hidden ml-4"
           >
             <Printer className="h-4 w-4 mr-2" />

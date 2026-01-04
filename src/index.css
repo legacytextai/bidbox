@@ -114,6 +114,23 @@ All colors MUST be HSL.
 
 /* Print Styles */
 @media print {
+  /* Force color printing */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Page setup for single-page landscape */
+  @page {
+    size: landscape;
+    margin: 0.5in;
+  }
+
+  /* Zoom to ensure single-page fit */
+  html {
+    zoom: 0.85;
+  }
+
   /* Hide all UI chrome */
   [data-sidebar],
   header,
@@ -124,7 +141,6 @@ All colors MUST be HSL.
   /* Reset page layout */
   body {
     background: white !important;
-    color: black !important;
     padding: 0 !important;
     margin: 0 !important;
   }
@@ -139,16 +155,11 @@ All colors MUST be HSL.
   /* Ensure calendar fits on one page */
   .print-calendar-grid {
     page-break-inside: avoid;
+    break-inside: avoid;
   }
-  
-  /* Simplify event colors for black & white printing */
+
+  /* Remove cursor pointer style */
   .print-calendar-grid button {
-    background: #333 !important;
-    color: white !important;
     cursor: default !important;
-  }
-  
-  .print-calendar-grid button span {
-    background: rgba(255, 255, 255, 0.2) !important;
   }
 }
