@@ -105,7 +105,8 @@ const CalendarGrid = ({ projects }: CalendarGridProps) => {
   };
 
   return (
-    <div className="w-full max-w-7xl mx-auto print-calendar-container">
+    <div className="calendar-print-wrapper">
+      <div className="w-full max-w-7xl mx-auto print-calendar-container">
       {/* Month Navigation */}
       <div className="flex items-center justify-between mb-6">
         <Button variant="outline" size="icon" onClick={handlePrevMonth} className="print:hidden">
@@ -218,6 +219,7 @@ const CalendarGrid = ({ projects }: CalendarGridProps) => {
         ))}
       </div>
     </div>
+  </div>
   );
 };
 

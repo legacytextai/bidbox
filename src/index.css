@@ -126,11 +126,6 @@ All colors MUST be HSL.
     margin: 0.5in;
   }
 
-  /* Zoom to ensure single-page fit */
-  html {
-    zoom: 0.85;
-  }
-
   /* Hide all UI chrome */
   [data-sidebar],
   header,
@@ -143,6 +138,13 @@ All colors MUST be HSL.
     background: white !important;
     padding: 0 !important;
     margin: 0 !important;
+  }
+  
+  /* Print wrapper: scale to 80% for single-page fit */
+  .calendar-print-wrapper {
+    transform: scale(0.8);
+    transform-origin: top left;
+    width: 125%; /* compensate for 0.8 scale to preserve layout */
   }
   
   /* Calendar container fills page */
