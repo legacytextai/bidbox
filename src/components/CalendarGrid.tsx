@@ -173,17 +173,24 @@ const CalendarGrid = ({ projects }: CalendarGridProps) => {
                         <button
                           key={event.id}
                           onClick={() => handleEventClick(event.projectId)}
-                          className={`w-full text-left rounded px-2 py-1 text-xs transition-colors cursor-pointer ${
+                          className={`w-full text-left rounded px-2 py-1.5 text-xs transition-colors cursor-pointer ${
                             isBidDue
                               ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
                               : 'bg-gray-600 text-white hover:bg-gray-700'
                           }`}
                         >
+                          <span className={`inline-block text-[9px] font-semibold uppercase tracking-wide px-1 py-0.5 rounded mb-0.5 ${
+                            isBidDue
+                              ? 'bg-destructive-foreground/20'
+                              : 'bg-white/20'
+                          }`}>
+                            {label}
+                          </span>
                           <div className="font-medium truncate">
-                            {label} – {event.agency ? `${event.agency} – ` : ""}{event.projectName}
+                            {event.projectName}
                           </div>
                           <div className={`text-[10px] ${isBidDue ? 'text-destructive-foreground/80' : 'text-white/80'}`}>
-                            {label}: {format(new Date(event.datetime), "MM/dd @ h:mm a")}
+                            {format(new Date(event.datetime), "MM/dd @ h:mm a")}
                           </div>
                         </button>
                       );
