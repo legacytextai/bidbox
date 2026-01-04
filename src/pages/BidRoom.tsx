@@ -19,6 +19,8 @@ import { z } from "zod";
 import FilePreview from "@/components/FilePreview";
 import { formatInProjectTimezone } from "@/lib/timezoneUtils";
 import { FileDropzone } from "@/components/FileDropzone";
+import { Badge } from "@/components/ui/badge";
+import { getCategoryColor } from "@/lib/tradeTypes";
 
 const bidSchema = z.object({
   bidder_name: z.string().max(100).optional(),
@@ -40,12 +42,20 @@ interface UploadFile {
   error?: string;
 }
 
+interface ProjectTrade {
+  id: string;
+  code: string;
+  name: string;
+  category: string | null;
+}
+
 const BidRoom = () => {
   const { token } = useParams();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [project, setProject] = useState<any>(null);
   const [projectFiles, setProjectFiles] = useState<ProjectFile[]>([]);
+  const [projectTrades, setProjectTrades] = useState<ProjectTrade[]>([]);
   const [countdown, setCountdown] = useState("");
   const [isExpired, setIsExpired] = useState(false);
   const [uploadFiles, setUploadFiles] = useState<UploadFile[]>([]);
@@ -113,6 +123,7 @@ const BidRoom = () => {
 
       setProject(data.project);
       setProjectFiles(data.files || []);
+      setProjectTrades(data.trades || []);
       setLoading(false);
     } catch (error) {
       console.error('Error loading project:', error);
@@ -350,6 +361,22 @@ const BidRoom = () => {
                 )}
                 <p><span className="text-muted-foreground">Location:</span> {project.location}</p>
                 <p><span className="text-muted-foreground">Agency:</span> {project.agency}</p>
+                {projectTrades.length > 0 && (
+                  <div className="mt-3">
+                    <span className="text-muted-foreground">Required Trades:</span>
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {projectTrades.map((trade) => (
+                        <Badge 
+                          key={trade.id} 
+                          variant="secondary"
+                          className={getCategoryColor(trade.category)}
+                        >
+                          {trade.name}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <p><span className="text-muted-foreground">Bid Due:</span> {formatInProjectTimezone(project.bid_due_at, project.timezone || "America/Los_Angeles", "MMMM d, yyyy 'at' h:mm a zzz")}</p>
                 {project.instructions && (
                   <div className="mt-4">
