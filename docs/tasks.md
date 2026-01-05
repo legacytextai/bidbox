@@ -403,6 +403,198 @@ Already implemented:
 
 ---
 
+### Task 2.1: Drag-and-Drop File Upload Audit [✅ COMPLETED]
+
+**Goal**: Ensure all file upload surfaces support reliable drag-and-drop behavior for pilot readiness.
+
+**Status**: ✅ Completed 2026-01-05
+
+- [x] 2.1.1 Audited `/projects/new` file uploads
+- [x] 2.1.2 Audited `/projects/:id` file uploads  
+- [x] 2.1.3 Audited `/bid/:token` bid submission uploads
+- [x] 2.1.4 Fixed unique ID generation using React's `useId()` hook in `FileDropzone.tsx`
+
+**Implementation Files**:
+- `src/components/FileDropzone.tsx` — Uses `useId()` for unique input IDs
+
+**How to test**:
+1. Drag files onto each upload surface
+2. Verify file appears in list without errors
+3. Verify click-to-upload also works
+
+---
+
+### Task 2.2: Pilot User Full Access [✅ COMPLETED]
+
+**Goal**: Grant pilot user unlimited access without 3-project free tier limit.
+
+**Status**: ✅ Completed 2026-01-05
+
+- [x] 2.2.1 Inserted subscription record with `subscription_type='lifetime'` and `status='active'`
+- [x] 2.2.2 Verified upgrade prompts are hidden
+- [x] 2.2.3 Documented reversal process (delete subscription record)
+
+**Pilot User**: mohammad.d@fecgc.com (Profile ID: 241475b1-c50d-4166-aa6c-8101d7305830)
+
+**How to revert**: Delete the corresponding record from the `subscriptions` table.
+
+---
+
+### Task 2.3: Estimating Email Field [✅ COMPLETED]
+
+**Goal**: Allow GCs to set an optional estimating contact email displayed on public bid rooms.
+
+**Status**: ✅ Completed 2026-01-05
+
+- [x] 2.3.1 Added `estimating_email` column to `profiles` table
+- [x] 2.3.2 Added Estimating Email input field in `/settings`
+- [x] 2.3.3 Display "Estimating Contact" in public bid room with mailto: link
+- [x] 2.3.4 Fallback to GC's primary email if estimating_email is not set
+
+**Implementation Files**:
+- `src/pages/Settings.tsx` — Input field for estimating email
+- `src/pages/BidRoom.tsx` — Display estimating contact in Project Info card
+
+**How to test**:
+1. Go to `/settings`, enter estimating email, save
+2. Open a public bid room link
+3. Verify "Estimating Contact" shows with mailto: link
+
+---
+
+### Task 2.4: Required Trades Display on Public Bid Room [✅ COMPLETED]
+
+**Goal**: Display project trades on public bid room so subs can self-qualify.
+
+**Status**: ✅ Completed 2026-01-05
+
+- [x] 2.4.1 Fetch trades from `project_trades` with inner join to `trade_types`
+- [x] 2.4.2 Display as colored badges by category
+- [x] 2.4.3 Hide section entirely when no trades are set
+
+**Implementation Files**:
+- `src/pages/BidRoom.tsx` — Required Trades section in Project Info card
+
+**How to test**:
+1. Create project with trades selected
+2. Open public bid room link
+3. Verify trades appear as badges
+
+---
+
+### Task 2.5: Network Subs Pagination + Export Fix [✅ COMPLETED]
+
+**Goal**: Remove artificial 100-result limit, implement pagination, and ensure export includes all results.
+
+**Status**: ✅ Completed 2026-01-05
+
+- [x] 2.5.1 Implement pagination (50 per page) with Previous/Next controls
+- [x] 2.5.2 Cap UI display at 1,000 results with disclosure message
+- [x] 2.5.3 Export bypasses UI limit using `.range()` batch loops
+- [x] 2.5.4 Add helper text: "Showing first 1,000 results. Export for full list."
+
+**Implementation Files**:
+- `src/pages/SubsNetwork.tsx` — Pagination and export logic
+
+**How to test**:
+1. Search by trade with many results
+2. Verify pagination works
+3. Export to Excel, verify all results included
+
+---
+
+### Task 2.6: Network Subs Status Badge Fix [✅ COMPLETED]
+
+**Goal**: Standardize license status badges between Private Pool and Network Pool.
+
+**Status**: ✅ Completed 2026-01-05
+
+- [x] 2.6.1 Created `src/lib/licenseStatusBadge.ts` utility
+- [x] 2.6.2 Normalized "CLEAR" → "active" for consistency
+- [x] 2.6.3 Applied to Subs Network, Directory, and Forms
+
+**Badge Colors**:
+- Active (CLEAR/ACTIVE) = Green ('success' variant)
+- Expired = Red ('destructive' variant)
+- Unknown/Other = Grey ('secondary' variant)
+
+**Implementation Files**:
+- `src/lib/licenseStatusBadge.ts` — Badge mapping utility
+
+---
+
+### Task 2.7: Job Walk Date & Time [✅ COMPLETED]
+
+**Goal**: Add optional Job Walk date/time field to projects.
+
+**Status**: ✅ Completed 2026-01-05
+
+- [x] 2.7.1 Added `job_walk_at` column to `projects` table (timestamptz, nullable)
+- [x] 2.7.2 Added input field on `/projects/new`
+- [x] 2.7.3 Added editable field on `/projects/:id`
+- [x] 2.7.4 No validation or workflow complexity (metadata only)
+
+**Implementation Files**:
+- `src/pages/NewProject.tsx` — Job walk input on create
+- `src/pages/ProjectDetail.tsx` — Job walk input on edit
+
+**How to test**:
+1. Create project with job walk date
+2. Verify displays on project page
+3. Edit job walk date, save, verify persisted
+
+---
+
+### Task 2.8: Calendar Job Walk Integration [✅ COMPLETED]
+
+**Goal**: Display Job Walk events on calendar alongside Bid Due events.
+
+**Status**: ✅ Completed 2026-01-05
+
+- [x] 2.8.1 Query `job_walk_at` alongside `bid_due_at` in calendar query
+- [x] 2.8.2 Display Job Walk events with gray badge
+- [x] 2.8.3 Display Bid Due events with red badge
+- [x] 2.8.4 Both event types clickable, route to project page
+- [x] 2.8.5 Separate events if both exist on same day
+
+**Implementation Files**:
+- `src/pages/CalendarDashboard.tsx` — Query includes job_walk_at
+- `src/components/CalendarGrid.tsx` — Dual event type rendering
+
+---
+
+### Task 2.9: Calendar Event Redesign [✅ COMPLETED]
+
+**Goal**: Improve calendar event hierarchy and legibility.
+
+**Status**: ✅ Completed 2026-01-05
+
+- [x] 2.9.1 Header/Badge: "Bid Due" (red) or "Job Walk" (gray)
+- [x] 2.9.2 Title: Project name only
+- [x] 2.9.3 Subtitle: Date & time (MM/DD @ h:mm AM/PM)
+- [x] 2.9.4 Eliminated truncation and redundancy
+
+**Implementation Files**:
+- `src/components/CalendarGrid.tsx` — Event card structure
+
+---
+
+### Task 2.10: Calendar Size & Layout Improvements [✅ COMPLETED]
+
+**Goal**: Expand calendar footprint for better usability.
+
+**Status**: ✅ Completed 2026-01-05
+
+- [x] 2.10.1 Expanded container width (max-w-7xl)
+- [x] 2.10.2 Increased day cell height (min-h-[160px])
+- [x] 2.10.3 Improved event legibility
+- [x] 2.10.4 Better use of screen real estate
+
+**Implementation Files**:
+- `src/components/CalendarGrid.tsx` — Layout and sizing
+
+---
+
 ### Task 2.1: Add Countdown Timer to Bid Room [MVP]
 
 **User Decision**: MVP feature (not v1)

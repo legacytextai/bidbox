@@ -23,7 +23,8 @@ Feels like a contractor's war room — sharp, no-frills, deadline-driven. Every 
 | **Accent Orange**    | `#D92D20` | `217, 45, 32`    | Urgent badges only |  
 | **Soft Gray**        | `#F4F4F5` | `244, 244, 245`  | Backgrounds |  
 | **Outline**          | `#E4E4E7` | `228, 228, 231`  | Borders |  
-| **Success Green**    | `#12B76A` | `18, 183, 106`   | Success states |
+| **Success Green**    | `#12B76A` | `18, 183, 106`   | Success states, Active license badges |
+| **Job Walk Gray**    | `#6B7280` | `107, 114, 128`  | Job walk event badges (calendar) |
 
 - Contrast: WCAG AA+ minimum 4.5:1  
 - Light & dark mode: use Tailwind's `dark:` variant support  
@@ -78,6 +79,28 @@ Feels like a contractor's war room — sharp, no-frills, deadline-driven. Every 
 - Buttons = same radius, padding, font size  
 - File upload = consistent drag-drop zone across GC and public views  
 - Form styling = shared components (`<Label>`, `<Input>`, `<TextArea>`)
+- Status badges: Use "active" (green) consistently for both Private Pool and Network Pool
+- Calendar events: Header/badge first ("Bid Due" or "Job Walk"), project name second, datetime third
+
+## Print Design Patterns
+
+### Iframe-Based Printing (Recommended for complex layouts)
+
+When CSS-only print solutions prove unreliable across browsers, use the iframe approach:
+
+1. Generate self-contained HTML with inline styles
+2. Create hidden iframe and inject content
+3. Set document title for PDF filename (browsers use title for Save-as-PDF name)
+4. Trigger `print()` from iframe context
+5. Clean up iframe after printing
+
+**Implementation Reference**: `src/lib/calendarPrint.ts`
+
+**Print Styling Requirements**:
+- `@page { size: letter landscape; margin: 0.4in; }`
+- `-webkit-print-color-adjust: exact` for color preservation
+- Use explicit dimensions (no `auto` heights)
+- Calculate row heights based on available space
 
 ## Accessibility
 
