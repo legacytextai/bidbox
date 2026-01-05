@@ -16,6 +16,7 @@ import {
 } from "date-fns";
 import { ChevronLeft, ChevronRight, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { printCalendarViaIframe } from "@/lib/calendarPrint";
 
 interface Project {
   id: string;
@@ -123,10 +124,20 @@ const CalendarGrid = ({ projects }: CalendarGridProps) => {
               <Button
                 variant="outline"
                 onClick={() => {
-                  const originalTitle = document.title;
-                  document.title = `Bid_Calendar_${format(currentMonth, "yyyy-MM")}`;
-                  window.print();
-                  document.title = originalTitle;
+                  // Build print data from current calendar state
+                  const printData = {
+                    monthTitle: format(currentMonth, "MMMM yyyy"),
+                    monthKey: format(currentMonth, "yyyy-MM"),
+                    weeks: weeks.map(week => ({
+                      days: week.map(day => ({
+                        date: day,
+                        isCurrentMonth: isSameMonth(day, currentMonth),
+                        isToday: isToday(day),
+                        events: eventsForDay(day),
+                      })),
+                    })),
+                  };
+                  printCalendarViaIframe(printData);
                 }}
                 className="print:hidden ml-4"
               >
