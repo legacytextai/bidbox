@@ -165,18 +165,25 @@ All colors MUST be HSL.
     gap: 0 !important;
   }
 
-  /* Prevent ANY page breaks within the calendar */
+  /* ATOMIC calendar root - force grid layout to prevent fragmentation */
   .calendar-print-root {
+    display: grid !important;
+    grid-template-rows: auto auto 1fr;
+    width: 100%;
+
+    /* HARD STOP on page breaking */
     page-break-before: avoid !important;
     page-break-after: avoid !important;
     page-break-inside: avoid !important;
-
     break-before: avoid !important;
     break-after: avoid !important;
     break-inside: avoid !important;
+  }
 
-    display: block;
-    width: 100%;
+  /* Prevent orphaning of any child element */
+  .calendar-print-root * {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
   }
 
   /* Scale wrapper (keep existing scale fix) */
