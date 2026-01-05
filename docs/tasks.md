@@ -1,7 +1,7 @@
 # BidBox Implementation Tasks
 
 **Source of Truth for Feature Implementation**  
-Last Updated: 2026-01-01
+Last Updated: 2026-01-05
 
 ---
 
@@ -355,35 +355,51 @@ Already implemented:
 
 ## 🎯 Phase 2: MVP Polish & Core Features
 
-### Task 2.0: Calendar Print Single-Page Output [🔄] In Progress
+### Task 2.0: Calendar Print Single-Page Output [✅ COMPLETED]
 
 **Goal**: `/calendar` prints on **ONE page** (header + weekday labels + grid + events) with **no page splitting** and **no user scale adjustments**.
 
-**Status**: In progress — implementing print-safe wrapper + explicit break disabling.
+**Status**: ✅ Completed 2026-01-05
 
-- [🔄] 2.0.1 Wrap entire calendar in `calendar-print-root`
-  - Location: `src/components/CalendarGrid.tsx`
-  - Ensures the month header and grid cannot paginate separately
+**Solution**: Implemented iframe-based print approach (CSS-only methods proved insufficient for cross-browser consistency).
 
-- [🔄] 2.0.2 Disable all page breaks inside calendar for print
-  - Location: `src/index.css`
-  - Apply *all* variants:
-    - `page-break-before/after/inside: avoid !important`
-    - `break-before/after/inside: avoid !important`
+- [x] 2.0.1 Created `src/lib/calendarPrint.ts` utility
+  - `generatePrintHTML()` builds a self-contained HTML document for printing
+  - Uses fixed Letter landscape dimensions with explicit row heights
+  - Forces single-page output by calculating available height and distributing to rows
 
-- [🔄] 2.0.3 Remove/override print layout conflicts
-  - Ensure `html, body, #root, main` use `overflow: visible` and `height: auto` in `@media print`
-  - Remove calendar page padding in print via `.calendar-container`
+- [x] 2.0.2 Implemented `printCalendarViaIframe()` function
+  - Creates hidden iframe with print-only layout
+  - Injects generated HTML with all print styles inline
+  - Sets document title to `Bid_Calendar_YYYY-MM-DD` (today's date) for PDF filename
+  - Triggers print from iframe context, then cleans up
+
+- [x] 2.0.3 Updated `src/components/CalendarGrid.tsx`
+  - "Print" button now calls `printCalendarViaIframe()` instead of `window.print()`
+  - Gathers calendar data (month title, weeks, events) and passes to print utility
+
+- [x] 2.0.4 Print styling guarantees
+  - `@page { size: letter landscape; margin: 0.4in; }`
+  - `-webkit-print-color-adjust: exact` for color preservation
+  - Dynamic row heights based on number of weeks (~7.5in printable height)
+
+**Implementation Files**:
+- `src/lib/calendarPrint.ts` — Print HTML generation + iframe print utility
+- `src/components/CalendarGrid.tsx` — Updated Print button handler
 
 **How to test**:
 1. Go to `/calendar`
 2. Click **Print**
-3. Confirm print preview shows **exactly 1 page** and the calendar is **not split** (header + grid together)
+3. Confirm print preview shows **exactly 1 page** (no page splits)
+4. Confirm filename is `Bid_Calendar_YYYY-MM-DD` (today's date)
+5. Confirm colors are preserved (red for Bid Due, gray for Job Walk)
 
-**Definition of Done**:
+**Definition of Done**: ✅ All criteria met
 - Single-page print
 - No header/grid split
-- No manual print scale adjustment
+- No manual scaling required
+- Correct filename with today's date
+- Colors preserved
 
 ---
 
