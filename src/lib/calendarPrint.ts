@@ -31,6 +31,9 @@ interface PrintCalendarData {
 function generatePrintHTML(data: PrintCalendarData): string {
   const weekdayHeaders = ["Mon", "Tue", "Wed", "Thu", "Fri"];
   
+  // Use today's date for filename (at print time)
+  const today = format(new Date(), "yyyy-MM-dd");
+  
   // Calculate row height based on number of weeks (Letter landscape ~7.5in printable height)
   const numWeeks = data.weeks.length;
   const headerHeight = 60; // px for month title + weekday headers
@@ -77,7 +80,7 @@ function generatePrintHTML(data: PrintCalendarData): string {
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Bid_Calendar_${data.monthKey}</title>
+  <title>Bid_Calendar_${today}</title>
   <style>
     * {
       margin: 0;
