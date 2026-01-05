@@ -105,121 +105,116 @@ const CalendarGrid = ({ projects }: CalendarGridProps) => {
   };
 
   return (
-    <div className="calendar-print-wrapper">
-      <div className="w-full max-w-7xl mx-auto print-calendar-container">
-      {/* Month Navigation */}
-      <div className="flex items-center justify-between mb-6">
-        <Button variant="outline" size="icon" onClick={handlePrevMonth} className="print:hidden">
-          <ChevronLeft className="h-5 w-5" />
-        </Button>
-        <h2 className="text-2xl font-semibold text-foreground">
-          {format(currentMonth, "MMMM yyyy")}
-        </h2>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={handleNextMonth} className="print:hidden">
-            <ChevronRight className="h-5 w-5" />
-          </Button>
-          <Button 
-            variant="outline" 
-            onClick={() => {
-              const originalTitle = document.title;
-              document.title = `Bid_Calendar_${format(currentMonth, "yyyy-MM")}`;
-              window.print();
-              document.title = originalTitle;
-            }} 
-            className="print:hidden ml-4"
-          >
-            <Printer className="h-4 w-4 mr-2" />
-            Print
-          </Button>
+    <div className="calendar-print-root">
+      <div className="calendar-print-wrapper">
+        <div className="w-full max-w-7xl mx-auto print-calendar-container">
+          {/* Month Navigation */}
+          <div className="flex items-center justify-between mb-6">
+            <Button variant="outline" size="icon" onClick={handlePrevMonth} className="print:hidden">
+              <ChevronLeft className="h-5 w-5" />
+            </Button>
+            <h2 className="text-2xl font-semibold text-foreground">
+              {format(currentMonth, "MMMM yyyy")}
+            </h2>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="icon" onClick={handleNextMonth} className="print:hidden">
+                <ChevronRight className="h-5 w-5" />
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  const originalTitle = document.title;
+                  document.title = `Bid_Calendar_${format(currentMonth, "yyyy-MM")}`;
+                  window.print();
+                  document.title = originalTitle;
+                }}
+                className="print:hidden ml-4"
+              >
+                <Printer className="h-4 w-4 mr-2" />
+                Print
+              </Button>
+            </div>
+          </div>
+
+          {/* Day Headers (Mon-Fri) */}
+          <div className="grid grid-cols-5 gap-1 mb-1">
+            {["Mon", "Tue", "Wed", "Thu", "Fri"].map((day) => (
+              <div key={day} className="text-center text-sm font-medium text-muted-foreground py-2">
+                {day}
+              </div>
+            ))}
+          </div>
+
+          {/* Calendar Grid */}
+          <div className="border border-border rounded-lg overflow-hidden print-calendar-grid">
+            {weeks.map((week, weekIndex) => (
+              <div
+                key={weekIndex}
+                className="grid grid-cols-5 divide-x divide-border border-b last:border-b-0 border-border"
+              >
+                {week.map((day) => {
+                  const dayEvents = eventsForDay(day);
+                  const isCurrentMonth = isSameMonth(day, currentMonth);
+                  const isTodayDate = isToday(day);
+
+                  return (
+                    <div
+                      key={day.toISOString()}
+                      className={`min-h-[160px] p-3 ${isCurrentMonth ? "bg-background" : "bg-muted/30"}`}
+                    >
+                      {/* Date Number */}
+                      <div
+                        className={`text-sm font-medium mb-1 w-7 h-7 flex items-center justify-center rounded-full ${
+                          isTodayDate
+                            ? "bg-primary text-primary-foreground"
+                            : isCurrentMonth
+                              ? "text-foreground"
+                              : "text-muted-foreground"
+                        }`}
+                      >
+                        {format(day, "d")}
+                      </div>
+
+                      {/* Events */}
+                      <div className="space-y-1.5">
+                        {dayEvents.map((event) => {
+                          const isBidDue = event.type === "bid_due";
+                          const label = isBidDue ? "Bid Due" : "Job Walk";
+
+                          return (
+                            <button
+                              key={event.id}
+                              onClick={() => handleEventClick(event.projectId)}
+                              className={`w-full text-left rounded px-2.5 py-2 text-sm transition-colors cursor-pointer ${
+                                isBidDue
+                                  ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                  : "bg-gray-600 text-white hover:bg-gray-700"
+                              }`}
+                            >
+                              <span
+                                className={`inline-block text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded mb-1 ${
+                                  isBidDue ? "bg-destructive-foreground/20" : "bg-white/20"
+                                }`}
+                              >
+                                {label}
+                              </span>
+                              <div className="font-medium truncate leading-snug">{event.projectName}</div>
+                              <div className={`text-xs ${isBidDue ? "text-destructive-foreground/80" : "text-white/80"}`}>
+                                {format(new Date(event.datetime), "MM/dd @ h:mm a")}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
-
-      {/* Day Headers (Mon-Fri) */}
-      <div className="grid grid-cols-5 gap-1 mb-1">
-        {["Mon", "Tue", "Wed", "Thu", "Fri"].map((day) => (
-          <div
-            key={day}
-            className="text-center text-sm font-medium text-muted-foreground py-2"
-          >
-            {day}
-          </div>
-        ))}
-      </div>
-
-      {/* Calendar Grid */}
-      <div className="border border-border rounded-lg overflow-hidden print-calendar-grid">
-        {weeks.map((week, weekIndex) => (
-          <div
-            key={weekIndex}
-            className="grid grid-cols-5 divide-x divide-border border-b last:border-b-0 border-border"
-          >
-            {week.map((day) => {
-              const dayEvents = eventsForDay(day);
-              const isCurrentMonth = isSameMonth(day, currentMonth);
-              const isTodayDate = isToday(day);
-
-              return (
-                <div
-                  key={day.toISOString()}
-                  className={`min-h-[160px] p-3 ${
-                    isCurrentMonth ? "bg-background" : "bg-muted/30"
-                  }`}
-                >
-                  {/* Date Number */}
-                  <div
-                    className={`text-sm font-medium mb-1 w-7 h-7 flex items-center justify-center rounded-full ${
-                      isTodayDate
-                        ? "bg-primary text-primary-foreground"
-                        : isCurrentMonth
-                        ? "text-foreground"
-                        : "text-muted-foreground"
-                    }`}
-                  >
-                    {format(day, "d")}
-                  </div>
-
-                  {/* Events */}
-                  <div className="space-y-1.5">
-                    {dayEvents.map((event) => {
-                      const isBidDue = event.type === 'bid_due';
-                      const label = isBidDue ? 'Bid Due' : 'Job Walk';
-                      
-                      return (
-                        <button
-                          key={event.id}
-                          onClick={() => handleEventClick(event.projectId)}
-                          className={`w-full text-left rounded px-2.5 py-2 text-sm transition-colors cursor-pointer ${
-                            isBidDue
-                              ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
-                              : 'bg-gray-600 text-white hover:bg-gray-700'
-                          }`}
-                        >
-                          <span className={`inline-block text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded mb-1 ${
-                            isBidDue
-                              ? 'bg-destructive-foreground/20'
-                              : 'bg-white/20'
-                          }`}>
-                            {label}
-                          </span>
-                          <div className="font-medium truncate leading-snug">
-                            {event.projectName}
-                          </div>
-                          <div className={`text-xs ${isBidDue ? 'text-destructive-foreground/80' : 'text-white/80'}`}>
-                            {format(new Date(event.datetime), "MM/dd @ h:mm a")}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        ))}
-      </div>
     </div>
-  </div>
   );
 };
 

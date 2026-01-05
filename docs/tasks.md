@@ -355,9 +355,42 @@ Already implemented:
 
 ## 🎯 Phase 2: MVP Polish & Core Features
 
+### Task 2.0: Calendar Print Single-Page Output [🔄] In Progress
+
+**Goal**: `/calendar` prints on **ONE page** (header + weekday labels + grid + events) with **no page splitting** and **no user scale adjustments**.
+
+**Status**: In progress — implementing print-safe wrapper + explicit break disabling.
+
+- [🔄] 2.0.1 Wrap entire calendar in `calendar-print-root`
+  - Location: `src/components/CalendarGrid.tsx`
+  - Ensures the month header and grid cannot paginate separately
+
+- [🔄] 2.0.2 Disable all page breaks inside calendar for print
+  - Location: `src/index.css`
+  - Apply *all* variants:
+    - `page-break-before/after/inside: avoid !important`
+    - `break-before/after/inside: avoid !important`
+
+- [🔄] 2.0.3 Remove/override print layout conflicts
+  - Ensure `html, body, #root, main` use `overflow: visible` and `height: auto` in `@media print`
+  - Remove calendar page padding in print via `.calendar-container`
+
+**How to test**:
+1. Go to `/calendar`
+2. Click **Print**
+3. Confirm print preview shows **exactly 1 page** and the calendar is **not split** (header + grid together)
+
+**Definition of Done**:
+- Single-page print
+- No header/grid split
+- No manual print scale adjustment
+
+---
+
 ### Task 2.1: Add Countdown Timer to Bid Room [MVP]
 
 **User Decision**: MVP feature (not v1)
+
 
 **Location**: `src/pages/BidRoom.tsx`
 
