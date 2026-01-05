@@ -123,11 +123,13 @@ All colors MUST be HSL.
   /* Page setup for single-page landscape */
   @page {
     size: landscape;
-    margin: 0.25in;
+    margin: 0.4in;
   }
 
   /* Neutralize app shell layout - prevent flex/overflow from breaking pagination */
-  html, body, #root {
+  html,
+  body,
+  #root {
     height: auto !important;
     overflow: visible !important;
     margin: 0 !important;
@@ -150,7 +152,7 @@ All colors MUST be HSL.
     width: 0 !important;
     position: absolute !important;
   }
-  
+
   /* Reset body for print */
   body {
     background: white !important;
@@ -162,27 +164,37 @@ All colors MUST be HSL.
     margin: 0 !important;
     gap: 0 !important;
   }
-  
-  /* Print wrapper: scale to 75% for guaranteed single-page fit */
+
+  /* Prevent ANY page breaks within the calendar */
+  .calendar-print-root {
+    page-break-before: avoid !important;
+    page-break-after: avoid !important;
+    page-break-inside: avoid !important;
+
+    break-before: avoid !important;
+    break-after: avoid !important;
+    break-inside: avoid !important;
+
+    display: block;
+    width: 100%;
+  }
+
+  /* Scale wrapper (keep existing scale fix) */
   .calendar-print-wrapper {
     transform: scale(0.75);
     transform-origin: top left;
     width: 133.33%; /* compensate for 0.75 scale (1/0.75 = 1.333) */
     display: block;
-    break-inside: avoid;
-    page-break-inside: avoid;
   }
-  
+
   /* Calendar container fills page */
   .print-calendar-container {
     max-width: 100% !important;
     margin: 0 !important;
     padding: 0 !important;
-    break-inside: avoid;
-    page-break-inside: avoid;
   }
-  
-  /* Ensure calendar grid fits on one page */
+
+  /* Ensure calendar grid doesn't split */
   .print-calendar-grid {
     page-break-inside: avoid;
     break-inside: avoid;
