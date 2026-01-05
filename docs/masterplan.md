@@ -92,24 +92,28 @@ Fast to scaffold, secure by default, and matches Lovable's strengths.
 
 ### 📊 Conceptual Data Model (ERD in words)
 
-**users**    
-- id    
-- email    
-- password_hash    
-- company_name  
+**profiles**    
+- id (PK, FK → auth.users.id)
+- email
+- company_name
+- created_at
+- stripe_customer_id
+- estimating_email (nullable) — Displayed as "Estimating Contact" on public bid room
 
 **projects**    
 - id    
-- gc_id (FK → users)    
+- gc_id (FK → profiles)    
 - name    
 - location    
 - agency    
 - bid_due_at    
+- job_walk_at (nullable) — Optional job walk date/time
 - instructions    
 - public_token    
-- status ("live" or "dead")  
-
-**project_files**    
+- status ("live" or "dead")
+- county
+- timezone
+- view_count
 - id    
 - project_id    
 - file_name    
@@ -214,7 +218,12 @@ Fast to scaffold, secure by default, and matches Lovable's strengths.
 - Download all bids (ZIP/CSV)    
 - Responsive mobile layout polish    
 - PDF preview viewer    
-- Countdown component  
+- Countdown component
+- ✅ Calendar print (single-page, iframe-based)
+- ✅ Estimating email field + public display
+- ✅ Job walk date tracking + calendar display
+- ✅ Required trades display on public bid room
+- ✅ Network subs pagination + full export
 
 **Phase 3.5: Trade Selection Layer** ✅ Database Complete  
 - ✅ Create `trade_types` table (state-agnostic reference table)

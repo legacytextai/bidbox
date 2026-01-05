@@ -68,6 +68,26 @@
 - [x] Make `/bid/[token]` responsive (mobile-first)  
 - [x] PDF previewer  
 - [x] Add 200–300ms fade-in success message for subs
+- [x] Calendar print single-page output (iframe-based)
+  - Implementation: `src/lib/calendarPrint.ts`
+  - Filename: `Bid_Calendar_YYYY-MM-DD` (today's date)
+  - Guaranteed single-page via explicit sizing
+
+---
+
+**Phase 4.1 – GC Profile & Calendar Enhancements** ✅ Completed 2026-01-05
+
+- [x] Estimating email field in /settings
+- [x] Display estimating contact in public bid room (with mailto: link)
+- [x] Job walk date/time field on projects (create + edit)
+- [x] Calendar integration for job walk events (gray badge)
+- [x] Calendar event redesign (header/title/subtitle hierarchy)
+- [x] Calendar size and layout improvements (expanded footprint)
+- [x] Network subs pagination (50/page, 1,000 UI cap)
+- [x] Network subs full export (bypasses UI limit)
+- [x] License status badge standardization ("active" instead of "clear")
+- [x] Required trades display on public bid room
+- [x] File upload drag-and-drop audit (pilot readiness)
 
 ---
 
