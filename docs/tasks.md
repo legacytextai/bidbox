@@ -1,7 +1,7 @@
 # BidBox Implementation Tasks
 
 **Source of Truth for Feature Implementation**  
-Last Updated: 2026-01-05
+Last Updated: 2026-01-06
 
 ---
 
@@ -66,6 +66,76 @@ Last Updated: 2026-01-05
 - `docs/masterplan.md` → Security Decisions
 - `docs/gc-control-center-prd.md` → Section 6 Security Model
 - Lovable memory: `architecture/two-pool-subcontractor-model`
+
+---
+
+### SD-002: Sub Trade Mappings Access Control [FINAL]
+
+**Date**: 2026-01-06  
+**Status**: Fixed — Critical security vulnerability resolved
+
+**Issue**: The `sub_trade_mappings` table had a permissive public SELECT policy (`USING (true)`) that exposed subcontractor → trade type associations to anonymous users.
+
+**Fix Applied**:
+- Dropped policy `Anyone can view sub_trade_mappings`
+- Created policy `Authenticated users can read sub_trade_mappings` with `USING (auth.uid() IS NOT NULL)`
+
+**Final RLS Policies**:
+| Policy | Command | Condition |
+|--------|---------|-----------|
+| Authenticated users can read sub_trade_mappings | SELECT | `auth.uid() IS NOT NULL` |
+| Admins can manage sub_trade_mappings | ALL | `has_role(auth.uid(), 'admin')` |
+
+**Impact**: Anonymous/unauthenticated access blocked. All authenticated GCs retain read access.
+
+---
+
+### SD-003: Subscriptions Table Access Control [FINAL]
+
+**Date**: 2026-01-06  
+**Status**: Fixed — Critical security vulnerability resolved
+
+**Issue**: The `subscriptions` table had an overly permissive policy that could expose sensitive Stripe billing data.
+
+**Fix Applied**:
+- Dropped policy `Service role can manage subscriptions` (service role bypasses RLS anyway)
+- Retained user-scoped policy `Users can view own subscription`
+
+**Final RLS Policies**:
+| Policy | Command | Condition |
+|--------|---------|-----------|
+| Users can view own subscription | SELECT | `auth.uid() = profile_id` |
+
+**Impact**: Users can only read their own subscription record. Stripe webhooks continue to work via service role bypass.
+
+---
+
+### SD-004: Bids Table Cross-GC Protection [VERIFIED SECURE]
+
+**Date**: 2026-01-06  
+**Status**: Confirmed secure — No changes needed (false positive)
+
+**Warning Investigated**: Security scanner flagged potential cross-GC access to bids.
+
+**Verification**: Existing policy already correctly enforces ownership via project join:
+```sql
+CREATE POLICY "GCs can view bids for their projects"
+ON public.bids FOR SELECT
+USING (
+  EXISTS (
+    SELECT 1 FROM projects 
+    WHERE projects.id = bids.project_id 
+    AND projects.gc_id = auth.uid()
+  )
+);
+```
+
+**Guarantees**:
+- GCs can only SELECT bids for projects where they are the owner
+- Cross-GC access is blocked (`auth.uid()` must match project owner)
+- Anonymous access blocked (`auth.uid()` is null for unauthenticated requests)
+
+**Action**: Marked as false positive in security scanner with documented reasoning.
 
 ---
 
@@ -592,6 +662,109 @@ Already implemented:
 
 **Implementation Files**:
 - `src/components/CalendarGrid.tsx` — Layout and sizing
+
+---
+
+### Task 2.11: Landing Page Auto-Redirect for Authenticated Users [✅ COMPLETED]
+
+**Goal**: Redirect signed-in users from the landing page to the app dashboard.
+
+**Status**: ✅ Completed 2026-01-06
+
+**Behavior**:
+- Authenticated users visiting `/` (root URL) are automatically redirected to `/calendar`
+- Unauthenticated users see the marketing landing page unchanged
+- Uses `navigate("/calendar", { replace: true })` to prevent back-button loops
+- Returns `null` until auth state is confirmed to prevent flash of landing content
+
+- [x] 2.11.1 Added auth check in `LandingMvp.tsx` using `useAuth()` hook
+- [x] 2.11.2 Implemented redirect via `useEffect` when `user` exists and `authReady` is true
+- [x] 2.11.3 Returns `null` during auth state resolution (prevents flash)
+
+**Implementation Files**:
+- `src/pages/LandingMvp.tsx` — Auth check and redirect logic
+
+**How to test**:
+1. Log out and visit `bidbox.lovable.app` — see landing page
+2. Log in and return to root URL — automatic redirect to `/calendar`
+3. Verify no flash of landing content during redirect
+
+---
+
+### Task 2.12: Security Fix - `sub_trade_mappings` Public Exposure [✅ COMPLETED]
+
+**Goal**: Remove public SELECT access to subcontractor trade mapping data.
+
+**Status**: ✅ Completed 2026-01-06 (Critical fix)
+
+**Actions taken**:
+- Dropped permissive policy `Anyone can view sub_trade_mappings`
+- Created policy `Authenticated users can read sub_trade_mappings` with `USING (auth.uid() IS NOT NULL)`
+- RLS was already enabled
+
+**Final RLS policies**:
+| Policy | Command | Condition |
+|--------|---------|-----------|
+| Authenticated users can read sub_trade_mappings | SELECT | `auth.uid() IS NOT NULL` |
+| Admins can manage sub_trade_mappings | ALL | `has_role(auth.uid(), 'admin')` |
+
+**Impact**: Anonymous/unauthenticated access blocked. All authenticated GCs retain read access.
+
+**Reference**: See SD-002 in Security Decisions section.
+
+---
+
+### Task 2.13: Security Fix - `subscriptions` Table Public Exposure [✅ COMPLETED]
+
+**Goal**: Prevent public access to sensitive billing/Stripe data.
+
+**Status**: ✅ Completed 2026-01-06 (Critical fix)
+
+**Actions taken**:
+- Dropped overly permissive policy `Service role can manage subscriptions`
+- Retained user-scoped policy `Users can view own subscription`
+
+**Final RLS policies**:
+| Policy | Command | Condition |
+|--------|---------|-----------|
+| Users can view own subscription | SELECT | `auth.uid() = profile_id` |
+
+**Impact**: 
+- Users can only read their own subscription record
+- Stripe webhooks continue to work (service role bypasses RLS)
+- Anonymous/cross-user access blocked
+
+**Reference**: See SD-003 in Security Decisions section.
+
+---
+
+### Task 2.14: Security Audit - `bids` Table Cross-GC Access [✅ CONFIRMED SECURE]
+
+**Goal**: Verify that GCs cannot access bids for projects they don't own.
+
+**Status**: ✅ Confirmed secure 2026-01-06 (No changes needed - false positive)
+
+**Existing policy verified**:
+```sql
+CREATE POLICY "GCs can view bids for their projects"
+ON public.bids FOR SELECT
+USING (
+  EXISTS (
+    SELECT 1 FROM projects 
+    WHERE projects.id = bids.project_id 
+    AND projects.gc_id = auth.uid()
+  )
+);
+```
+
+**Guarantees**:
+- GCs can only SELECT bids for projects where they are the owner
+- Cross-GC access is blocked (`auth.uid()` must match project owner)
+- Anonymous access blocked (`auth.uid()` is null for unauthenticated requests)
+
+**Action**: Marked as false positive in security scanner with documented reasoning.
+
+**Reference**: See SD-004 in Security Decisions section.
 
 ---
 

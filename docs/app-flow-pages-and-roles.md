@@ -134,6 +134,23 @@ BidBox is a two-role system (GC and anonymous Subcontractor) with a minimal page
 
 ---
 
+## 🔄 Landing Page Auto-Redirect
+
+**Behavior (Added 2026-01-06)**: Authenticated users who navigate to the root URL (`/`) are automatically redirected to `/calendar`.
+
+**Implementation**:
+- `LandingMvp.tsx` checks auth state on mount
+- Uses `useAuth()` hook for `user` and `authReady` state
+- Redirects via `navigate("/calendar", { replace: true })`
+- Renders nothing until auth state is confirmed (prevents flash)
+
+**Rationale**:
+- Prevents signed-in users from getting stuck on marketing page
+- Matches standard SaaS behavior (app URL = app for logged-in users)
+- Uses `replace: true` to keep browser history clean
+
+---
+
 ## 📱 Mobile Considerations
 
 - Public bid room is optimized for mobile subs  
