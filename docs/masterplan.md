@@ -204,6 +204,47 @@ Fast to scaffold, secure by default, and matches Lovable's strengths.
 
 ---
 
+#### SD-002: Subcontractor Trade Mappings Access Control
+
+**Decision (2026-01-06)**: The `sub_trade_mappings` table is only readable by authenticated users, not the public.
+
+**Rationale**:
+- Trade mappings link network subcontractors to their trade types
+- Contains no ownership column (network pool is shared)
+- Authenticated access required to prevent data harvesting
+- No public/anonymous access allowed
+
+**RLS Policy**: `auth.uid() IS NOT NULL`
+
+---
+
+#### SD-003: Subscription Data Protection
+
+**Decision (2026-01-06)**: The `subscriptions` table is strictly user-scoped with no cross-user visibility.
+
+**Rationale**:
+- Contains sensitive Stripe customer IDs and payment status
+- Users must only see their own subscription record
+- Service role (Stripe webhooks) bypasses RLS for INSERT/UPDATE operations
+- No public or cross-user SELECT access
+
+**RLS Policy**: `auth.uid() = profile_id`
+
+---
+
+#### SD-004: Bids Table Cross-GC Protection
+
+**Decision (2026-01-06)**: The `bids` table is correctly protected via project ownership join.
+
+**Rationale**:
+- Bidder contact info (email, company, name) is sensitive
+- Access requires ownership of the parent project
+- Existing policy verified correct: `EXISTS (SELECT 1 FROM projects WHERE projects.id = bids.project_id AND projects.gc_id = auth.uid())`
+
+**Action**: Security warning confirmed as false positive; no changes made.
+
+---
+
 ### 🗺️ Phased Roadmap
 
 **MVP (v0)** ✅ Complete  
