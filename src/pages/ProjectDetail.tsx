@@ -21,6 +21,7 @@ import { CallListButton } from "@/components/CallListButton";
 import { BidListButton } from "@/components/BidListButton";
 import { getProjectDisplayStatus } from "@/lib/projectStatus";
 import { CountySelect } from "@/components/CountySelect";
+import { ProjectSignals } from "@/components/ProjectSignals";
 import {
   Select,
   SelectContent,
@@ -590,6 +591,9 @@ const ProjectDetail = () => {
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Projects
           </Button>
+
+          {/* Project Signals from One Link crawl */}
+          <ProjectSignals project={project} className="mb-4" />
 
           {/* Editable Project Information */}
           <div className="space-y-2 mb-3">

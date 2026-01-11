@@ -17,3 +17,6 @@ verify_jwt = false
 
 [functions.cslb-verify-count]
 verify_jwt = false
+
+[functions.crawl-project]
+verify_jwt = true
