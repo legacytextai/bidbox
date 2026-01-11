@@ -130,15 +130,31 @@ export function ProjectSignals({ project, className }: ProjectSignalsProps) {
     );
   }
 
-  // Last Crawled Signal
+  // Last Crawled Signal with staleness colors
   if (project.last_crawled_at) {
     const lastChecked = new Date(project.last_crawled_at);
+    const hoursSinceCheck = (Date.now() - lastChecked.getTime()) / (1000 * 60 * 60);
+    
+    // Determine staleness level
+    let stalenessClass = "border-green-500 text-green-600 bg-green-50"; // Within 24 hours
+    let stalenessIcon = <CheckCircle2 className="h-3 w-3" />;
+    
+    if (hoursSinceCheck > 72) {
+      // More than 3 days - gray (stale)
+      stalenessClass = "border-muted-foreground/50 text-muted-foreground bg-muted/50";
+      stalenessIcon = <RefreshCw className="h-3 w-3" />;
+    } else if (hoursSinceCheck > 24) {
+      // 1-3 days - yellow (getting stale)
+      stalenessClass = "border-yellow-500 text-yellow-600 bg-yellow-50";
+      stalenessIcon = <RefreshCw className="h-3 w-3" />;
+    }
+    
     signals.push(
       <TooltipProvider key="last-checked">
         <Tooltip>
           <TooltipTrigger asChild>
-            <Badge variant="secondary" className="gap-1.5 cursor-help">
-              <RefreshCw className="h-3 w-3" />
+            <Badge variant="outline" className={cn("gap-1.5 cursor-help", stalenessClass)}>
+              {stalenessIcon}
               Checked {formatDistanceToNow(lastChecked, { addSuffix: true })}
             </Badge>
           </TooltipTrigger>

@@ -218,7 +218,7 @@ serve(async (req) => {
   }
 
   try {
-    const { project_id, source_url } = await req.json();
+    const { project_id, source_url, is_recrawl, previous_values } = await req.json();
 
     if (!project_id || !source_url) {
       return new Response(
@@ -227,7 +227,7 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Crawling project ${project_id} from ${source_url}`);
+    console.log(`${is_recrawl ? 'Re-crawling' : 'Crawling'} project ${project_id} from ${source_url}`);
 
     // Initialize Supabase client
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -550,6 +550,56 @@ Extract the information using the provided function.`
       }
     }
 
+    // Change detection for re-crawls
+    let crawlChanges: Record<string, { old: any; new: any }> | null = null;
+    let hasChanges = false;
+
+    if (is_recrawl && previous_values) {
+      const changes: Record<string, { old: any; new: any }> = {};
+      
+      // Check bid_due_at changes
+      if (updateData.bid_due_at && previous_values.bid_due_at) {
+        const oldDate = new Date(previous_values.bid_due_at).getTime();
+        const newDate = new Date(updateData.bid_due_at).getTime();
+        // Only flag if difference is more than 1 minute (to avoid timezone rounding issues)
+        if (Math.abs(oldDate - newDate) > 60000) {
+          changes.bid_due_at = { old: previous_values.bid_due_at, new: updateData.bid_due_at };
+          hasChanges = true;
+        }
+      }
+      
+      // Check job_walk_at changes
+      if (updateData.job_walk_at !== undefined && previous_values.job_walk_at !== updateData.job_walk_at) {
+        if (updateData.job_walk_at && previous_values.job_walk_at) {
+          const oldDate = new Date(previous_values.job_walk_at).getTime();
+          const newDate = new Date(updateData.job_walk_at).getTime();
+          if (Math.abs(oldDate - newDate) > 60000) {
+            changes.job_walk_at = { old: previous_values.job_walk_at, new: updateData.job_walk_at };
+            hasChanges = true;
+          }
+        } else if (updateData.job_walk_at || previous_values.job_walk_at) {
+          changes.job_walk_at = { old: previous_values.job_walk_at, new: updateData.job_walk_at };
+          hasChanges = true;
+        }
+      }
+      
+      // Check agency changes
+      if (updateData.agency && previous_values.agency && 
+          updateData.agency.toLowerCase() !== previous_values.agency.toLowerCase()) {
+        changes.agency = { old: previous_values.agency, new: updateData.agency };
+        hasChanges = true;
+      }
+      
+      if (hasChanges) {
+        crawlChanges = changes;
+        updateData.crawl_changes = changes;
+        console.log("Changes detected during re-crawl:", changes);
+      } else {
+        // Clear any previous changes if no new changes found
+        updateData.crawl_changes = null;
+      }
+    }
+
     // Update project
     const { error: updateError } = await supabase
       .from("projects")
@@ -564,14 +614,16 @@ Extract the information using the provided function.`
       );
     }
 
-    console.log(`Successfully updated project ${project_id}`);
+    console.log(`Successfully ${is_recrawl ? 're-crawled' : 'crawled'} project ${project_id}`);
 
     return new Response(
       JSON.stringify({ 
         success: true, 
         portal_type: portalType,
         extracted: semanticData ? true : false,
-        fields_updated: Object.keys(updateData)
+        fields_updated: Object.keys(updateData),
+        hasChanges,
+        changes: crawlChanges
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
