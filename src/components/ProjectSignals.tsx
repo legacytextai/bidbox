@@ -153,10 +153,15 @@ export function ProjectSignals({ project, className }: ProjectSignalsProps) {
   return (
     <div className={cn("space-y-3", className)}>
       {/* Prominent Source Link Section */}
-      <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg border">
-        <ExternalLink className="h-5 w-5 text-primary flex-shrink-0" />
+      <a 
+        href={project.source_url!} 
+        target="_blank" 
+        rel="noopener noreferrer"
+        className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg border hover:bg-muted/80 hover:border-primary/50 transition-colors cursor-pointer group"
+      >
+        <ExternalLink className="h-5 w-5 text-primary flex-shrink-0 group-hover:scale-110 transition-transform" />
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-foreground">Original Project Listing</p>
+          <p className="text-sm font-medium text-foreground">Project Link</p>
           <p className="text-sm text-muted-foreground truncate">
             {project.portal_type 
               ? getPortalDisplayName(project.portal_type as PortalType)
@@ -164,18 +169,10 @@ export function ProjectSignals({ project, className }: ProjectSignalsProps) {
             }
           </p>
         </div>
-        <Button variant="outline" size="sm" asChild>
-          <a 
-            href={project.source_url!} 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="gap-2"
-          >
-            <ExternalLink className="h-4 w-4" />
-            Open
-          </a>
-        </Button>
-      </div>
+        <span className="text-sm text-primary group-hover:underline">
+          Open
+        </span>
+      </a>
       
       {/* Signal Badges */}
       {signals.length > 0 && (
