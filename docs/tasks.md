@@ -768,6 +768,55 @@ USING (
 
 ---
 
+### Task 2.15: One Link Precision Fixes [✅ COMPLETED]
+
+**Goal**: Fix extraction accuracy and UX sequencing issues discovered during PlanetBids testing.
+
+**Status**: ✅ Completed 2026-01-11
+
+**Issues Fixed**:
+
+1. **Bid Due Time Parsing** (Fix 1)
+   - Problem: Time extracted as 2:00 AM instead of 10:00 AM
+   - Solution: Updated LLM prompt to extract EXACT times from "Bid Due", "Bid Opening", "Closing Date" keywords
+   - Never defaults to midnight or 2:00 AM — if time unclear, only date is used
+   
+2. **Job Walk Date/Time/Location Population** (Fix 2)
+   - Problem: Job walk detected but `job_walk_at` field not populated
+   - Solution: Added `job_walk.datetime` and `job_walk.location` to LLM extraction schema
+   - Now populates `job_walk_at` field from structured extraction
+
+3. **County Inference from Agency** (Fix 3)
+   - Problem: County not populated even when agency contains city name
+   - Solution: Added city-to-county mapping for 80+ California cities
+   - "City of Irvine" → "Orange", "City of San Diego" → "San Diego", etc.
+   
+4. **Source Project Link Visibility** (Fix 4)
+   - Problem: Source link too small and de-emphasized
+   - Solution: Added prominent "Original Project Listing" card at top of ProjectSignals
+   - Clear visual with portal name and "Open" button
+
+5. **Crawl UX Sequencing** (Fix 5)
+   - Problem: User sees half-populated page during crawl
+   - Solution: Added "Analyzing project..." loading state with polling
+   - Page waits for `last_crawled_at` to be set before showing project details
+
+**Files Modified**:
+- `supabase/functions/crawl-project/index.ts` — Enhanced LLM prompts, added county inference
+- `src/components/ProjectSignals.tsx` — Prominent source link section
+- `src/pages/ProjectDetail.tsx` — Crawl-pending loading state with 2-second polling
+
+**How to test**:
+1. Create project from PlanetBids URL
+2. Verify "Analyzing project..." spinner shows until crawl completes
+3. After completion, verify:
+   - Bid due TIME is correct (not 2:00 AM)
+   - Job walk date auto-populates if detected
+   - County inferred from agency ("City of Irvine" → "Orange")
+   - Source link is prominently visible at top
+
+---
+
 ### Task 2.1: Add Countdown Timer to Bid Room [MVP]
 
 **User Decision**: MVP feature (not v1)

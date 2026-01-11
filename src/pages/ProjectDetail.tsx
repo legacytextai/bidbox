@@ -560,11 +560,43 @@ const ProjectDetail = () => {
     }
   };
 
+  // Check if crawl is still in progress (has source_url but no last_crawled_at)
+  const isCrawlPending = project?.source_url && !project?.last_crawled_at;
+
+  // Poll for crawl completion when pending
+  useEffect(() => {
+    if (isCrawlPending) {
+      const interval = setInterval(() => {
+        loadProject();
+      }, 2000);
+      
+      return () => clearInterval(interval);
+    }
+  }, [isCrawlPending]);
+
   if (loading) {
     return (
       <Layout showSidebar={true}>
         <div className="flex items-center justify-center min-h-[calc(100vh-4rem)]">
           <p className="text-muted-foreground">Loading project...</p>
+        </div>
+      </Layout>
+    );
+  }
+
+  // Show analyzing state while crawl is in progress
+  if (isCrawlPending) {
+    return (
+      <Layout showSidebar={true}>
+        <div className="flex flex-col items-center justify-center min-h-[calc(100vh-4rem)] gap-4">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-lg font-medium">Analyzing project...</p>
+          <p className="text-sm text-muted-foreground text-center max-w-md">
+            Extracting project details from the source listing. This usually takes 10-20 seconds.
+          </p>
+          <p className="text-xs text-muted-foreground mt-2">
+            {project?.source_url}
+          </p>
         </div>
       </Layout>
     );

@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { 
   AlertTriangle, 
   Lock, 
@@ -149,31 +150,39 @@ export function ProjectSignals({ project, className }: ProjectSignalsProps) {
     );
   }
 
-  // Portal Type + Source Link
-  if (project.portal_type) {
-    signals.push(
-      <a
-        key="source"
-        href={project.source_url || "#"}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex"
-      >
-        <Badge variant="outline" className="gap-1.5 hover:bg-muted cursor-pointer">
-          <ExternalLink className="h-3 w-3" />
-          {getPortalDisplayName(project.portal_type as PortalType)}
-        </Badge>
-      </a>
-    );
-  }
-
-  if (signals.length === 0) {
-    return null;
-  }
-
   return (
-    <div className={cn("flex flex-wrap gap-2", className)}>
-      {signals}
+    <div className={cn("space-y-3", className)}>
+      {/* Prominent Source Link Section */}
+      <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg border">
+        <ExternalLink className="h-5 w-5 text-primary flex-shrink-0" />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-foreground">Original Project Listing</p>
+          <p className="text-sm text-muted-foreground truncate">
+            {project.portal_type 
+              ? getPortalDisplayName(project.portal_type as PortalType)
+              : new URL(project.source_url!).hostname
+            }
+          </p>
+        </div>
+        <Button variant="outline" size="sm" asChild>
+          <a 
+            href={project.source_url!} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="gap-2"
+          >
+            <ExternalLink className="h-4 w-4" />
+            Open
+          </a>
+        </Button>
+      </div>
+      
+      {/* Signal Badges */}
+      {signals.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {signals}
+        </div>
+      )}
     </div>
   );
 }
