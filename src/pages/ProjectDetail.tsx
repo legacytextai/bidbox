@@ -816,10 +816,10 @@ const ProjectDetail = () => {
           </div>
 
           {/* Bid Box Link, Subs List, and Save Changes Section */}
-          <div className="flex justify-between items-start mb-4 gap-4">
+          <div className="flex justify-between items-start mb-4 gap-8">
             {/* Bid Box Link Column */}
-            <div className="space-y-2">
-              <Label>Bid Box Link</Label>
+            <div className="flex flex-col gap-2">
+              <Label className="block">Bid Box Link</Label>
               <Button
                 variant="outline"
                 size="sm"
@@ -840,8 +840,8 @@ const ProjectDetail = () => {
             </div>
 
             {/* Subs List Column */}
-            <div className="space-y-2">
-              <Label>Subs List</Label>
+            <div className="flex flex-col gap-2">
+              <Label className="block">Subs List</Label>
               <BidListButton
                 projectId={project.id}
                 projectName={project.name}
