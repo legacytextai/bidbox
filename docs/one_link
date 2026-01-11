@@ -1,0 +1,718 @@
+# 📘 PRD: One Link Project Ingestion Initiative
+
+**Product:** BidBox  
+**Initiative Name:** One Link  
+**Status:** Research Complete → Ready for Implementation  
+**Author:** Internal  
+**Last Updated:** 2026-01-11
+
+---
+
+## 1. Executive Summary
+
+The **One Link initiative** introduces a new primary workflow for creating and managing public works projects in BidBox:
+
+> **Paste a public works project link → BidBox becomes the system of record.**
+
+After researching **seven distinct procurement platforms** across state, city, county, and enterprise agencies, we validated that **project-level crawling is feasible, repeatable, and high-signal**. While platforms vary widely in structure and access control, *core project metadata is consistently accessible*.
+
+This initiative re-centers BidBox around **link-based project ingestion**, dramatically reducing setup friction, eliminating manual data entry, and enabling BidBox to act as a **daily project homebase** rather than a static form-driven tool.
+
+---
+
+## 2. Goals & Non-Goals
+
+### Goals
+- Enable users to create a BidBox project by pasting a **single project link**
+- Automatically extract and normalize key project metadata
+- Surface risk signals (job walks, restrictions, gated docs, eligibility)
+- Establish BidBox as the **system of record** for external projects
+- Reduce time-to-project-creation to seconds
+
+### Non-Goals (Explicitly Out of Scope for Phase 1)
+- Opportunity discovery or crawling bid listings
+- Automated bidding or submission
+- Full document parsing or OCR
+- Subcontractor automation
+- File content ingestion beyond metadata
+
+---
+
+## 3. Research Summary: Modules 1–7
+
+### Key Validation Outcomes
+Across **7 procurement systems**:
+- ✅ Project detail pages are publicly accessible
+- ✅ Core metadata is extractable
+- ✅ Crawling is technically straightforward
+- ❌ Data is not uniform
+- ❌ Documents are often gated
+
+**Conclusion:**  
+The challenge is **semantic interpretation**, not scraping.
+
+---
+
+### Module Breakdown
+
+#### Module 1 — Caltrans (Contractors Corner)
+- **Type:** State, public, highly structured
+- **Strengths:** Bid items, estimates, planholders, dates
+- **Limitations:** Docs gated via NDA/login
+- **Takeaway:** Gold standard for structured data
+
+#### Module 2 — City of San Diego (PlanetBids)
+- **Type:** SaaS procurement
+- **Strengths:** Rich metadata, meetings, addenda
+- **Limitations:** Docs gated
+- **Takeaway:** Crawl-friendly, predictable
+
+#### Module 3 — City of Irvine (PlanetBids)
+- **Type:** Identical to Module 2
+- **Takeaway:** One PlanetBids crawler supports many agencies
+
+#### Module 4 — San Bernardino County (EPRO)
+- **Type:** County-hosted
+- **Strengths:** Mandatory job walk language, downloadable plans
+- **Limitations:** Narrative-heavy
+- **Takeaway:** High accessibility, strong risk signals
+
+#### Module 5 — LADWP (ERSP)
+- **Type:** Enterprise procurement
+- **Strengths:** Dates, contacts, scope text
+- **Limitations:** Docs gated, requirements embedded in prose
+- **Key Correction:** No explicitly mandatory pre-bid or job walk
+- **Takeaway:** Requires semantic parsing, not assumptions
+
+#### Module 6 — LAWA (BonfireHub)
+- **Type:** Modern SaaS procurement
+- **Strengths:** Clean metadata, NAICS/commodity codes
+- **Limitations:** Docs gated
+- **Takeaway:** Metadata alone is highly valuable
+
+#### Module 7 — RAMP LA (Aggregator + Gatekeeper)
+- **Type:** Aggregator with eligibility gating
+- **Strengths:** Estimates, scope, amendments, restrictions
+- **Limitations:** Restricted primes, docs gated
+- **Takeaway:** Eligibility ≠ availability
+
+---
+
+## 3A. Deep-Dive Module Process & Extraction Detail (Expanded)
+
+> This section adds process-level detail (how we reached each portal, what pages mattered, what data was visible, and what it implies for extraction).
+> Nothing in this PRD is removed or altered from earlier sections — this is additive detail only.
+
+---
+
+### Module 1 — Caltrans (Contractors Corner) — Deep Dive
+
+#### How We Got There (Discovery / Navigation Path)
+- Started by seeking a “fastest path to a public works listing.”
+- Identified Caltrans as a strong starting point because Caltrans projects typically do not have job walks (reduces complexity) and the listings are dense with structured information.
+- Navigation path:
+  1. Googled **“Caltrans currently advertised projects”**
+  2. Landed on a migration notice page (“website has migrated”)
+  3. Followed link to Caltrans **Contractors Corner**
+  4. Found **Advertisement / Advertised Projects** listing page
+
+**Advertised Projects List Page:**  
+- https://ppmoe.dot.ca.gov/cc?id=cc_advertisement
+
+#### What We Observed on the List Page
+- A table-like listing of advertised projects with key bid information visible in a predictable layout.
+- High-signal fields are “right there for the taking” and appear consistently across rows.
+
+#### Project Example Page
+- Project-level details (provided via PDF attachment in the session; project page itself is a link).
+- Observed major data elements:
+  - Bid items list visible (high value)
+  - Plan holders list visible (high value)
+  - Plans/specs/documents appear to require NDA or sign-off to download (gated)
+  - Multiple project documents categories (specifications, plans, forms)
+
+#### What Information Is Extractable (Confirmed)
+- Core metadata: project identifiers, title, contract number, agency
+- Bid due date/time
+- Bid items
+- Planholders list
+- Links to specs/plans and any gating conditions (NDA / sign-off)
+
+#### Notable Constraints / Caveats
+- Documents not reliably accessible without completing “NDA sign off”
+- Document download may require authentication or explicit acceptance flow
+
+#### Extraction Implications
+- The Caltrans module can be:
+  - More deterministic (structured HTML)
+  - More rules-based (DOM parsing with minimal LLM)
+- A second step may be needed for document access (deferred; not Phase 1).
+
+#### Module 1 Bottom Line
+- Caltrans is the **cleanest structured baseline** and can serve as:
+  - A canonical schema reference
+  - A validation dataset for extraction accuracy
+
+---
+
+### Module 2 — City of San Diego (PlanetBids) — Deep Dive
+
+#### How We Got There (Discovery / Navigation Path)
+- Navigation path:
+  1. Googled **“City of San Diego vendor portal”**
+  2. Landed on the City vendor registration page
+  3. Clicked the CTA: **Vendor registration and bid opportunities**
+  4. Arrived at a PlanetBids portal home page (URL indicates “portal-home”)
+  5. Clicked **Bid Opportunities** to access the searchable list
+
+**Portal Home:**  
+- https://vendors.planetbids.com/portal/17950/portal-home
+
+**Bid Opportunities List:**  
+- https://vendors.planetbids.com/portal/17950/bo/bo-search
+
+#### What We Observed on Bid Opportunities List Page
+- The portal contains many categories beyond construction:
+  - printing materials, hydrated lime, janitorial services, meal delivery, etc.
+- This raised a pinned strategic thought:
+  - BidBox *could* expand beyond construction eventually (government contracting broadly),
+  - but we should avoid building “for everyone” too early.
+
+#### Project Example Detail Page
+- https://vendors.planetbids.com/portal/17950/bo/bo-detail/135924#bidInformation
+
+#### What Information Was Available on the Project Detail Page (Tabbed)
+**Bid Information tab**
+- Bid due date/time
+- Invitation / project number
+- Categories / award categories
+- License requirements
+- Estimated bid value
+- Bid bond information
+- Pre-bid meeting details:
+  - Meeting type (on-site)
+  - Date/time
+  - Attendance required (explicitly indicated)
+- Contact info
+
+**Line Items tab**
+- Bid items line list (structured)
+
+**Documents tab**
+- Plans/specs downloadable (in this example, downloads were accessible with no login barrier observed)
+- Addenda section with downloadable PDFs
+- Email history section
+
+**Prospective Bidders tab**
+- A list/count of prospective bidders (planholders / registrants)
+
+**Other UI Elements**
+- “Remaining time” component (dynamic)
+- Subcontractor ads section (none in the example)
+- Bid results/awards (not yet)
+
+#### Extraction Implications
+- PlanetBids pages are:
+  - Highly consistent across cities
+  - Tabbed with stable anchors
+  - Rich with structured metadata
+- Even if docs are gated in some instances, the metadata usually is not.
+
+#### Module 2 Bottom Line
+- PlanetBids is a “platform module” — one parser can support many cities.
+- Project detail pages expose the exact data BidBox needs: dates, meetings, addenda, line items.
+
+---
+
+### Module 3 — City of Irvine (PlanetBids) — Deep Dive
+
+#### Context / Purpose
+- Module 3 tested whether another city using PlanetBids is effectively the same extraction problem as Module 2.
+- Goal: confirm portability and “copy-paste” viability of the module.
+
+**Bid Opportunities:**  
+- https://vendors.planetbids.com/portal/15927/bo/bo-search
+
+**Project Example:**  
+- https://vendors.planetbids.com/portal/15927/bo/bo-detail/136105#bidInformation
+
+#### What We Observed
+- Same flow as San Diego:
+  - Portal home → bid opportunities → project detail page
+- Same core tabs and structured layout:
+  - Bid Information, Line Items, Documents/Addenda, Prospective bidders, etc.
+- Concluded that Module 3 is effectively:
+  - A validation that PlanetBids is one reusable “agency class”
+
+#### Extraction Implications
+- We can implement a **PlanetBids adapter** once and:
+  - Add cities by URLi: city portal ID + pattern rules
+- Risk profile is low for the module due to strong consistency.
+
+#### Module 3 Bottom Line
+- PlanetBids is a high leverage target.
+- “One module supports dozens/hundreds of agencies.”
+
+---
+
+### Module 4 — San Bernardino County (EPRO) — Deep Dive
+
+#### How We Got There (Discovery / Navigation Path)
+- Navigation path:
+  1. Googled **“City of San Bernardino Vendor Portal”**
+  2. Clicked **EPRO Vendor Registration – Purchasing**
+  3. Located link for **EPRO Registration**
+  4. Found **Open Bids** on the EPRO page
+  5. Accessed list of open bids
+  6. Clicked into a construction-related bid by project number
+
+**Bid Opportunities List:**  
+- https://epro.sbcounty.gov/bso/view/search/external/advancedSearchBid.xhtml?openBids=true
+
+**Project Example:**  
+- https://epro.sbcounty.gov/bso/external/bidDetail.sda?docId=ANE223-ANE2C-6209&external=true&parentUrl=close
+
+#### What We Observed on the Bid List
+- EPRO UI is different from PlanetBids but still structured.
+- “Organization Name” field appears, and construction jobs clustered under a recurring org name (e.g., “Architecture and Engineering to CIP”).
+- We filtered to identify construction-relevant projects.
+
+#### What Information Was Available on the Project Detail Page
+- Bid number and detailed description
+- Bid opening date/time
+- “Available date” (observed as likely irrelevant for BidBox)
+- Pre-bid conference section included:
+  - Mandatory language in narrative form
+  - Date/time and address
+  - Explicit disqualification language for non-attendance
+- File attachments:
+  - Plans and specifications
+  - Downloadable without login
+  - Example downloads:
+    - Specifications PDF (~2.7MB)
+    - Plans PDF (~17MB)
+- High confidence that posting the project link alone is sufficient for extraction.
+
+#### Extraction Implications
+- EPRO demonstrates:
+  - Open downloadable documents (huge bonus)
+  - Mandatory pre-bid language is embedded in prose
+  - Parser must capture narrative constraints and disqualifiers
+- This module can be approached as:
+  - HTML extraction + LLM semantic parsing for requirement language.
+
+#### Module 4 Bottom Line
+- EPRO is crawlable and yields strong signals.
+- Provides a “best case” example where docs are accessible without login.
+
+---
+
+### Module 5 — LADWP (ERSP) — Deep Dive
+
+#### How We Got There (Discovery / Navigation Path)
+- Discovery path started through LA aggregation:
+  1. Googled **“Los Angeles bid opportunities”**
+  2. Arrived at **rampla.org**
+  3. Clicked an LADWP project link that led to ERSP
+- For the module execution:
+  - We treated the ERSP project link as the canonical input.
+  - You printed to PDF for easier review, but the underlying content is a webpage.
+
+**Project Example Link (ERSP):**  
+- https://ersp.ladwp.com/open.dll/showDisplayDocument?sessionID=56774703&language=En&disID=24159177&docType=Tender&doc_search_by=Tend&fromEmail=yes&email=
+
+#### Key Clarifications Learned
+- The PDF is a print-to-PDF snapshot of the webpage, not a downloadable bid packet.
+- “Attachments exist” / “Specifications exist” are displayed as indicators but:
+  - No obvious public download links were visible on the page.
+- The page instructions suggest access requires:
+  - login + interest/response workflow steps.
+
+#### What Information Was Available (Confirmed Extractable)
+- Project identifiers (bid number, version, department)
+- Bid due date/time
+- Question cutoff date/time
+- Publish date
+- Addendum publish timestamp
+- Contact info (buyer)
+- Scope text and other narrative info
+
+#### Meetings / Job Walk Semantics (Corrected)
+- **Pre-bid conference / Teams meeting:** Listed, but **no explicit mandatory language** on the page.
+- **Site visit:** Listed; strong responsibility language exists, but **mandatory status is implied, not explicit.**
+- We explicitly corrected earlier overreach:
+  - Do not auto-label these as “required” unless language is explicit.
+
+#### Documents & Attachments Access
+- Documents appear to exist but are not publicly accessible:
+  - `documents_available = true`
+  - `documents_access = login_required`
+
+#### Extraction Implications
+- ERSP requires:
+  - Hybrid DOM + narrative parsing
+  - Explicit “uncertainty handling” in UX
+  - No assumptions regarding mandatory meetings
+- This module is a strong test of BidBox’s principle:
+  - “Surface truth + uncertainty responsibly.”
+
+#### Module 5 Bottom Line
+- Crawlable metadata is still valuable even without documents.
+- ERSP is semantic-heavy and will drive design of uncertainty flags.
+
+---
+
+### Module 6 — LAWA (BonfireHub) — Deep Dive
+
+#### How We Got There (Input Method)
+- You provided a direct project link and a PDF printout snapshot of the page.
+- The portal is BonfireHub (procurement SaaS).
+
+**Project Link:**  
+- https://lawa.bonfirehub.com/opportunities/215006
+
+#### What Information Was Available (Public)
+- Title: “RFB for the Repair, Service and Replacement of Variable Frequency Drives (Commodity)”
+- Agency: Los Angeles World Airports (LAWA)
+- Reference / Solicitation number
+- Department (Facilities Management Division)
+- Procurement type (RFB)
+- Status (Open)
+- Critical dates:
+  - Open date
+  - Questions due date
+  - Intent to bid due date
+  - Bid close date
+- Commodity / NAICS codes:
+  - Strong structured signal for trade tagging and bid list filtering
+
+#### Pre-Bid Semantics (Explicit)
+- Pre-bid conference listed as:
+  - “not mandatory but highly recommended”
+- This is an excellent example of explicit semantics:
+  - Listed: Yes
+  - Mandatory: No
+  - Virtual: Yes
+
+#### Documents
+- File names and existence are visible, but download is gated:
+  - “Please login/register to download”
+
+#### Extraction Implications
+- BonfireHub is a strong structured target:
+  - consistent metadata
+  - strong classification codes
+  - gated docs but visible manifest
+
+#### Module 6 Bottom Line
+- Even without document access, Bonfire yields high-quality structured metadata.
+- This module strengthens the “metadata-first” thesis.
+
+---
+
+### Module 7 — RAMP LA (Aggregator + Gatekeeper) — Deep Dive
+
+#### How We Got There
+- Initially attempted to crawl the link live and encountered a retrieval error.
+- You provided a PDF printout of the opportunity details page to allow analysis.
+- RAMP functions as:
+  - An aggregator + gating layer for City of LA opportunities
+
+**Project Link:**  
+- https://www.rampla.org/s/opportunity-details?id=006Ql00000Wrn9pIAB
+
+#### What Information Was Available
+- Project title: “Mulholland Drive (13150) Debris Wall”
+- Opportunity ID
+- Status: “Amended”
+- Stage: “Posted”
+- Bid method: “Construction – Whole Item”
+- Solicitation type: “Task Order Solicitation (TOS)”
+- Bid due date/time
+- Engineer’s estimate
+- Location
+- Scope narrative (detailed in prose)
+- Amendments list with timestamp + description
+- Contact info (name + email)
+
+#### Unique High-Signal Element: Eligibility Restrictions
+- Explicitly restricted bidding:
+  - only five listed contractors allowed to bid as prime
+- This introduces a critical concept:
+  - `bid_eligibility = restricted`
+  - `eligible_prime_contractors = [...]`
+- This is the clearest example that:
+  - “Out for bid” ≠ “you can bid”
+
+#### Documents
+- Document names and sizes visible
+- Download gated behind login:
+  - “Please login to download listed documents”
+
+#### Meetings / Job Walk
+- No explicit meeting / job walk requirement visible on the public page.
+- Absence of explicit language should be treated as:
+  - “not detected” rather than “does not exist”
+
+#### Extraction Implications
+- RAMP modules must extract:
+  - eligibility gating
+  - amendment signals
+  - document manifest visibility vs access
+- RAMP is likely to become a key “source layer” in LA region procurement.
+
+#### Module 7 Bottom Line
+- RAMP strongly validates the need for:
+  - eligibility flags as first-class data
+  - clear user-facing warnings (“restricted bidding”)
+  - semantic parsing of narrative scope
+
+---
+
+## 4. Cross-Module Insights
+
+### 1. Crawling Works (at Project Level)
+Every module confirmed:
+- Project pages are accessible
+- Metadata is extractable
+- Files are optional
+
+### 2. Metadata > Documents
+BidBox value comes from:
+- Dates
+- Scope
+- Requirements
+- Eligibility
+- Risk flags
+- Change detection
+
+Not PDFs.
+
+### 3. Narrative Parsing Is Required
+Many critical constraints live in prose:
+- Job walks
+- Disqualification language
+- Compliance requirements
+
+This is an **LLM-strength problem**, not a scraper problem.
+
+### 4. One Input Field Is the Right Abstraction
+“Paste the project link” is the correct mental model.
+
+---
+
+## 5. Product Definition
+
+### What This Feature Is
+> A **project ingestion engine** that turns external links into internal systems of record.
+
+### What This Feature Is Not
+- A bid search engine
+- A crawler of opportunity listings
+- A document repository
+- A bidding automation tool
+
+---
+
+## 6. Phase 1 UX: Create a Project Page
+
+### High-Level Layout
+
+| LEFT SIDE | RIGHT SIDE |
+| | |
+| Create from Link | Upload Documents |
+| (Primary Path) | (Optional) |
+| | |
+| Manual Entry | |
+| (Fallback) | |
+yaml
+Copy code
+
+The hierarchy is intentional:
+- **Create from Link** is the primary path
+- Manual entry is fallback
+- Documents are optional
+
+---
+
+### Left Side — Project Definition
+
+#### Section 1: Create from Link (Primary)
+
+**Copy**
+Create from Link
+Paste the public works project link below.
+BidBox will extract the project details, track changes, and keep it up to date.
+
+markdown
+Copy code
+
+**UI**
+- Single input field
+- One action button
+
+[ Paste project link here ___________________ ]
+[ Create Project ]
+
+yaml
+Copy code
+
+**Behavior**
+- No other fields required
+- On submit:
+  - Show “Analyzing project…”
+  - Create project
+  - Redirect to project page
+- Missing data handled post-creation
+
+---
+
+#### Section 2: Manual Entry (Fallback)
+
+- Visually de-emphasized
+- Collapsible / secondary
+
+**Copy**
+Manual Entry
+Don’t have a project link? Enter the project details manually.
+
+yaml
+Copy code
+
+**Behavior**
+- On expand, show existing manual fields:
+  - Project name
+  - Agency
+  - Bid date
+  - Location
+  - Notes
+- Manual entry is preserved, not removed
+
+---
+
+### Right Side — Upload Documents (Optional)
+
+**Copy**
+Upload Documents (Optional)
+Upload plans, specs, or bid documents now — or add them later.
+
+csharp
+Copy code
+
+**Behavior**
+- Independent of left side choice
+- Works with both Create from Link and Manual Entry
+- Files attach after project creation
+
+**Implicit Message**
+> Documents are helpful, but not required to start.
+
+---
+
+## 7. System Architecture (Phase 1)
+
+### Universal Crawl Pipeline
+
+#### Step 1: Fetch
+- Load project page HTML
+- Public pages only
+- Respect robots.txt
+
+#### Step 2: Normalize
+Convert page into a unified schema:
+
+```json
+{
+  "project_title": "",
+  "agency": "",
+  "portal_type": "",
+  "bid_due_at": "",
+  "job_walk": {
+    "exists": true/false,
+    "mandatory": true/false,
+    "details": ""
+  },
+  "eligibility": {
+    "restricted": true/false,
+    "notes": ""
+  },
+  "documents": {
+    "visible": true/false,
+    "accessible": true/false
+  },
+  "scope_text": ""
+}
+Step 3: LLM Semantic Pass
+Extract narrative requirements
+
+Detect job walk language
+
+Identify disqualifiers
+
+Flag uncertainty explicitly (no guessing)
+
+8. Project Homebase Behavior
+Once ingested, the project page becomes:
+
+The daily check-in
+
+The authoritative source of dates
+
+The change detector
+
+Daily Background Jobs
+Re-crawl project link
+
+Detect:
+
+Date changes
+
+New addenda
+
+Status changes
+
+Update “Last checked” timestamp
+
+9. High-Leverage UX Signals
+Displayed prominently on the project page:
+
+⚠️ Job walk mentioned
+
+🔒 Documents gated
+
+🚫 Restricted bidders
+
+🔄 Last checked: Today
+
+These signals alone justify the feature.
+
+10. What We Are Explicitly Not Building Yet
+Opportunity discovery
+
+Automated bidding
+
+Full document ingestion
+
+File parsing / OCR
+
+Subcontractor automation
+
+Delaying these is intentional and correct.
+
+11. Final Product Convergence Statement
+BidBox is becoming the place where public works projects stop being links and start being managed.
+
+12. Next Steps
+Potential follow-ups:
+
+Convert this PRD into Lovable build prompts
+
+Define MVP crawl schema + platform detection
+
+Map Create from Link into existing project schema
+
+Review existing Create Project flow and attach this surgically
+
+Status:
+Research complete. Direction locked. Ready to build.
+
