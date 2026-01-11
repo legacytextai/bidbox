@@ -815,36 +815,40 @@ const ProjectDetail = () => {
             </Dialog>
           </div>
 
-          {/* Bid Box Link and Save Changes Section */}
+          {/* Bid Box Link, Subs List, and Save Changes Section */}
           <div className="flex justify-between items-start mb-4 gap-4">
+            {/* Bid Box Link Column */}
             <div className="space-y-2">
               <Label>Bid Box Link</Label>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={copyBidLink}
-                >
-                  {copied ? (
-                    <>
-                      <CheckCircle2 className="h-4 w-4 mr-2" />
-                      Copied
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="h-4 w-4 mr-2" />
-                      Copy Link
-                    </>
-                  )}
-                </Button>
-                <BidListButton
-                  projectId={project.id}
-                  projectName={project.name}
-                  gcId={project.gc_id}
-                  hasSelectedTrades={projectTrades.length > 0}
-                  projectCounty={project.county}
-                />
-              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={copyBidLink}
+              >
+                {copied ? (
+                  <>
+                    <CheckCircle2 className="h-4 w-4 mr-2" />
+                    Copied
+                  </>
+                ) : (
+                  <>
+                    <Copy className="h-4 w-4 mr-2" />
+                    Copy Link
+                  </>
+                )}
+              </Button>
+            </div>
+
+            {/* Subs List Column */}
+            <div className="space-y-2">
+              <Label>Subs List</Label>
+              <BidListButton
+                projectId={project.id}
+                projectName={project.name}
+                gcId={project.gc_id}
+                hasSelectedTrades={projectTrades.length > 0}
+                projectCounty={project.county}
+              />
             </div>
 
             <div className="space-y-2">
