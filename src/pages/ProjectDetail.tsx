@@ -22,40 +22,14 @@ import { BidListButton } from "@/components/BidListButton";
 import { getProjectDisplayStatus } from "@/lib/projectStatus";
 import { CountySelect } from "@/components/CountySelect";
 import { ProjectSignals } from "@/components/ProjectSignals";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 interface ProjectFile {
   id: string;
   file_name: string;
   file_url: string;
 }
-
 interface Bid {
   id: string;
   submitted_at: string;
@@ -67,7 +41,6 @@ interface Bid {
   bid_item?: string;
   submission_id?: string;
 }
-
 interface Submission {
   submission_id: string;
   submitted_at: string;
@@ -75,19 +48,24 @@ interface Submission {
   company_name?: string;
   email?: string;
   bid_item?: string;
-  files: { file_name: string; file_url: string }[];
+  files: {
+    file_name: string;
+    file_url: string;
+  }[];
 }
-
 interface ProjectTrade {
   id: string;
   trade_type_id: string;
   trade_types: TradeType;
 }
-
 const ProjectDetail = () => {
-  const { id } = useParams();
+  const {
+    id
+  } = useParams();
   const navigate = useNavigate();
-  const { toast } = useToast();
+  const {
+    toast
+  } = useToast();
   const [loading, setLoading] = useState(true);
   const [project, setProject] = useState<any>(null);
   const [projectFiles, setProjectFiles] = useState<ProjectFile[]>([]);
@@ -97,13 +75,13 @@ const ProjectDetail = () => {
   const [newFiles, setNewFiles] = useState<File[]>([]);
   const [currentUpload, setCurrentUpload] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
-  
+
   // Trade-related state
   const [projectTrades, setProjectTrades] = useState<ProjectTrade[]>([]);
   const [editingTrades, setEditingTrades] = useState(false);
   const [editedTradeIds, setEditedTradeIds] = useState<string[]>([]);
   const [savingTrades, setSavingTrades] = useState(false);
-  
+
   // Editable field states
   const [editedName, setEditedName] = useState("");
   const [editedCounty, setEditedCounty] = useState("");
@@ -115,7 +93,6 @@ const ProjectDetail = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [isRecrawling, setIsRecrawling] = useState(false);
-
   useEffect(() => {
     loadProject();
   }, [id]);
@@ -126,42 +103,34 @@ const ProjectDetail = () => {
       const projectTimezone = project.timezone || "America/Los_Angeles";
       const originalBidDue = project.bid_due_at ? utcToLocalDateTime(project.bid_due_at, projectTimezone) : "";
       const originalJobWalk = project.job_walk_at ? utcToLocalDateTime(project.job_walk_at, projectTimezone) : "";
-      const changed = 
-        editedName !== project.name ||
-        editedCounty !== (project.county || "") ||
-        editedAgency !== (project.agency || "") ||
-        editedInstructions !== (project.instructions || "") ||
-        editedBidDueAt !== originalBidDue ||
-        editedJobWalkAt !== originalJobWalk ||
-        editedTimezone !== projectTimezone;
+      const changed = editedName !== project.name || editedCounty !== (project.county || "") || editedAgency !== (project.agency || "") || editedInstructions !== (project.instructions || "") || editedBidDueAt !== originalBidDue || editedJobWalkAt !== originalJobWalk || editedTimezone !== projectTimezone;
       setHasChanges(changed);
     }
   }, [editedName, editedCounty, editedAgency, editedInstructions, editedBidDueAt, editedJobWalkAt, editedTimezone, project]);
-
   const loadProject = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
+    const {
+      data: {
+        session
+      }
+    } = await supabase.auth.getSession();
     if (!session) {
       navigate("/auth");
       return;
     }
-
-    const { data: projectData, error: projectError } = await supabase
-      .from("projects")
-      .select("*")
-      .eq("id", id)
-      .single();
-
+    const {
+      data: projectData,
+      error: projectError
+    } = await supabase.from("projects").select("*").eq("id", id).single();
     if (projectError) {
       toast({
         title: "Error",
         description: "Failed to load project",
-        variant: "destructive",
+        variant: "destructive"
       });
       return;
     }
-
     setProject(projectData);
-    
+
     // Initialize editable fields
     const projectTimezone = projectData.timezone || "America/Los_Angeles";
     setEditedName(projectData.name);
@@ -171,22 +140,17 @@ const ProjectDetail = () => {
     setEditedBidDueAt(projectData.bid_due_at ? utcToLocalDateTime(projectData.bid_due_at, projectTimezone) : "");
     setEditedJobWalkAt(projectData.job_walk_at ? utcToLocalDateTime(projectData.job_walk_at, projectTimezone) : "");
     setEditedTimezone(projectTimezone);
-
-    const { data: filesData } = await supabase
-      .from("project_files")
-      .select("*")
-      .eq("project_id", id);
-
+    const {
+      data: filesData
+    } = await supabase.from("project_files").select("*").eq("project_id", id);
     setProjectFiles(filesData || []);
-
-    const { data: bidsData } = await supabase
-      .from("bids")
-      .select("*")
-      .eq("project_id", id)
-      .order("submitted_at", { ascending: false });
-
+    const {
+      data: bidsData
+    } = await supabase.from("bids").select("*").eq("project_id", id).order("submitted_at", {
+      ascending: false
+    });
     setBids(bidsData || []);
-    
+
     // Group bids by submission_id
     const groupedSubmissions = (bidsData || []).reduce((acc: Record<string, Submission>, bid: Bid) => {
       const key = bid.submission_id || bid.id; // Fallback for legacy bids
@@ -201,30 +165,28 @@ const ProjectDetail = () => {
           files: []
         };
       }
-      acc[key].files.push({ file_name: bid.file_name, file_url: bid.file_url });
+      acc[key].files.push({
+        file_name: bid.file_name,
+        file_url: bid.file_url
+      });
       return acc;
     }, {});
-
     setSubmissions(Object.values(groupedSubmissions));
 
     // Load project trades
-    const { data: tradesData } = await supabase
-      .from("project_trades")
-      .select(`
+    const {
+      data: tradesData
+    } = await supabase.from("project_trades").select(`
         id,
         trade_type_id,
         trade_types (id, code, name, category, state_code, source, is_default)
-      `)
-      .eq("project_id", id);
-
+      `).eq("project_id", id);
     if (tradesData) {
       setProjectTrades(tradesData as unknown as ProjectTrade[]);
       setEditedTradeIds(tradesData.map((t: any) => t.trade_type_id));
     }
-
     setLoading(false);
   };
-
   const copyBidLink = () => {
     const link = `${window.location.origin}/bid/${project.public_token}`;
     navigator.clipboard.writeText(link);
@@ -232,43 +194,37 @@ const ProjectDetail = () => {
     setTimeout(() => setCopied(false), 2000);
     toast({
       title: "Copied!",
-      description: "Bid link copied to clipboard",
+      description: "Bid link copied to clipboard"
     });
   };
-
   const updateProject = async (updates: any) => {
-    const { error } = await supabase
-      .from("projects")
-      .update(updates)
-      .eq("id", id);
-
+    const {
+      error
+    } = await supabase.from("projects").update(updates).eq("id", id);
     if (error) {
       toast({
         title: "Error",
         description: "Failed to update project",
-        variant: "destructive",
+        variant: "destructive"
       });
     } else {
       toast({
         title: "Success",
-        description: "Project updated",
+        description: "Project updated"
       });
       loadProject();
     }
   };
-
   const saveAllChanges = async () => {
     if (!editedName.trim()) {
       toast({
         title: "Error",
         description: "Project name cannot be empty",
-        variant: "destructive",
+        variant: "destructive"
       });
       return;
     }
-
     setIsSaving(true);
-    
     const updates = {
       name: editedName,
       county: editedCounty || null,
@@ -276,35 +232,29 @@ const ProjectDetail = () => {
       instructions: editedInstructions || null,
       bid_due_at: editedBidDueAt ? localDateTimeToUtc(editedBidDueAt, editedTimezone) : project.bid_due_at,
       job_walk_at: editedJobWalkAt ? localDateTimeToUtc(editedJobWalkAt, editedTimezone) : null,
-      timezone: editedTimezone,
+      timezone: editedTimezone
     };
-
-    const { error } = await supabase
-      .from("projects")
-      .update(updates)
-      .eq("id", id);
-
+    const {
+      error
+    } = await supabase.from("projects").update(updates).eq("id", id);
     if (error) {
       toast({
         title: "Error",
         description: "Failed to save changes",
-        variant: "destructive",
+        variant: "destructive"
       });
     } else {
       toast({
         title: "Success",
-        description: "Project updated successfully",
+        description: "Project updated successfully"
       });
       setHasChanges(false);
       loadProject();
     }
-    
     setIsSaving(false);
   };
-
   const handleReCrawl = async () => {
     if (!project?.source_url) return;
-    
     setIsRecrawling(true);
     try {
       // Store current values for change detection
@@ -312,52 +262,47 @@ const ProjectDetail = () => {
         bid_due_at: project.bid_due_at,
         job_walk_at: project.job_walk_at,
         agency: project.agency,
-        name: project.name,
+        name: project.name
       };
-
-      const { error } = await supabase.functions.invoke('crawl-project', {
-        body: { 
-          project_id: id, 
+      const {
+        error
+      } = await supabase.functions.invoke('crawl-project', {
+        body: {
+          project_id: id,
           source_url: project.source_url,
           is_recrawl: true,
           previous_values: previousValues
         }
       });
-      
       if (error) throw error;
-      
       toast({
         title: "Project refreshed",
-        description: "Data synchronized with source",
+        description: "Data synchronized with source"
       });
-      
       await loadProject();
     } catch (err) {
       console.error("Re-crawl error:", err);
       toast({
         title: "Refresh failed",
         description: "Could not sync with source",
-        variant: "destructive",
+        variant: "destructive"
       });
     } finally {
       setIsRecrawling(false);
     }
   };
-
   const saveTrades = async () => {
     setSavingTrades(true);
-    
-    // Delete existing trades
-    const { error: deleteError } = await supabase
-      .from("project_trades")
-      .delete()
-      .eq("project_id", id);
 
+    // Delete existing trades
+    const {
+      error: deleteError
+    } = await supabase.from("project_trades").delete().eq("project_id", id);
     if (deleteError) {
       toast({
         title: "Error",
         description: "Failed to update trades",
-        variant: "destructive",
+        variant: "destructive"
       });
       setSavingTrades(false);
       return;
@@ -365,40 +310,37 @@ const ProjectDetail = () => {
 
     // Insert new trades
     if (editedTradeIds.length > 0) {
-      const { error: insertError } = await supabase
-        .from("project_trades")
-        .insert(
-          editedTradeIds.map((tradeTypeId) => ({
-            project_id: id,
-            trade_type_id: tradeTypeId,
-          }))
-        );
-
+      const {
+        error: insertError
+      } = await supabase.from("project_trades").insert(editedTradeIds.map(tradeTypeId => ({
+        project_id: id,
+        trade_type_id: tradeTypeId
+      })));
       if (insertError) {
         toast({
           title: "Error",
           description: "Failed to save trades",
-          variant: "destructive",
+          variant: "destructive"
         });
         setSavingTrades(false);
         return;
       }
     }
-
     toast({
       title: "Success",
-      description: "Trades updated successfully",
+      description: "Trades updated successfully"
     });
-    
     setEditingTrades(false);
     setSavingTrades(false);
     loadProject();
   };
-
   const handleFileUpload = async () => {
     if (newFiles.length === 0) return;
-    
-    const { data: { session } } = await supabase.auth.getSession();
+    const {
+      data: {
+        session
+      }
+    } = await supabase.auth.getSession();
     if (!session) return;
 
     // Validate all files first
@@ -408,110 +350,96 @@ const ProjectDetail = () => {
         toast({
           title: "Invalid File",
           description: `${file.name}: ${validation.error}`,
-          variant: "destructive",
+          variant: "destructive"
         });
         return;
       }
     }
-
     setIsUploading(true);
-
     for (const file of newFiles) {
       setCurrentUpload(file.name);
       const filePath = `${session.user.id}/${id}/${file.name}`;
-      
-      const { error: uploadError } = await supabase.storage
-        .from("project-files")
-        .upload(filePath, file);
-
+      const {
+        error: uploadError
+      } = await supabase.storage.from("project-files").upload(filePath, file);
       if (uploadError) {
         toast({
           title: "Error",
           description: `Failed to upload ${file.name}`,
-          variant: "destructive",
+          variant: "destructive"
         });
         setIsUploading(false);
         setCurrentUpload(null);
         continue;
       }
-
-      const { error: dbError } = await supabase
-        .from("project_files")
-        .insert({
-          project_id: id,
-          file_name: file.name,
-          file_url: filePath,
-          file_size: file.size,
-        });
-
+      const {
+        error: dbError
+      } = await supabase.from("project_files").insert({
+        project_id: id,
+        file_name: file.name,
+        file_url: filePath,
+        file_size: file.size
+      });
       if (dbError) {
         toast({
           title: "Error",
           description: `Failed to save ${file.name}`,
-          variant: "destructive",
+          variant: "destructive"
         });
       } else {
         toast({
           title: "File Uploaded",
-          description: `${file.name} uploaded successfully`,
+          description: `${file.name} uploaded successfully`
         });
       }
     }
-
     setNewFiles([]);
     setIsUploading(false);
     setCurrentUpload(null);
     loadProject();
   };
-
   const deleteFile = async (fileId: string, filePath: string) => {
-    const { error: storageError } = await supabase.storage
-      .from("project-files")
-      .remove([filePath]);
-
+    const {
+      error: storageError
+    } = await supabase.storage.from("project-files").remove([filePath]);
     if (storageError) {
       toast({
         title: "Error",
         description: "Failed to delete file",
-        variant: "destructive",
+        variant: "destructive"
       });
       return;
     }
-
-    const { error: dbError } = await supabase
-      .from("project_files")
-      .delete()
-      .eq("id", fileId);
-
+    const {
+      error: dbError
+    } = await supabase.from("project_files").delete().eq("id", fileId);
     if (dbError) {
       toast({
         title: "Error",
         description: "Failed to delete file record",
-        variant: "destructive",
+        variant: "destructive"
       });
     } else {
       loadProject();
       toast({
         title: "Success",
-        description: "File deleted",
+        description: "File deleted"
       });
     }
   };
-
   const downloadFile = async (filePath: string, fileName: string) => {
-    const { data, error } = await supabase.storage
-      .from("project-files")
-      .download(filePath);
-
+    const {
+      data,
+      error
+    } = await supabase.storage.from("project-files").download(filePath);
     if (error) {
       toast({
         title: "Error",
         description: "Failed to download file",
-        variant: "destructive",
+        variant: "destructive"
       });
       return;
     }
-
     const url = URL.createObjectURL(data);
     const a = document.createElement("a");
     a.href = url;
@@ -521,21 +449,19 @@ const ProjectDetail = () => {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
-
   const downloadBid = async (filePath: string, fileName: string) => {
-    const { data, error } = await supabase.storage
-      .from("bid-submissions")
-      .download(filePath);
-
+    const {
+      data,
+      error
+    } = await supabase.storage.from("bid-submissions").download(filePath);
     if (error) {
       toast({
         title: "Error",
         description: "Failed to download bid",
-        variant: "destructive",
+        variant: "destructive"
       });
       return;
     }
-
     const url = URL.createObjectURL(data);
     const a = document.createElement("a");
     a.href = url;
@@ -545,59 +471,52 @@ const ProjectDetail = () => {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
-
   const deleteSubmission = async (submissionId: string) => {
     // Get all bids for this submission to find file paths
     const bidsToDelete = bids.filter(bid => (bid.submission_id || bid.id) === submissionId);
-    
+
     // Delete files from storage
     for (const bid of bidsToDelete) {
-      const { error: storageError } = await supabase.storage
-        .from("bid-submissions")
-        .remove([bid.file_url]);
-      
+      const {
+        error: storageError
+      } = await supabase.storage.from("bid-submissions").remove([bid.file_url]);
       if (storageError) {
         console.error("Failed to delete file:", storageError);
       }
     }
 
     // Delete bid records from database
-    const { error: dbError } = await supabase
-      .from("bids")
-      .delete()
-      .eq("submission_id", submissionId);
-
+    const {
+      error: dbError
+    } = await supabase.from("bids").delete().eq("submission_id", submissionId);
     if (dbError) {
       toast({
         title: "Error",
         description: "Failed to delete submission",
-        variant: "destructive",
+        variant: "destructive"
       });
     } else {
       toast({
         title: "Success",
-        description: "Submission deleted",
+        description: "Submission deleted"
       });
       loadProject();
     }
   };
-
   const deleteProject = async () => {
-    const { error } = await supabase
-      .from("projects")
-      .delete()
-      .eq("id", id);
-
+    const {
+      error
+    } = await supabase.from("projects").delete().eq("id", id);
     if (error) {
       toast({
         title: "Error",
         description: "Failed to delete project",
-        variant: "destructive",
+        variant: "destructive"
       });
     } else {
       toast({
         title: "Success",
-        description: "Project deleted",
+        description: "Project deleted"
       });
       navigate("/projects");
     }
@@ -612,25 +531,20 @@ const ProjectDetail = () => {
       const interval = setInterval(() => {
         loadProject();
       }, 2000);
-      
       return () => clearInterval(interval);
     }
   }, [isCrawlPending]);
-
   if (loading) {
-    return (
-      <Layout showSidebar={true}>
+    return <Layout showSidebar={true}>
         <div className="flex items-center justify-center min-h-[calc(100vh-4rem)]">
           <p className="text-muted-foreground">Loading project...</p>
         </div>
-      </Layout>
-    );
+      </Layout>;
   }
 
   // Show analyzing state while crawl is in progress
   if (isCrawlPending) {
-    return (
-      <Layout showSidebar={true}>
+    return <Layout showSidebar={true}>
         <div className="flex flex-col items-center justify-center min-h-[calc(100vh-4rem)] gap-4">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
           <p className="text-lg font-medium">Analyzing project...</p>
@@ -641,68 +555,40 @@ const ProjectDetail = () => {
             {project?.source_url}
           </p>
         </div>
-      </Layout>
-    );
+      </Layout>;
   }
-
   if (!project) {
-    return (
-      <Layout showSidebar={true}>
+    return <Layout showSidebar={true}>
         <div className="flex items-center justify-center min-h-[calc(100vh-4rem)]">
           <p className="text-muted-foreground">Project not found</p>
         </div>
-      </Layout>
-    );
+      </Layout>;
   }
-
-  return (
-    <Layout showSidebar={true}>
+  return <Layout showSidebar={true}>
       <div className="p-4">
-          <Button
-            variant="ghost"
-            onClick={() => navigate("/projects")}
-            className="mb-2"
-          >
+          <Button variant="ghost" onClick={() => navigate("/projects")} className="mb-2">
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Projects
           </Button>
 
           {/* Project Signals from One Link crawl */}
-          <ProjectSignals 
-            project={project} 
-            className="mb-4" 
-            onRefresh={project.source_url ? handleReCrawl : undefined}
-            isRefreshing={isRecrawling}
-          />
+          <ProjectSignals project={project} className="mb-4" onRefresh={project.source_url ? handleReCrawl : undefined} isRefreshing={isRecrawling} />
 
           {/* Editable Project Information */}
           <div className="space-y-2 mb-3">
             <div className="space-y-2">
               <Label htmlFor="project-name">Project Name</Label>
-              <Input
-                id="project-name"
-                value={editedName}
-                onChange={(e) => setEditedName(e.target.value)}
-                className="text-2xl font-bold h-auto py-2"
-              />
+              <Input id="project-name" value={editedName} onChange={e => setEditedName(e.target.value)} className="text-2xl font-bold h-auto py-2" />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="county">Project County</Label>
-                <CountySelect
-                  value={editedCounty}
-                  onChange={setEditedCounty}
-                />
+                <CountySelect value={editedCounty} onChange={setEditedCounty} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="agency">Agency</Label>
-                <Input
-                  id="agency"
-                  value={editedAgency}
-                  onChange={(e) => setEditedAgency(e.target.value)}
-                  placeholder="Enter agency"
-                />
+                <Input id="agency" value={editedAgency} onChange={e => setEditedAgency(e.target.value)} placeholder="Enter agency" />
               </div>
             </div>
           </div>
@@ -711,10 +597,9 @@ const ProjectDetail = () => {
             <div className="space-y-2">
               <Label>Status</Label>
               <div className="flex items-center gap-2">
-                <Select
-                  value={project.status}
-                  onValueChange={(value) => updateProject({ status: value })}
-                >
+                <Select value={project.status} onValueChange={value => updateProject({
+              status: value
+            })}>
                   <SelectTrigger className={project.status === "LIVE" ? "text-green-600 font-semibold" : "text-muted-foreground"}>
                     <SelectValue />
                   </SelectTrigger>
@@ -724,96 +609,59 @@ const ProjectDetail = () => {
                   </SelectContent>
                 </Select>
                 {(() => {
-                  const displayStatus = getProjectDisplayStatus(project);
-                  if (displayStatus.label === 'CLOSED') {
-                    return (
-                      <Badge variant="destructive" className="ml-1">
+              const displayStatus = getProjectDisplayStatus(project);
+              if (displayStatus.label === 'CLOSED') {
+                return <Badge variant="destructive" className="ml-1">
                         CLOSED
-                      </Badge>
-                    );
-                  }
-                  return null;
-                })()}
+                      </Badge>;
+              }
+              return null;
+            })()}
               </div>
             </div>
 
             <div className="space-y-2">
               <Label>Bid Due Date</Label>
-              <Input
-                type="datetime-local"
-                value={editedBidDueAt}
-                onChange={(e) => setEditedBidDueAt(e.target.value)}
-              />
+              <Input type="datetime-local" value={editedBidDueAt} onChange={e => setEditedBidDueAt(e.target.value)} />
             </div>
 
             <div className="space-y-2">
               <Label>Job Walk Date</Label>
-              <Input
-                type="datetime-local"
-                value={editedJobWalkAt}
-                onChange={(e) => setEditedJobWalkAt(e.target.value)}
-              />
+              <Input type="datetime-local" value={editedJobWalkAt} onChange={e => setEditedJobWalkAt(e.target.value)} />
             </div>
 
             <div className="space-y-2">
               <Label>Time Zone</Label>
-              <Select
-                value={editedTimezone}
-                onValueChange={(value) => setEditedTimezone(value)}
-              >
+              <Select value={editedTimezone} onValueChange={value => setEditedTimezone(value)}>
                 <SelectTrigger className="bg-background">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-background z-50">
-                  {TIMEZONE_OPTIONS.map((tz) => (
-                    <SelectItem key={tz.value} value={tz.value}>
+                  {TIMEZONE_OPTIONS.map(tz => <SelectItem key={tz.value} value={tz.value}>
                       {tz.label}
-                    </SelectItem>
-                  ))}
+                    </SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label>Responses</Label>
-              <p className="text-2xl font-bold text-primary">{submissions.length}</p>
-            </div>
+            
           </div>
 
           {/* Instructions Section */}
           <div className="space-y-2 mb-3">
             <Label htmlFor="instructions">Instructions for Bidders</Label>
-            <Textarea
-              id="instructions"
-              value={editedInstructions}
-              onChange={(e) => setEditedInstructions(e.target.value)}
-              placeholder="Enter any special instructions, requirements, or notes for bidders"
-              className="min-h-[100px]"
-            />
+            <Textarea id="instructions" value={editedInstructions} onChange={e => setEditedInstructions(e.target.value)} placeholder="Enter any special instructions, requirements, or notes for bidders" className="min-h-[100px]" />
           </div>
 
           {/* Required Trades Section */}
           <div className="space-y-2 mb-3">
             <Label>Required Trades</Label>
-            {projectTrades.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {projectTrades.map((pt) => (
-                  <Badge
-                    key={pt.id}
-                    variant="outline"
-                    className={cn(
-                      "px-2 py-1 text-xs font-medium border",
-                      getCategoryColor(pt.trade_types?.category)
-                    )}
-                  >
+            {projectTrades.length > 0 ? <div className="flex flex-wrap gap-2">
+                {projectTrades.map(pt => <Badge key={pt.id} variant="outline" className={cn("px-2 py-1 text-xs font-medium border", getCategoryColor(pt.trade_types?.category))}>
                     <span className="font-mono mr-1">{pt.trade_types?.code}</span>
                     {pt.trade_types?.name}
-                  </Badge>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">No trades selected</p>
-            )}
+                  </Badge>)}
+              </div> : <p className="text-sm text-muted-foreground">No trades selected</p>}
             <Dialog open={editingTrades} onOpenChange={setEditingTrades}>
               <DialogTrigger asChild>
                 <Button variant="outline" size="sm" className="mt-2">
@@ -821,10 +669,7 @@ const ProjectDetail = () => {
                   Add Trades
                 </Button>
               </DialogTrigger>
-              <DialogContent 
-                className="sm:max-w-[500px]"
-                onWheel={(e) => e.stopPropagation()}
-              >
+              <DialogContent className="sm:max-w-[500px]" onWheel={e => e.stopPropagation()}>
                 <DialogHeader>
                   <DialogTitle>Edit Required Trades</DialogTitle>
                   <DialogDescription>
@@ -832,31 +677,20 @@ const ProjectDetail = () => {
                   </DialogDescription>
                 </DialogHeader>
                 <div className="py-4">
-                  <TradeMultiSelect
-                    selectedTradeIds={editedTradeIds}
-                    onSelectionChange={setEditedTradeIds}
-                    stateCode="CA"
-                  />
+                  <TradeMultiSelect selectedTradeIds={editedTradeIds} onSelectionChange={setEditedTradeIds} stateCode="CA" />
                 </div>
                 <DialogFooter>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setEditedTradeIds(projectTrades.map(t => t.trade_type_id));
-                      setEditingTrades(false);
-                    }}
-                  >
+                  <Button variant="outline" onClick={() => {
+                setEditedTradeIds(projectTrades.map(t => t.trade_type_id));
+                setEditingTrades(false);
+              }}>
                     Cancel
                   </Button>
                   <Button onClick={saveTrades} disabled={savingTrades}>
-                    {savingTrades ? (
-                      <>
+                    {savingTrades ? <>
                         <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                         Saving...
-                      </>
-                    ) : (
-                      "Save Trades"
-                    )}
+                      </> : "Save Trades"}
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -868,60 +702,35 @@ const ProjectDetail = () => {
             {/* Bid Box Link Column */}
             <div className="flex flex-col gap-2">
               <Label className="block">Bid Box Link</Label>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={copyBidLink}
-              >
-                {copied ? (
-                  <>
+              <Button variant="outline" size="sm" onClick={copyBidLink}>
+                {copied ? <>
                     <CheckCircle2 className="h-4 w-4 mr-2" />
                     Copied
-                  </>
-                ) : (
-                  <>
+                  </> : <>
                     <Copy className="h-4 w-4 mr-2" />
                     Copy Link
-                  </>
-                )}
+                  </>}
               </Button>
             </div>
 
             {/* Subs List Column */}
             <div className="flex flex-col gap-2">
               <Label className="block">Subs List</Label>
-              <BidListButton
-                projectId={project.id}
-                projectName={project.name}
-                gcId={project.gc_id}
-                hasSelectedTrades={projectTrades.length > 0}
-                projectCounty={project.county}
-              />
+              <BidListButton projectId={project.id} projectName={project.name} gcId={project.gc_id} hasSelectedTrades={projectTrades.length > 0} projectCounty={project.county} />
             </div>
 
             <div className="space-y-2">
               <Label className="opacity-0">Actions</Label>
               <div className="flex flex-col gap-2 items-start">
-                <Button 
-                  onClick={saveAllChanges} 
-                  disabled={!hasChanges || isSaving}
-                  size="lg"
-                  className={hasChanges ? "bg-bidbox-blue hover:bg-bidbox-blue/90 text-white" : ""}
-                >
-                  {isSaving ? (
-                    <>
+                <Button onClick={saveAllChanges} disabled={!hasChanges || isSaving} size="lg" className={hasChanges ? "bg-bidbox-blue hover:bg-bidbox-blue/90 text-white" : ""}>
+                  {isSaving ? <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                       Saving...
-                    </>
-                  ) : (
-                    "Save Changes"
-                  )}
+                    </> : "Save Changes"}
                 </Button>
-                {hasChanges && (
-                  <p className="text-sm text-muted-foreground">
+                {hasChanges && <p className="text-sm text-muted-foreground">
                     You have unsaved changes
-                  </p>
-                )}
+                  </p>}
               </div>
             </div>
           </div>
@@ -934,18 +743,10 @@ const ProjectDetail = () => {
               </h2>
 
               <div className="border border-border rounded-lg p-4 space-y-2">
-                {projectFiles.map((file) => (
-                  <div
-                    key={file.id}
-                    className="flex items-center justify-between p-3 bg-muted rounded"
-                  >
+                {projectFiles.map(file => <div key={file.id} className="flex items-center justify-between p-3 bg-muted rounded">
                     <span className="text-sm truncate">{file.file_name}</span>
                     <div className="flex gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => downloadFile(file.file_url, file.file_name)}
-                      >
+                      <Button variant="ghost" size="sm" onClick={() => downloadFile(file.file_url, file.file_name)}>
                         <Download className="h-4 w-4" />
                       </Button>
                       <AlertDialog>
@@ -963,51 +764,34 @@ const ProjectDetail = () => {
                           </AlertDialogHeader>
                           <AlertDialogFooter>
                             <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction
-                              onClick={() => deleteFile(file.id, file.file_url)}
-                            >
+                            <AlertDialogAction onClick={() => deleteFile(file.id, file.file_url)}>
                               Delete
                             </AlertDialogAction>
                           </AlertDialogFooter>
                         </AlertDialogContent>
                       </AlertDialog>
                     </div>
-                  </div>
-                ))}
+                  </div>)}
               </div>
 
-              <FileDropzone
-                onFilesSelected={(files) => setNewFiles(files)}
-                accept=".pdf,.dwg,.xls,.xlsx"
-                multiple={true}
-                disabled={isUploading}
-                className={`border-2 border-dashed border-border rounded-lg p-4 ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}
-              >
+              <FileDropzone onFilesSelected={files => setNewFiles(files)} accept=".pdf,.dwg,.xls,.xlsx" multiple={true} disabled={isUploading} className={`border-2 border-dashed border-border rounded-lg p-4 ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}>
                 <Upload className="h-4 w-4 mr-2 inline" />
                 <span className="text-sm text-muted-foreground">
                   {isUploading ? "Uploading..." : "Click to upload or drag and drop"}
                 </span>
               </FileDropzone>
-              {newFiles.length > 0 && (
-                <div className="mt-4 space-y-3">
-                  {newFiles.map((file, i) => (
-                    <div key={i} className="space-y-2">
+              {newFiles.length > 0 && <div className="mt-4 space-y-3">
+                  {newFiles.map((file, i) => <div key={i} className="space-y-2">
                       <div className="flex items-center gap-2">
                         <p className="text-sm">{file.name}</p>
-                        {currentUpload === file.name && (
-                          <span className="text-xs text-muted-foreground">(Uploading...)</span>
-                        )}
+                        {currentUpload === file.name && <span className="text-xs text-muted-foreground">(Uploading...)</span>}
                       </div>
-                      {currentUpload === file.name && (
-                        <Progress value={undefined} className="h-1" />
-                      )}
-                    </div>
-                  ))}
+                      {currentUpload === file.name && <Progress value={undefined} className="h-1" />}
+                    </div>)}
                   <Button onClick={handleFileUpload} size="sm" disabled={isUploading}>
                     Upload Files
                   </Button>
-                </div>
-              )}
+                </div>}
             </div>
 
             <div className="space-y-4">
@@ -1018,36 +802,23 @@ const ProjectDetail = () => {
               </div>
 
               <div className="border border-border rounded-lg p-4 space-y-3">
-                {submissions.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-8">
+                {submissions.length === 0 ? <p className="text-sm text-muted-foreground text-center py-8">
                     No bids received yet
-                  </p>
-                ) : (
-                  submissions.map((submission) => (
-                    <div
-                      key={submission.submission_id}
-                      className="bg-muted rounded-lg p-4 space-y-2"
-                    >
+                  </p> : submissions.map(submission => <div key={submission.submission_id} className="bg-muted rounded-lg p-4 space-y-2">
                       <div className="flex items-start justify-between">
                         <div>
                           <p className="font-semibold text-foreground">
                             {submission.bidder_name || "Unknown Bidder"}
                           </p>
-                          {submission.company_name && (
-                            <p className="text-sm text-muted-foreground">
+                          {submission.company_name && <p className="text-sm text-muted-foreground">
                               {submission.company_name}
-                            </p>
-                          )}
-                          {submission.email && (
-                            <p className="text-sm text-muted-foreground">
+                            </p>}
+                          {submission.email && <p className="text-sm text-muted-foreground">
                               {submission.email}
-                            </p>
-                          )}
-                          {submission.bid_item && (
-                            <p className="text-sm text-muted-foreground">
+                            </p>}
+                          {submission.bid_item && <p className="text-sm text-muted-foreground">
                               Division: {submission.bid_item}
-                            </p>
-                          )}
+                            </p>}
                           <p className="text-xs text-muted-foreground mt-1">
                             {format(new Date(submission.submitted_at), "MMM d, yyyy h:mm a")}
                           </p>
@@ -1067,9 +838,7 @@ const ProjectDetail = () => {
                             </AlertDialogHeader>
                             <AlertDialogFooter>
                               <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction
-                                onClick={() => deleteSubmission(submission.submission_id)}
-                              >
+                              <AlertDialogAction onClick={() => deleteSubmission(submission.submission_id)}>
                                 Delete
                               </AlertDialogAction>
                             </AlertDialogFooter>
@@ -1078,22 +847,12 @@ const ProjectDetail = () => {
                       </div>
                       
                       <div className="space-y-2">
-                        {submission.files.map((file, idx) => (
-                          <Button
-                            key={idx}
-                            variant="outline"
-                            size="sm"
-                            onClick={() => downloadBid(file.file_url, file.file_name)}
-                            className="w-full justify-start"
-                          >
+                        {submission.files.map((file, idx) => <Button key={idx} variant="outline" size="sm" onClick={() => downloadBid(file.file_url, file.file_name)} className="w-full justify-start">
                             <Download className="h-4 w-4 mr-2" />
                             {file.file_name}
-                          </Button>
-                        ))}
+                          </Button>)}
                       </div>
-                    </div>
-                  ))
-                )}
+                    </div>)}
               </div>
             </div>
           </div>
@@ -1124,8 +883,6 @@ const ProjectDetail = () => {
             </AlertDialog>
           </div>
         </div>
-      </Layout>
-    );
-  };
-  
-  export default ProjectDetail;
+      </Layout>;
+};
+export default ProjectDetail;
