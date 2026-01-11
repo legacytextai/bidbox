@@ -287,6 +287,7 @@ export type Database = {
           agency: string | null
           bid_due_at: string
           county: string | null
+          crawl_changes: Json | null
           crawl_snapshot: Json | null
           created_at: string
           documents_accessible: boolean | null
@@ -316,6 +317,7 @@ export type Database = {
           agency?: string | null
           bid_due_at: string
           county?: string | null
+          crawl_changes?: Json | null
           crawl_snapshot?: Json | null
           created_at?: string
           documents_accessible?: boolean | null
@@ -345,6 +347,7 @@ export type Database = {
           agency?: string | null
           bid_due_at?: string
           county?: string | null
+          crawl_changes?: Json | null
           crawl_snapshot?: Json | null
           created_at?: string
           documents_accessible?: boolean | null

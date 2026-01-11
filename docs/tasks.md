@@ -817,6 +817,65 @@ USING (
 
 ---
 
+### Task 2.16: One Link Phase 5 - Daily Re-Crawl [✅ COMPLETED]
+
+**Goal**: Implement nightly background re-crawling for One Link projects to detect changes to bid due dates, addenda, and status.
+
+**Status**: ✅ Completed 2026-01-11
+
+**Deliverables Implemented**:
+
+1. **Database Schema Extension**
+   - Added `crawl_changes` JSONB column to `projects` table
+   - Stores detected changes from re-crawls (e.g., `{ "bid_due_at": { "old": "...", "new": "..." } }`)
+   
+2. **Daily Cron Job**
+   - Created `daily-recrawl-one-link-projects` cron job running at 10:00 UTC (2:00 AM PST)
+   - Triggers `recrawl-projects` edge function nightly
+
+3. **Re-Crawl Edge Function**
+   - New `supabase/functions/recrawl-projects/index.ts`
+   - Queries LIVE projects with `source_url` that haven't been crawled in 20+ hours
+   - Processes max 50 projects per run with 2-second rate limiting
+   - Returns summary: `{ processed, changed, errors }`
+
+4. **Change Detection**
+   - Updated `crawl-project` to accept `is_recrawl` and `previous_values` parameters
+   - Detects changes in `bid_due_at`, `job_walk_at`, and `agency`
+   - Populates `crawl_changes` column when differences found
+
+5. **Manual Refresh Button**
+   - Added "Refresh" button on ProjectDetail page for One Link projects
+   - Loading state with spinning icon during re-crawl
+   - Toast notification on completion
+
+6. **Staleness Indicators**
+   - Enhanced "Checked X ago" badge with color coding:
+     - Green: Within 24 hours (fresh)
+     - Yellow: 1-3 days ago (getting stale)
+     - Gray: 3+ days ago (stale)
+
+**Files Created/Modified**:
+- `supabase/functions/recrawl-projects/index.ts` — New batch re-crawl function
+- `supabase/functions/crawl-project/index.ts` — Added change detection logic
+- `supabase/config.toml` — Added recrawl-projects config
+- `src/pages/ProjectDetail.tsx` — Added Refresh button and handler
+- `src/components/ProjectSignals.tsx` — Enhanced staleness colors
+
+**How to test**:
+1. Create or view a One Link project
+2. Click "Refresh" button next to the source link
+3. Verify "Last Checked" badge updates and shows green (fresh)
+4. Wait 24+ hours to see badge turn yellow
+5. Check edge function logs for nightly cron execution
+
+**Next steps** (optional enhancements):
+- Add change notification emails when bid_due_at changes
+- Display change alert banner when `crawl_changes` is populated
+- Add admin dashboard for monitoring re-crawl success rates
+
+---
+
 ### Task 2.1: Add Countdown Timer to Bid Room [MVP]
 
 **User Decision**: MVP feature (not v1)

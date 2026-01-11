@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Copy, Download, Trash2, Upload, CheckCircle2, Loader2, Plus } from "lucide-react";
+import { ArrowLeft, Copy, Download, Trash2, Upload, CheckCircle2, Loader2, Plus, RefreshCw } from "lucide-react";
 import { Layout } from "@/components/Layout";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
@@ -114,6 +114,7 @@ const ProjectDetail = () => {
   const [editedTimezone, setEditedTimezone] = useState("America/Los_Angeles");
   const [isSaving, setIsSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+  const [isRecrawling, setIsRecrawling] = useState(false);
 
   useEffect(() => {
     loadProject();
@@ -299,6 +300,48 @@ const ProjectDetail = () => {
     }
     
     setIsSaving(false);
+  };
+
+  const handleReCrawl = async () => {
+    if (!project?.source_url) return;
+    
+    setIsRecrawling(true);
+    try {
+      // Store current values for change detection
+      const previousValues = {
+        bid_due_at: project.bid_due_at,
+        job_walk_at: project.job_walk_at,
+        agency: project.agency,
+        name: project.name,
+      };
+
+      const { error } = await supabase.functions.invoke('crawl-project', {
+        body: { 
+          project_id: id, 
+          source_url: project.source_url,
+          is_recrawl: true,
+          previous_values: previousValues
+        }
+      });
+      
+      if (error) throw error;
+      
+      toast({
+        title: "Project refreshed",
+        description: "Data synchronized with source",
+      });
+      
+      await loadProject();
+    } catch (err) {
+      console.error("Re-crawl error:", err);
+      toast({
+        title: "Refresh failed",
+        description: "Could not sync with source",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRecrawling(false);
+    }
   };
 
   const saveTrades = async () => {
@@ -625,7 +668,21 @@ const ProjectDetail = () => {
           </Button>
 
           {/* Project Signals from One Link crawl */}
-          <ProjectSignals project={project} className="mb-4" />
+          <div className="flex items-start justify-between gap-4 mb-4">
+            <ProjectSignals project={project} className="flex-1" />
+            {project.source_url && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleReCrawl}
+                disabled={isRecrawling}
+                className="flex-shrink-0"
+              >
+                <RefreshCw className={cn("h-4 w-4 mr-2", isRecrawling && "animate-spin")} />
+                {isRecrawling ? "Refreshing..." : "Refresh"}
+              </Button>
+            )}
+          </div>
 
           {/* Editable Project Information */}
           <div className="space-y-2 mb-3">
