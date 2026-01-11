@@ -137,6 +137,81 @@ function inferCountyFromAgency(agency: string): string | null {
   return null;
 }
 
+// Convert local time string to UTC, accounting for source timezone
+function convertLocalToUtc(localDateStr: string, timezone: string = 'PST'): string {
+  // Map common abbreviations to UTC offsets (in hours)
+  // Note: These are standard time offsets; daylight saving handled approximately
+  const tzOffsets: Record<string, number> = {
+    'PST': -8,
+    'PDT': -7,
+    'MST': -7,
+    'MDT': -6,
+    'CST': -6,
+    'CDT': -5,
+    'EST': -5,
+    'EDT': -4,
+    'PT': -8,  // Pacific Time (assume standard)
+    'MT': -7,  // Mountain Time
+    'CT': -6,  // Central Time
+    'ET': -5,  // Eastern Time
+  };
+  
+  const offsetHours = tzOffsets[timezone.toUpperCase()] ?? -8; // Default to PST
+  
+  // Parse the local datetime
+  // Input format: "2026-01-29T10:00:00" or "2026-01-29"
+  let date: Date;
+  
+  if (localDateStr.includes('T')) {
+    // Has time component - parse as local time
+    // The string "2026-01-29T10:00:00" represents 10:00 AM in the source timezone
+    const [datePart, timePart] = localDateStr.split('T');
+    const [year, month, day] = datePart.split('-').map(Number);
+    const [hour, minute, second] = (timePart || '00:00:00').split(':').map(n => parseInt(n) || 0);
+    
+    // Create date as UTC, then adjust for source timezone
+    // If it's 10:00 AM PST (UTC-8), we need to add 8 hours to get UTC time
+    date = new Date(Date.UTC(year, month - 1, day, hour - offsetHours, minute, second));
+  } else {
+    // Date only - set to noon in source timezone to avoid date boundary issues
+    const [year, month, day] = localDateStr.split('-').map(Number);
+    date = new Date(Date.UTC(year, month - 1, day, 12 - offsetHours, 0, 0));
+  }
+  
+  if (isNaN(date.getTime())) {
+    throw new Error(`Invalid date string: ${localDateStr}`);
+  }
+  
+  return date.toISOString();
+}
+
+// Detect timezone from text (look for common patterns)
+function detectTimezoneFromText(text: string): string {
+  const tzPatterns = [
+    { pattern: /\bPST\b/i, tz: 'PST' },
+    { pattern: /\bPDT\b/i, tz: 'PDT' },
+    { pattern: /\bPacific\s+(Standard\s+)?Time/i, tz: 'PST' },
+    { pattern: /\bMST\b/i, tz: 'MST' },
+    { pattern: /\bMDT\b/i, tz: 'MDT' },
+    { pattern: /\bMountain\s+(Standard\s+)?Time/i, tz: 'MST' },
+    { pattern: /\bCST\b/i, tz: 'CST' },
+    { pattern: /\bCDT\b/i, tz: 'CDT' },
+    { pattern: /\bCentral\s+(Standard\s+)?Time/i, tz: 'CST' },
+    { pattern: /\bEST\b/i, tz: 'EST' },
+    { pattern: /\bEDT\b/i, tz: 'EDT' },
+    { pattern: /\bEastern\s+(Standard\s+)?Time/i, tz: 'EST' },
+  ];
+  
+  for (const { pattern, tz } of tzPatterns) {
+    if (pattern.test(text)) {
+      return tz;
+    }
+  }
+  
+  // Default to PST for California public works
+  return 'PST';
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -243,7 +318,7 @@ serve(async (req) => {
         body: JSON.stringify({
           model: "google/gemini-3-flash-preview",
           messages: [
-            {
+          {
               role: "system",
               content: `You are a construction project metadata extractor. Extract structured information from public works project pages.
 
@@ -252,11 +327,17 @@ CRITICAL RULES FOR DATE/TIME EXTRACTION:
 - Look for patterns like "2:00 PM PST", "10:00 AM", "14:00", "2:00pm"
 - NEVER default to midnight (00:00), 2:00 AM, or any arbitrary time
 - If date is found but time is NOT explicitly stated, include ONLY the date portion (YYYY-MM-DD) - NO TIME COMPONENT
-- Use 24-hour format when extracting: 2:00 PM = 14:00, 10:00 AM = 10:00
+- Use 24-hour format when extracting: 2:00 PM = 14:00:00, 10:00 AM = 10:00:00
 - Times are ONLY valid if explicitly written on the page
+- IMPORTANT: Extract times AS SHOWN in the source - do NOT convert to a different timezone. If page shows "10:00 AM PST", extract as 10:00:00
+
+TIMEZONE EXTRACTION:
+- Look for timezone indicators near dates: PST, PDT, EST, EDT, Pacific Time, etc.
+- If timezone is explicitly stated (e.g., "10:00 AM PST"), include it in source_timezone field
+- For California public works projects with no explicit timezone, set source_timezone to "PST"
 
 RULES FOR JOB WALK EXTRACTION:
-- Search for "Job Walk", "Site Visit", "Pre-Bid Meeting", "Mandatory Walk"
+- Search for "Job Walk", "Site Visit", "Pre-Bid Meeting", "Mandatory Walk", "Pre-Bid Conference"
 - Extract the EXACT date and time if stated
 - Extract the meeting location/address if provided
 - Only mark mandatory as true if words like "mandatory", "required", "must attend", "failure to attend will disqualify" appear
@@ -286,7 +367,7 @@ Extract the information using the provided function.`
                 description: "Extract structured project information from a public works project page",
                 parameters: {
                   type: "object",
-                  properties: {
+                properties: {
                     project_title: {
                       type: "string",
                       description: "The official project name/title"
@@ -295,9 +376,13 @@ Extract the information using the provided function.`
                       type: "string",
                       description: "The government agency or organization posting the project"
                     },
+                    source_timezone: {
+                      type: "string",
+                      description: "Timezone abbreviation found near dates (PST, PDT, EST, EDT, etc.). Default to 'PST' for California projects if not explicitly stated."
+                    },
                     bid_due_date: {
                       type: "string",
-                      description: "Bid due date. Extract EXACT time from near 'Bid Due', 'Bid Opening', or 'Closing Date'. Format: YYYY-MM-DDTHH:mm:ss if time is EXPLICITLY stated (e.g., 2:00 PM = 14:00:00). Use YYYY-MM-DD only if NO time is stated. NEVER guess or default times."
+                      description: "Bid due date. Extract EXACT time AS SHOWN near 'Bid Due', 'Bid Opening', or 'Closing Date'. Format: YYYY-MM-DDTHH:mm:ss if time is EXPLICITLY stated (e.g., 10:00 AM = 10:00:00, 2:00 PM = 14:00:00). Use YYYY-MM-DD only if NO time is stated. NEVER convert timezones, NEVER guess times."
                     },
                     scope_summary: {
                       type: "string",
@@ -335,7 +420,7 @@ Extract the information using the provided function.`
                       description: "Any text about bid disqualification conditions"
                     }
                   },
-                  required: ["project_title", "job_walk", "eligibility", "documents"],
+                  required: ["project_title", "source_timezone", "job_walk", "eligibility", "documents"],
                   additionalProperties: false
                 }
               }
@@ -397,14 +482,21 @@ Extract the information using the provided function.`
         updateData.agency = semanticData.agency.substring(0, 200);
       }
 
+      // Determine source timezone from extraction or detect from markdown
+      const sourceTimezone = semanticData.source_timezone || detectTimezoneFromText(markdown) || 'PST';
+      console.log(`Using source timezone: ${sourceTimezone}`);
+
       if (semanticData.bid_due_date) {
         try {
-          const parsedDate = new Date(semanticData.bid_due_date);
-          if (!isNaN(parsedDate.getTime())) {
-            updateData.bid_due_at = parsedDate.toISOString();
-          }
+          const utcDate = convertLocalToUtc(semanticData.bid_due_date, sourceTimezone);
+          updateData.bid_due_at = utcDate;
+          console.log("Bid due date conversion:", {
+            extracted: semanticData.bid_due_date,
+            timezone: sourceTimezone,
+            stored_utc: utcDate
+          });
         } catch (e) {
-          console.log("Could not parse bid due date:", semanticData.bid_due_date);
+          console.log("Could not parse bid due date:", semanticData.bid_due_date, e);
         }
       }
 
@@ -418,16 +510,19 @@ Extract the information using the provided function.`
         updateData.job_walk_mandatory = semanticData.job_walk.mandatory ?? null;
         updateData.job_walk_details = semanticData.job_walk.details || null;
         
-        // Extract job_walk_at from the datetime field
+        // Extract job_walk_at from the datetime field with timezone conversion
         if (semanticData.job_walk.datetime) {
           try {
-            const parsedJobWalk = new Date(semanticData.job_walk.datetime);
-            if (!isNaN(parsedJobWalk.getTime())) {
-              updateData.job_walk_at = parsedJobWalk.toISOString();
-              console.log(`Extracted job walk date: ${updateData.job_walk_at}`);
-            }
+            const sourceTimezone = semanticData.source_timezone || detectTimezoneFromText(markdown) || 'PST';
+            const utcJobWalk = convertLocalToUtc(semanticData.job_walk.datetime, sourceTimezone);
+            updateData.job_walk_at = utcJobWalk;
+            console.log("Job walk date conversion:", {
+              extracted: semanticData.job_walk.datetime,
+              timezone: sourceTimezone,
+              stored_utc: utcJobWalk
+            });
           } catch (e) {
-            console.log("Could not parse job walk date:", semanticData.job_walk.datetime);
+            console.log("Could not parse job walk date:", semanticData.job_walk.datetime, e);
           }
         }
         
