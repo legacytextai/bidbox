@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Copy, Download, Trash2, Upload, CheckCircle2, Loader2, Pencil } from "lucide-react";
+import { ArrowLeft, Copy, Download, Trash2, Upload, CheckCircle2, Loader2, Plus } from "lucide-react";
 import { Layout } from "@/components/Layout";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
@@ -746,56 +746,7 @@ const ProjectDetail = () => {
 
           {/* Required Trades Section */}
           <div className="space-y-2 mb-3">
-            <div className="flex items-center justify-between">
-              <Label>Required Trades</Label>
-              <Dialog open={editingTrades} onOpenChange={setEditingTrades}>
-                <DialogTrigger asChild>
-                  <Button variant="ghost" size="sm" className="h-7 px-2">
-                    <Pencil className="h-3.5 w-3.5 mr-1" />
-                    Edit
-                  </Button>
-                </DialogTrigger>
-                <DialogContent 
-                  className="sm:max-w-[500px]"
-                  onWheel={(e) => e.stopPropagation()}
-                >
-                  <DialogHeader>
-                    <DialogTitle>Edit Required Trades</DialogTitle>
-                    <DialogDescription>
-                      Select the trades required for this project.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="py-4">
-                    <TradeMultiSelect
-                      selectedTradeIds={editedTradeIds}
-                      onSelectionChange={setEditedTradeIds}
-                      stateCode="CA"
-                    />
-                  </div>
-                  <DialogFooter>
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setEditedTradeIds(projectTrades.map(t => t.trade_type_id));
-                        setEditingTrades(false);
-                      }}
-                    >
-                      Cancel
-                    </Button>
-                    <Button onClick={saveTrades} disabled={savingTrades}>
-                      {savingTrades ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          Saving...
-                        </>
-                      ) : (
-                        "Save Trades"
-                      )}
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            </div>
+            <Label>Required Trades</Label>
             {projectTrades.length > 0 ? (
               <div className="flex flex-wrap gap-2">
                 {projectTrades.map((pt) => (
@@ -815,6 +766,53 @@ const ProjectDetail = () => {
             ) : (
               <p className="text-sm text-muted-foreground">No trades selected</p>
             )}
+            <Dialog open={editingTrades} onOpenChange={setEditingTrades}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm" className="mt-2">
+                  <Plus className="h-4 w-4 mr-1" />
+                  Add Trades
+                </Button>
+              </DialogTrigger>
+              <DialogContent 
+                className="sm:max-w-[500px]"
+                onWheel={(e) => e.stopPropagation()}
+              >
+                <DialogHeader>
+                  <DialogTitle>Edit Required Trades</DialogTitle>
+                  <DialogDescription>
+                    Select the trades required for this project.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="py-4">
+                  <TradeMultiSelect
+                    selectedTradeIds={editedTradeIds}
+                    onSelectionChange={setEditedTradeIds}
+                    stateCode="CA"
+                  />
+                </div>
+                <DialogFooter>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setEditedTradeIds(projectTrades.map(t => t.trade_type_id));
+                      setEditingTrades(false);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button onClick={saveTrades} disabled={savingTrades}>
+                    {savingTrades ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      "Save Trades"
+                    )}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </div>
 
           {/* Bid Box Link and Save Changes Section */}
