@@ -172,10 +172,7 @@ export function ProjectSignals({ project, className, onRefresh, isRefreshing }: 
               <TooltipTrigger asChild>
                 <Badge 
                   variant="outline" 
-                  className={cn(
-                    "gap-1.5 cursor-pointer hover:bg-muted transition-colors",
-                    stalenessClass
-                  )}
+                  className="gap-1.5 cursor-pointer hover:bg-muted transition-colors border-muted-foreground/50 text-muted-foreground"
                   onClick={onRefresh}
                 >
                   <RefreshCw className={cn("h-3 w-3", isRefreshing && "animate-spin")} />
