@@ -28,6 +28,115 @@ function detectPortalType(url: string): string {
   return 'unknown';
 }
 
+// California city to county mapping (common cities)
+const CA_CITY_TO_COUNTY: Record<string, string> = {
+  "irvine": "Orange",
+  "anaheim": "Orange",
+  "santa ana": "Orange",
+  "huntington beach": "Orange",
+  "costa mesa": "Orange",
+  "fullerton": "Orange",
+  "orange": "Orange",
+  "garden grove": "Orange",
+  "newport beach": "Orange",
+  "mission viejo": "Orange",
+  "laguna niguel": "Orange",
+  "lake forest": "Orange",
+  "tustin": "Orange",
+  "buena park": "Orange",
+  "yorba linda": "Orange",
+  "san clemente": "Orange",
+  "laguna beach": "Orange",
+  "los angeles": "Los Angeles",
+  "long beach": "Los Angeles",
+  "pasadena": "Los Angeles",
+  "glendale": "Los Angeles",
+  "burbank": "Los Angeles",
+  "santa monica": "Los Angeles",
+  "torrance": "Los Angeles",
+  "pomona": "Los Angeles",
+  "downey": "Los Angeles",
+  "west covina": "Los Angeles",
+  "el monte": "Los Angeles",
+  "compton": "Los Angeles",
+  "inglewood": "Los Angeles",
+  "alhambra": "Los Angeles",
+  "san diego": "San Diego",
+  "chula vista": "San Diego",
+  "oceanside": "San Diego",
+  "escondido": "San Diego",
+  "carlsbad": "San Diego",
+  "el cajon": "San Diego",
+  "san marcos": "San Diego",
+  "encinitas": "San Diego",
+  "san francisco": "San Francisco",
+  "oakland": "Alameda",
+  "berkeley": "Alameda",
+  "fremont": "Alameda",
+  "hayward": "Alameda",
+  "san leandro": "Alameda",
+  "san jose": "Santa Clara",
+  "sunnyvale": "Santa Clara",
+  "santa clara": "Santa Clara",
+  "mountain view": "Santa Clara",
+  "milpitas": "Santa Clara",
+  "palo alto": "Santa Clara",
+  "cupertino": "Santa Clara",
+  "fresno": "Fresno",
+  "clovis": "Fresno",
+  "sacramento": "Sacramento",
+  "elk grove": "Sacramento",
+  "rancho cordova": "Sacramento",
+  "folsom": "Sacramento",
+  "riverside": "Riverside",
+  "moreno valley": "Riverside",
+  "corona": "Riverside",
+  "temecula": "Riverside",
+  "murrieta": "Riverside",
+  "san bernardino": "San Bernardino",
+  "fontana": "San Bernardino",
+  "rancho cucamonga": "San Bernardino",
+  "ontario": "San Bernardino",
+  "victorville": "San Bernardino",
+  "bakersfield": "Kern",
+  "stockton": "San Joaquin",
+  "modesto": "Stanislaus",
+  "ventura": "Ventura",
+  "oxnard": "Ventura",
+  "thousand oaks": "Ventura",
+  "simi valley": "Ventura",
+  "santa barbara": "Santa Barbara",
+  "santa cruz": "Santa Cruz",
+  "monterey": "Monterey",
+  "salinas": "Monterey",
+  "redding": "Shasta",
+  "chico": "Butte",
+};
+
+function inferCountyFromAgency(agency: string): string | null {
+  const normalized = agency.toLowerCase();
+  
+  // Pattern: "City of X" or "X City"
+  const cityOfMatch = normalized.match(/city of\s+([a-z\s]+?)(?:\s*,|\s*-|$)/);
+  const cityMatch = normalized.match(/([a-z\s]+)\s+city(?:\s|$)/);
+  
+  const cityName = cityOfMatch?.[1]?.trim() || cityMatch?.[1]?.trim();
+  
+  if (cityName && CA_CITY_TO_COUNTY[cityName]) {
+    return CA_CITY_TO_COUNTY[cityName];
+  }
+  
+  // Direct county match - check if "County" is in the agency name
+  const countyMatch = normalized.match(/([a-z\s]+)\s+county/);
+  if (countyMatch) {
+    const countyName = countyMatch[1].trim();
+    // Capitalize first letter of each word
+    return countyName.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  }
+  
+  return null;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -138,11 +247,23 @@ serve(async (req) => {
               role: "system",
               content: `You are a construction project metadata extractor. Extract structured information from public works project pages.
 
-RULES:
+CRITICAL RULES FOR DATE/TIME EXTRACTION:
+- For bid_due_date: Extract the EXACT date AND time shown near "Bid Due", "Bid Opening", "Closing Date", "Due Date"
+- Look for patterns like "2:00 PM PST", "10:00 AM", "14:00", "2:00pm"
+- NEVER default to midnight (00:00), 2:00 AM, or any arbitrary time
+- If date is found but time is NOT explicitly stated, include ONLY the date portion (YYYY-MM-DD) - NO TIME COMPONENT
+- Use 24-hour format when extracting: 2:00 PM = 14:00, 10:00 AM = 10:00
+- Times are ONLY valid if explicitly written on the page
+
+RULES FOR JOB WALK EXTRACTION:
+- Search for "Job Walk", "Site Visit", "Pre-Bid Meeting", "Mandatory Walk"
+- Extract the EXACT date and time if stated
+- Extract the meeting location/address if provided
+- Only mark mandatory as true if words like "mandatory", "required", "must attend", "failure to attend will disqualify" appear
+
+GENERAL RULES:
 - Only mark values as true if EXPLICITLY stated in the text
 - If something is ambiguous or not mentioned, return null
-- For mandatory job walk: only true if words like "mandatory", "required", "must attend", "failure to attend will disqualify" appear
-- Extract dates in ISO 8601 format if found
 - Be conservative - when in doubt, return null`
             },
             {
@@ -176,7 +297,7 @@ Extract the information using the provided function.`
                     },
                     bid_due_date: {
                       type: "string",
-                      description: "Bid due date in ISO 8601 format (YYYY-MM-DDTHH:mm:ss) if found"
+                      description: "Bid due date. Extract EXACT time from near 'Bid Due', 'Bid Opening', or 'Closing Date'. Format: YYYY-MM-DDTHH:mm:ss if time is EXPLICITLY stated (e.g., 2:00 PM = 14:00:00). Use YYYY-MM-DD only if NO time is stated. NEVER guess or default times."
                     },
                     scope_summary: {
                       type: "string",
@@ -187,7 +308,9 @@ Extract the information using the provided function.`
                       properties: {
                         exists: { type: "boolean", description: "Is a job walk/site visit mentioned?" },
                         mandatory: { type: "boolean", description: "Is attendance explicitly required/mandatory? null if not specified" },
-                        details: { type: "string", description: "Date, time, location of job walk if mentioned" }
+                        datetime: { type: "string", description: "Job walk date and time in ISO 8601 format (YYYY-MM-DDTHH:mm:ss) if found. Extract EXACT time shown." },
+                        location: { type: "string", description: "Meeting location/address if specified" },
+                        details: { type: "string", description: "Full raw text about job walk requirements including date, time, location" }
                       },
                       required: ["exists"]
                     },
@@ -252,12 +375,21 @@ Extract the information using the provided function.`
         // Check if current name is placeholder
         const { data: currentProject } = await supabase
           .from("projects")
-          .select("name")
+          .select("name, county")
           .eq("id", project_id)
           .single();
         
         if (currentProject?.name?.startsWith("Project from ")) {
           updateData.name = semanticData.project_title.substring(0, 200);
+        }
+        
+        // Infer county from agency if not already set
+        if (semanticData.agency && !currentProject?.county) {
+          const inferredCounty = inferCountyFromAgency(semanticData.agency);
+          if (inferredCounty) {
+            updateData.county = inferredCounty;
+            console.log(`Inferred county: ${inferredCounty} from agency: ${semanticData.agency}`);
+          }
         }
       }
 
@@ -285,6 +417,29 @@ Extract the information using the provided function.`
         updateData.job_walk_exists = semanticData.job_walk.exists || false;
         updateData.job_walk_mandatory = semanticData.job_walk.mandatory ?? null;
         updateData.job_walk_details = semanticData.job_walk.details || null;
+        
+        // Extract job_walk_at from the datetime field
+        if (semanticData.job_walk.datetime) {
+          try {
+            const parsedJobWalk = new Date(semanticData.job_walk.datetime);
+            if (!isNaN(parsedJobWalk.getTime())) {
+              updateData.job_walk_at = parsedJobWalk.toISOString();
+              console.log(`Extracted job walk date: ${updateData.job_walk_at}`);
+            }
+          } catch (e) {
+            console.log("Could not parse job walk date:", semanticData.job_walk.datetime);
+          }
+        }
+        
+        // Build comprehensive job_walk_details if we have location
+        if (semanticData.job_walk.location && !updateData.job_walk_details) {
+          updateData.job_walk_details = `Location: ${semanticData.job_walk.location}`;
+        } else if (semanticData.job_walk.location && updateData.job_walk_details) {
+          // Append location if not already in details
+          if (!updateData.job_walk_details.toLowerCase().includes(semanticData.job_walk.location.toLowerCase())) {
+            updateData.job_walk_details += ` | Location: ${semanticData.job_walk.location}`;
+          }
+        }
       }
 
       // Eligibility fields
