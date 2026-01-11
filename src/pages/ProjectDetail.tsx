@@ -699,7 +699,7 @@ const ProjectDetail = () => {
             </div>
 
             <div className="space-y-2">
-              <Label>Job Walk Date (optional)</Label>
+              <Label>Job Walk Date</Label>
               <Input
                 type="datetime-local"
                 value={editedJobWalkAt}
