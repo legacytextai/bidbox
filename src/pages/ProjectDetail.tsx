@@ -668,21 +668,12 @@ const ProjectDetail = () => {
           </Button>
 
           {/* Project Signals from One Link crawl */}
-          <div className="flex items-start justify-between gap-4 mb-4">
-            <ProjectSignals project={project} className="flex-1" />
-            {project.source_url && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleReCrawl}
-                disabled={isRecrawling}
-                className="flex-shrink-0"
-              >
-                <RefreshCw className={cn("h-4 w-4 mr-2", isRecrawling && "animate-spin")} />
-                {isRecrawling ? "Refreshing..." : "Refresh"}
-              </Button>
-            )}
-          </div>
+          <ProjectSignals 
+            project={project} 
+            className="mb-4" 
+            onRefresh={project.source_url ? handleReCrawl : undefined}
+            isRefreshing={isRecrawling}
+          />
 
           {/* Editable Project Information */}
           <div className="space-y-2 mb-3">

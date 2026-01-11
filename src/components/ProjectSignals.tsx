@@ -33,9 +33,11 @@ interface ProjectSignalsProps {
     documents_accessible?: boolean | null;
   };
   className?: string;
+  onRefresh?: () => void;
+  isRefreshing?: boolean;
 }
 
-export function ProjectSignals({ project, className }: ProjectSignalsProps) {
+export function ProjectSignals({ project, className, onRefresh, isRefreshing }: ProjectSignalsProps) {
   const hasSourceUrl = !!project.source_url;
   
   if (!hasSourceUrl) {
@@ -150,19 +152,43 @@ export function ProjectSignals({ project, className }: ProjectSignalsProps) {
     }
     
     signals.push(
-      <TooltipProvider key="last-checked">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Badge variant="outline" className={cn("gap-1.5 cursor-help", stalenessClass)}>
-              {stalenessIcon}
-              Checked {formatDistanceToNow(lastChecked, { addSuffix: true })}
-            </Badge>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>Last synced with source: {lastChecked.toLocaleString()}</p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+      <div key="last-checked" className="flex items-center gap-1.5">
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Badge variant="outline" className={cn("gap-1.5 cursor-help", stalenessClass)}>
+                {stalenessIcon}
+                Checked {formatDistanceToNow(lastChecked, { addSuffix: true })}
+              </Badge>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Last synced with source: {lastChecked.toLocaleString()}</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        {onRefresh && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge 
+                  variant="outline" 
+                  className={cn(
+                    "gap-1.5 cursor-pointer hover:bg-muted transition-colors",
+                    stalenessClass
+                  )}
+                  onClick={onRefresh}
+                >
+                  <RefreshCw className={cn("h-3 w-3", isRefreshing && "animate-spin")} />
+                  {isRefreshing ? "Refreshing" : "Refresh"}
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Sync with source to check for updates</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+      </div>
     );
   }
 
