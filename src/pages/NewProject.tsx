@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Upload, X, Loader2, CheckCircle2, Link as LinkIcon, FileEdit } from "lucide-react";
+import { Upload, X, Loader2, CheckCircle2, Link as LinkIcon, FileEdit, ChevronDown, ChevronUp } from "lucide-react";
 import { Layout } from "@/components/Layout";
 import { Progress } from "@/components/ui/progress";
 import { z } from "zod";
@@ -24,6 +24,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 
 const projectSchema = z.object({
   name: z.string().min(1, "Project name is required").max(200),
@@ -41,7 +46,7 @@ const NewProject = () => {
   // Link-first state
   const [projectUrl, setProjectUrl] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [showManualEntry, setShowManualEntry] = useState(true);
+  const [showManualEntry, setShowManualEntry] = useState(false);
 
   // Manual entry form state
   const [formData, setFormData] = useState({
@@ -342,146 +347,158 @@ const NewProject = () => {
               </div>
             </div>
 
-            {/* Manual Entry - Clear Section */}
-            <div className="space-y-4 p-6 border border-border rounded-lg bg-card">
-              <div className="flex items-center gap-2">
-                <FileEdit className="h-5 w-5 text-primary" />
-                <h2 className="text-xl font-semibold text-foreground">
-                  Manual Entry
-                </h2>
+            {/* Manual Entry - Collapsible Section */}
+            <Collapsible open={showManualEntry} onOpenChange={setShowManualEntry}>
+              <div className="p-6 border border-border rounded-lg bg-card">
+                <CollapsibleTrigger className="w-full" disabled={isDisabled}>
+                  <div className="flex items-center justify-between cursor-pointer">
+                    <div className="flex items-center gap-2">
+                      <FileEdit className="h-5 w-5 text-primary" />
+                      <h2 className="text-xl font-semibold text-foreground">
+                        Manual Entry
+                      </h2>
+                    </div>
+                    {showManualEntry ? (
+                      <ChevronUp className="h-5 w-5 text-muted-foreground" />
+                    ) : (
+                      <ChevronDown className="h-5 w-5 text-muted-foreground" />
+                    )}
+                  </div>
+                  <p className="text-sm text-muted-foreground text-left mt-2">
+                    Don't have a project link? Enter the project details manually below.
+                  </p>
+                </CollapsibleTrigger>
+                
+                <CollapsibleContent>
+                  <form onSubmit={handleManualSubmit} className="space-y-6 mt-6 pt-6 border-t border-border">
+                    <div className="space-y-2">
+                      <Label htmlFor="name">Project Name *</Label>
+                      <Input
+                        id="name"
+                        value={formData.name}
+                        onChange={(e) =>
+                          setFormData({ ...formData, name: e.target.value })
+                        }
+                        required
+                        disabled={isDisabled}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="county">Project County *</Label>
+                      <CountySelect
+                        value={formData.county}
+                        onChange={(value) =>
+                          setFormData({ ...formData, county: value })
+                        }
+                        disabled={isDisabled}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="agency">Agency (optional)</Label>
+                      <Input
+                        id="agency"
+                        value={formData.agency}
+                        onChange={(e) =>
+                          setFormData({ ...formData, agency: e.target.value })
+                        }
+                        disabled={isDisabled}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="bid_due_at">Bid Due Date & Time *</Label>
+                      <Input
+                        id="bid_due_at"
+                        type="datetime-local"
+                        value={formData.bid_due_at}
+                        onChange={(e) =>
+                          setFormData({ ...formData, bid_due_at: e.target.value })
+                        }
+                        required
+                        disabled={isDisabled}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="job_walk_at">Job Walk Date & Time (optional)</Label>
+                      <Input
+                        id="job_walk_at"
+                        type="datetime-local"
+                        value={formData.job_walk_at}
+                        onChange={(e) =>
+                          setFormData({ ...formData, job_walk_at: e.target.value })
+                        }
+                        disabled={isDisabled}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="timezone">Time Zone *</Label>
+                      <Select
+                        value={formData.timezone}
+                        onValueChange={(value) =>
+                          setFormData({ ...formData, timezone: value })
+                        }
+                        disabled={isDisabled}
+                      >
+                        <SelectTrigger className="bg-background">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="bg-background z-50">
+                          {TIMEZONE_OPTIONS.map((tz) => (
+                            <SelectItem key={tz.value} value={tz.value}>
+                              {tz.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="instructions">Instructions for Bidders</Label>
+                      <Textarea
+                        id="instructions"
+                        value={formData.instructions}
+                        onChange={(e) =>
+                          setFormData({ ...formData, instructions: e.target.value })
+                        }
+                        rows={4}
+                        placeholder="Enter any special instructions or requirements..."
+                        disabled={isDisabled}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Required Trades (Optional)</Label>
+                      <TradeMultiSelect
+                        selectedTradeIds={selectedTradeIds}
+                        onSelectionChange={setSelectedTradeIds}
+                        disabled={isDisabled}
+                        stateCode="CA"
+                      />
+                    </div>
+
+                    <Button
+                      type="submit"
+                      size="lg"
+                      className="w-full bg-[hsl(var(--bidbox-blue))] hover:bg-[hsl(var(--bidbox-blue))]/90 text-white font-bold"
+                      disabled={isDisabled}
+                    >
+                      {loading ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Creating...
+                        </>
+                      ) : (
+                        "Create Project"
+                      )}
+                    </Button>
+                  </form>
+                </CollapsibleContent>
               </div>
-              
-              <p className="text-sm text-muted-foreground">
-                Don't have a project link? Enter the project details manually below.
-              </p>
-
-              <form onSubmit={handleManualSubmit} className="space-y-6">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Project Name *</Label>
-                  <Input
-                    id="name"
-                    value={formData.name}
-                    onChange={(e) =>
-                      setFormData({ ...formData, name: e.target.value })
-                    }
-                    required
-                    disabled={isDisabled}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="county">Project County *</Label>
-                  <CountySelect
-                    value={formData.county}
-                    onChange={(value) =>
-                      setFormData({ ...formData, county: value })
-                    }
-                    disabled={isDisabled}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="agency">Agency (optional)</Label>
-                  <Input
-                    id="agency"
-                    value={formData.agency}
-                    onChange={(e) =>
-                      setFormData({ ...formData, agency: e.target.value })
-                    }
-                    disabled={isDisabled}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="bid_due_at">Bid Due Date & Time *</Label>
-                  <Input
-                    id="bid_due_at"
-                    type="datetime-local"
-                    value={formData.bid_due_at}
-                    onChange={(e) =>
-                      setFormData({ ...formData, bid_due_at: e.target.value })
-                    }
-                    required
-                    disabled={isDisabled}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="job_walk_at">Job Walk Date & Time (optional)</Label>
-                  <Input
-                    id="job_walk_at"
-                    type="datetime-local"
-                    value={formData.job_walk_at}
-                    onChange={(e) =>
-                      setFormData({ ...formData, job_walk_at: e.target.value })
-                    }
-                    disabled={isDisabled}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="timezone">Time Zone *</Label>
-                  <Select
-                    value={formData.timezone}
-                    onValueChange={(value) =>
-                      setFormData({ ...formData, timezone: value })
-                    }
-                    disabled={isDisabled}
-                  >
-                    <SelectTrigger className="bg-background">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="bg-background z-50">
-                      {TIMEZONE_OPTIONS.map((tz) => (
-                        <SelectItem key={tz.value} value={tz.value}>
-                          {tz.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="instructions">Instructions for Bidders</Label>
-                  <Textarea
-                    id="instructions"
-                    value={formData.instructions}
-                    onChange={(e) =>
-                      setFormData({ ...formData, instructions: e.target.value })
-                    }
-                    rows={4}
-                    placeholder="Enter any special instructions or requirements..."
-                    disabled={isDisabled}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Required Trades (Optional)</Label>
-                  <TradeMultiSelect
-                    selectedTradeIds={selectedTradeIds}
-                    onSelectionChange={setSelectedTradeIds}
-                    disabled={isDisabled}
-                    stateCode="CA"
-                  />
-                </div>
-
-                <Button
-                  type="submit"
-                  size="lg"
-                  className="w-full bg-[hsl(var(--bidbox-blue))] hover:bg-[hsl(var(--bidbox-blue))]/90 text-white font-bold"
-                  disabled={isDisabled}
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Creating...
-                    </>
-                  ) : (
-                    "Create Project"
-                  )}
-                </Button>
-              </form>
-            </div>
+            </Collapsible>
           </div>
 
           {/* RIGHT SIDE - Upload Documents (Optional) */}
