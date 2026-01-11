@@ -287,14 +287,26 @@ export type Database = {
           agency: string | null
           bid_due_at: string
           county: string | null
+          crawl_snapshot: Json | null
           created_at: string
+          documents_accessible: boolean | null
+          documents_visible: boolean | null
+          eligibility_notes: string | null
+          eligibility_restricted: boolean | null
           gc_id: string
           id: string
           instructions: string | null
           job_walk_at: string | null
+          job_walk_details: string | null
+          job_walk_exists: boolean | null
+          job_walk_mandatory: boolean | null
+          last_crawled_at: string | null
           location: string | null
           name: string
+          portal_type: string | null
           public_token: string
+          scope_text: string | null
+          source_url: string | null
           status: string
           timezone: string | null
           updated_at: string
@@ -304,14 +316,26 @@ export type Database = {
           agency?: string | null
           bid_due_at: string
           county?: string | null
+          crawl_snapshot?: Json | null
           created_at?: string
+          documents_accessible?: boolean | null
+          documents_visible?: boolean | null
+          eligibility_notes?: string | null
+          eligibility_restricted?: boolean | null
           gc_id: string
           id?: string
           instructions?: string | null
           job_walk_at?: string | null
+          job_walk_details?: string | null
+          job_walk_exists?: boolean | null
+          job_walk_mandatory?: boolean | null
+          last_crawled_at?: string | null
           location?: string | null
           name: string
+          portal_type?: string | null
           public_token?: string
+          scope_text?: string | null
+          source_url?: string | null
           status?: string
           timezone?: string | null
           updated_at?: string
@@ -321,14 +345,26 @@ export type Database = {
           agency?: string | null
           bid_due_at?: string
           county?: string | null
+          crawl_snapshot?: Json | null
           created_at?: string
+          documents_accessible?: boolean | null
+          documents_visible?: boolean | null
+          eligibility_notes?: string | null
+          eligibility_restricted?: boolean | null
           gc_id?: string
           id?: string
           instructions?: string | null
           job_walk_at?: string | null
+          job_walk_details?: string | null
+          job_walk_exists?: boolean | null
+          job_walk_mandatory?: boolean | null
+          last_crawled_at?: string | null
           location?: string | null
           name?: string
+          portal_type?: string | null
           public_token?: string
+          scope_text?: string | null
+          source_url?: string | null
           status?: string
           timezone?: string | null
           updated_at?: string
