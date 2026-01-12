@@ -57,32 +57,34 @@ const CalendarDashboard = () => {
 
   return (
     <Layout showSidebar>
-      <div className="space-y-6 p-4 calendar-container">
+      <div className="flex flex-col h-[calc(100vh-2rem)] p-4 calendar-container">
         {/* Top Metrics Row */}
-        <div className="flex justify-center print:hidden">
-          <div className="flex items-center justify-center gap-8 max-w-4xl w-full">
+        <div className="flex justify-center print:hidden flex-shrink-0 mb-4">
+          <div className="flex items-center justify-center gap-6 max-w-4xl w-full">
             {/* Projects Scheduled */}
-            <div className="text-center bg-card border border-border rounded-xl px-8 py-6 min-w-[180px]">
-              <div className="text-5xl font-bold text-foreground">{projectCount}</div>
-              <div className="text-base text-muted-foreground mt-2">Projects Scheduled</div>
+            <div className="text-center bg-card border border-border rounded-xl px-6 py-4 min-w-[160px]">
+              <div className="text-4xl font-bold text-foreground">{projectCount}</div>
+              <div className="text-sm text-muted-foreground mt-1">Projects Scheduled</div>
             </div>
 
             {/* Bids Submitted (Placeholder) */}
-            <div className="text-center bg-card border border-border rounded-xl px-8 py-6 min-w-[180px] opacity-50">
-              <div className="text-5xl font-bold text-muted-foreground">0</div>
-              <div className="text-base text-muted-foreground mt-2">Bids Submitted</div>
+            <div className="text-center bg-card border border-border rounded-xl px-6 py-4 min-w-[160px] opacity-50">
+              <div className="text-4xl font-bold text-muted-foreground">0</div>
+              <div className="text-sm text-muted-foreground mt-1">Bids Submitted</div>
             </div>
 
             {/* Top 3 (Placeholder) */}
-            <div className="text-center bg-card border border-border rounded-xl px-8 py-6 min-w-[180px] opacity-50">
-              <div className="text-5xl font-bold text-muted-foreground">0</div>
-              <div className="text-base text-muted-foreground mt-2">Top 3</div>
+            <div className="text-center bg-card border border-border rounded-xl px-6 py-4 min-w-[160px] opacity-50">
+              <div className="text-4xl font-bold text-muted-foreground">0</div>
+              <div className="text-sm text-muted-foreground mt-1">Top 3</div>
             </div>
           </div>
         </div>
 
-        {/* Calendar Grid */}
-        <CalendarGrid projects={projects} />
+        {/* Calendar Grid - fills remaining height */}
+        <div className="flex-1 min-h-0">
+          <CalendarGrid projects={projects} />
+        </div>
       </div>
     </Layout>
   );
