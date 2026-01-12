@@ -1,4 +1,4 @@
-import * as XLSX from 'xlsx';
+import { loadXLSX } from './xlsxLoader';
 
 export interface ParsedRow {
   license_number: string | null;
@@ -48,93 +48,83 @@ const PHONE_VALUE_PATTERN = /[\d\-\(\)\s]{7,}/;
 /**
  * Parse Excel or CSV file and detect columns using heuristics
  */
-export function parseExcelFile(file: File): Promise<ParseResult> {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
+export async function parseExcelFile(file: File): Promise<ParseResult> {
+  try {
+    const XLSX = await loadXLSX();
+    const data = await readFileAsArrayBuffer(file);
+    const workbook = XLSX.read(new Uint8Array(data), { type: 'array' });
     
-    reader.onload = (e) => {
-      try {
-        const data = new Uint8Array(e.target?.result as ArrayBuffer);
-        const workbook = XLSX.read(data, { type: 'array' });
-        
-        // Get first sheet
-        const sheetName = workbook.SheetNames[0];
-        const sheet = workbook.Sheets[sheetName];
-        
-        // Convert to JSON with headers
-        const jsonData = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { 
-          defval: '',
-          raw: false,
-        });
-        
-        if (jsonData.length === 0) {
-          resolve({
-            success: false,
-            rows: [],
-            detectedMapping: createEmptyMapping(),
-            headers: [],
-            overallConfidence: 'low',
-            error: 'File appears to be empty or unreadable',
-          });
-          return;
-        }
-        
-        // Get headers
-        const headers = Object.keys(jsonData[0]);
-        
-        // Detect column mapping
-        const detectedMapping = detectColumnMapping(headers, jsonData.slice(0, 20));
-        
-        // Parse rows using detected mapping
-        const rows = jsonData.map(row => parseRow(row, detectedMapping));
-        
-        // Calculate overall confidence
-        const confidenceCounts = { high: 0, medium: 0, low: 0 };
-        rows.forEach(r => confidenceCounts[r.confidence]++);
-        
-        let overallConfidence: 'high' | 'medium' | 'low' = 'high';
-        if (confidenceCounts.low > rows.length * 0.3) {
-          overallConfidence = 'low';
-        } else if (confidenceCounts.medium > rows.length * 0.3) {
-          overallConfidence = 'medium';
-        }
-        
-        // Also check if required fields are detected
-        if (!detectedMapping.company_name && !detectedMapping.license_number) {
-          overallConfidence = 'low';
-        }
-        
-        resolve({
-          success: true,
-          rows,
-          detectedMapping,
-          headers,
-          overallConfidence,
-        });
-      } catch (error) {
-        console.error('Excel parse error:', error);
-        resolve({
-          success: false,
-          rows: [],
-          detectedMapping: createEmptyMapping(),
-          headers: [],
-          overallConfidence: 'low',
-          error: 'Failed to parse file. Please ensure it is a valid Excel or CSV file.',
-        });
-      }
-    };
+    // Get first sheet
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
     
-    reader.onerror = () => {
-      resolve({
+    // Convert to JSON with headers
+    const jsonData = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { 
+      defval: '',
+      raw: false,
+    });
+    
+    if (jsonData.length === 0) {
+      return {
         success: false,
         rows: [],
         detectedMapping: createEmptyMapping(),
         headers: [],
         overallConfidence: 'low',
-        error: 'Failed to read file',
-      });
-    };
+        error: 'File appears to be empty or unreadable',
+      };
+    }
     
+    // Get headers
+    const headers = Object.keys(jsonData[0]);
+    
+    // Detect column mapping
+    const detectedMapping = detectColumnMapping(headers, jsonData.slice(0, 20));
+    
+    // Parse rows using detected mapping
+    const rows = jsonData.map(row => parseRow(row, detectedMapping));
+    
+    // Calculate overall confidence
+    const confidenceCounts = { high: 0, medium: 0, low: 0 };
+    rows.forEach(r => confidenceCounts[r.confidence]++);
+    
+    let overallConfidence: 'high' | 'medium' | 'low' = 'high';
+    if (confidenceCounts.low > rows.length * 0.3) {
+      overallConfidence = 'low';
+    } else if (confidenceCounts.medium > rows.length * 0.3) {
+      overallConfidence = 'medium';
+    }
+    
+    // Also check if required fields are detected
+    if (!detectedMapping.company_name && !detectedMapping.license_number) {
+      overallConfidence = 'low';
+    }
+    
+    return {
+      success: true,
+      rows,
+      detectedMapping,
+      headers,
+      overallConfidence,
+    };
+  } catch (error) {
+    console.error('Excel parse error:', error);
+    return {
+      success: false,
+      rows: [],
+      detectedMapping: createEmptyMapping(),
+      headers: [],
+      overallConfidence: 'low',
+      error: 'Failed to parse file. Please ensure it is a valid Excel or CSV file.',
+    };
+  }
+}
+
+function readFileAsArrayBuffer(file: File): Promise<ArrayBuffer> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => resolve(e.target?.result as ArrayBuffer);
+    reader.onerror = () => reject(new Error('Failed to read file'));
     reader.readAsArrayBuffer(file);
   });
 }

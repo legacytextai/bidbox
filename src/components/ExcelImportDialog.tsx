@@ -275,7 +275,17 @@ export function ExcelImportDialog({
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Download className="h-4 w-4" />
         <button 
-          onClick={() => downloadImportTemplate()}
+          onClick={async () => {
+            try {
+              await downloadImportTemplate();
+            } catch (error) {
+              toast({
+                title: "Download failed",
+                description: "Failed to generate template. Please try again.",
+                variant: "destructive",
+              });
+            }
+          }}
           className="underline hover:text-foreground transition-colors"
         >
           Download template spreadsheet

@@ -110,6 +110,53 @@ Last Updated: 2026-01-12
 
 ---
 
+### SD-005: CSLB Cache Public Access Protection [FIXED]
+
+**Date**: 2026-01-12  
+**Status**: Fixed — Restricts anonymous bulk scraping
+
+**Issue**: The `cslb_cache` table had overly permissive policies:
+- `Anyone can read cslb_cache` - allowed anonymous bulk scraping
+- `Service role can manage cslb_cache` - ineffective (service role bypasses RLS anyway)
+
+**Fix Applied**:
+- Dropped both permissive policies
+- Created policy `Authenticated users can read cslb_cache` with `USING (true)` scoped to `TO authenticated`
+
+**Final RLS Policies**:
+| Policy | Command | Role | Condition |
+|--------|---------|------|-----------|
+| Authenticated users can read cslb_cache | SELECT | authenticated | `true` |
+
+**Why Service Role Access Still Works**: Service role keys automatically bypass RLS. The `lookup-cslb` edge function uses service role, so it continues to read/write cache without explicit policy.
+
+**Tradeoffs**: CSLB data is public record, but restricting to authenticated users prevents:
+- Bulk scraping by anonymous actors
+- API abuse without authentication
+- Data harvesting without usage tracking
+
+---
+
+### SD-006: Bids Table Anonymous INSERT [INTENTIONAL]
+
+**Date**: 2026-01-12  
+**Status**: Documented — Intentional design, not a vulnerability
+
+**Warning**: Security linter flags `WITH CHECK (true)` on bids INSERT.
+
+**Why This Is Correct**:
+- Subcontractors submit bids WITHOUT login (core product feature)
+- Public bid room at `/bid/:token` must allow anonymous submissions
+- Bids are tied to projects via `project_id` foreign key (enforces project existence)
+- Rate limiting on frontend prevents abuse
+- File validation prevents malicious uploads
+
+**Documentation Reference**: `docs/masterplan.md` - "Subs don't need accounts to submit quotes"
+
+**Action**: No change. Documented as accepted design.
+
+---
+
 ### SD-004: Bids Table Cross-GC Protection [VERIFIED SECURE]
 
 **Date**: 2026-01-06  
