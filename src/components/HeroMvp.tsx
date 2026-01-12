@@ -34,7 +34,8 @@ const HeroMvp = () => {
                 <span className="text-black dark:text-white"> for Public Works General Contractors.</span>
               </h1>
 
-                <p className="text-xl text-muted-foreground leading-relaxed">Share project files. Collect quotes. Stay in control on bid day — without chasing down emails or wrestling complicated software.</p>
+                <p className="text-xl text-muted-foreground leading-relaxed">Track projects. Share files. Collect quotes. 
+Stay in control on bid day — without chasing down emails or wrestling complicated software.</p>
               </div>
 
               {/* Key Benefits */}
