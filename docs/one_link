@@ -714,5 +714,93 @@ Map Create from Link into existing project schema
 Review existing Create Project flow and attach this surgically
 
 Status:
-Research complete. Direction locked. Ready to build.
+**Phase 1: COMPLETE** (2026-01-12)
+Research complete. Core implementation delivered. Production ready.
+
+---
+
+## 13. Implementation Status (Updated 2026-01-12)
+
+### Phase 1 Deliverables — COMPLETE
+
+#### Infrastructure
+| Feature | Status |
+|---------|--------|
+| Create from Link flow | ✅ COMPLETE |
+| Background crawl with loading state | ✅ COMPLETE |
+| Firecrawl integration | ✅ COMPLETE |
+| Portal type detection | ✅ COMPLETE |
+| Daily re-crawl cron job (5 AM PST) | ✅ COMPLETE |
+| Manual refresh capability | ✅ COMPLETE |
+| Change detection (`crawl_changes` JSONB) | ✅ COMPLETE |
+
+#### Semantic Extraction
+| Field | Status |
+|-------|--------|
+| Project title | ✅ COMPLETE |
+| Agency name | ✅ COMPLETE |
+| Bid due date/time | ✅ COMPLETE |
+| Job walk (exists/mandatory/date/details) | ✅ COMPLETE |
+| Eligibility restrictions | ✅ COMPLETE |
+| Disqualification language | ✅ COMPLETE |
+| Engineer's Estimate | ✅ COMPLETE |
+| Bond Requirements (bid/payment/performance) | ✅ COMPLETE |
+| Addenda count | ✅ COMPLETE |
+| County inference (city-to-county mapping) | ✅ COMPLETE |
+
+#### UI Components
+| Component | Status |
+|-----------|--------|
+| HighSignalPanel (5-column risk grid) | ✅ COMPLETE |
+| ProjectSignals (source link + staleness) | ✅ COMPLETE |
+| Crawl-pending loading state | ✅ COMPLETE |
+| Staleness color indicators (green/yellow/gray) | ✅ COMPLETE |
+| Prominent "Project Link" card | ✅ COMPLETE |
+
+### Supported Portals
+- Caltrans (Contractors Corner)
+- PlanetBids (multi-city: San Diego, Irvine, etc.)
+- EPRO (county portals: San Bernardino, etc.)
+- ERSP (LADWP)
+- BonfireHub (LAWA)
+- RAMP LA (aggregator)
+
+### Files Implemented
+| File | Purpose |
+|------|---------|
+| `supabase/functions/crawl-project/index.ts` | Main extraction engine with Firecrawl + LLM |
+| `supabase/functions/recrawl-projects/index.ts` | Batch re-crawl for change detection |
+| `src/components/HighSignalPanel.tsx` | 5-column risk signal display |
+| `src/components/ProjectSignals.tsx` | Source link + staleness indicators |
+| `src/pages/NewProject.tsx` | Create from Link entry point |
+| `src/pages/ProjectDetail.tsx` | Crawl UX integration + refresh |
+| `src/lib/platformDetection.ts` | Portal type detection utility |
+
+### Schema Extensions
+All fields added to `projects` table:
+- `source_url` (text) — Original project link
+- `portal_type` (text) — Detected platform type
+- `last_crawled_at` (timestamptz) — Last crawl timestamp
+- `job_walk_exists` (boolean)
+- `job_walk_mandatory` (boolean)
+- `job_walk_details` (text)
+- `eligibility_restricted` (boolean)
+- `eligibility_notes` (text)
+- `documents_visible` (boolean)
+- `documents_accessible` (boolean)
+- `scope_text` (text)
+- `crawl_snapshot` (jsonb) — Full extraction payload
+- `crawl_changes` (jsonb) — Detected changes from re-crawl
+
+---
+
+## 14. Phase 2 Roadmap (Future)
+
+### Planned Enhancements
+- Email notifications when `crawl_changes` detects bid deadline changes
+- Admin dashboard for monitoring crawl success rates
+- License requirements extraction as separate field
+- Support for additional portal types (Oregon, Arizona DOT)
+- Document manifest extraction (file names without download)
+
 

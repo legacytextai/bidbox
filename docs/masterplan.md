@@ -265,6 +265,9 @@ Fast to scaffold, secure by default, and matches Lovable's strengths.
 - ✅ Job walk date tracking + calendar display
 - ✅ Required trades display on public bid room
 - ✅ Network subs pagination + full export
+- ✅ **One Link project ingestion** (create from link, semantic extraction, daily re-crawl)
+- ✅ **HighSignalPanel** (job walk, eligibility, estimate, bonds, addenda)
+- ✅ **Calendar viewport optimization** (full month visible without scroll)
 
 **Phase 3.5: Trade Selection Layer** ✅ Database Complete  
 - ✅ Create `trade_types` table (state-agnostic reference table)
@@ -488,6 +491,31 @@ BidBox is building a long-term competitive moat by populating the Network Pool w
 | **7.6** | Compliance Jobs | Keep data fresh |
 
 See `docs/tasks.md` Phase 7 for detailed implementation tasks.
+
+---
+
+### 🔗 One Link Project Ingestion (Phase 1 Complete)
+
+> **Status**: ✅ COMPLETE (2026-01-12)
+
+One Link enables GCs to create projects by pasting a public works project URL. BidBox extracts metadata, tracks changes, and becomes the system of record.
+
+**What's Working**:
+- Paste link → Auto-extract project details
+- Background crawl with "Analyzing project..." loading UX
+- Semantic extraction for job walk, eligibility, estimates, bonds, addenda
+- Daily re-crawl (5 AM PST) with change detection
+- Manual refresh button with staleness indicators
+- HighSignalPanel displaying 5 risk signal columns
+
+**Supported Portals**: Caltrans, PlanetBids, EPRO, ERSP, BonfireHub, RAMP LA
+
+**Key Files**:
+- `supabase/functions/crawl-project/index.ts` — Extraction engine
+- `src/components/HighSignalPanel.tsx` — Risk signal display
+- `src/components/ProjectSignals.tsx` — Source link + staleness
+
+**Documentation**: See `docs/one_link` for full PRD and implementation status.
 
 ---
 
