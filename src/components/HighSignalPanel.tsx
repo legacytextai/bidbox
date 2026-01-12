@@ -11,24 +11,14 @@ interface HighSignalPanelProps {
     job_walk_details?: string | null;
     eligibility_restricted?: boolean | null;
     eligibility_notes?: string | null;
-    documents_visible?: boolean | null;
-    documents_accessible?: boolean | null;
     crawl_snapshot?: any;
     timezone?: string | null;
   };
 }
 
 export function HighSignalPanel({ project }: HighSignalPanelProps) {
-  // Check if any high-signal data exists
-  const hasJobWalkData = project.job_walk_exists !== null;
-  const hasEligibilityData = project.eligibility_restricted !== null;
-  const hasDocumentsData = project.documents_visible !== null || project.documents_accessible !== null;
-  
-  const hasAnyData = hasJobWalkData || hasEligibilityData || hasDocumentsData;
-  
-  if (!hasAnyData) {
-    return null;
-  }
+  // Always show panel for One Link projects - placeholder fields ensure content
+  // Future: Engineer's Estimate, Bond Requirements, and Addenda extraction not yet implemented
 
   const timezone = project.timezone || "America/Los_Angeles";
 
@@ -96,31 +86,10 @@ export function HighSignalPanel({ project }: HighSignalPanelProps) {
     );
   };
 
-  // Render Documents section
-  const renderDocuments = () => {
-    if (project.documents_visible === null && project.documents_accessible === null) {
-      return <span className="text-muted-foreground">Not detected</span>;
-    }
-
-    if (project.documents_visible === true && project.documents_accessible === true) {
-      return <span className="text-green-600">Publicly accessible</span>;
-    }
-
-    if (project.documents_visible === true && project.documents_accessible === false) {
-      return <span className="text-muted-foreground">Login required to download</span>;
-    }
-
-    if (project.documents_visible === false) {
-      return <span className="text-muted-foreground">Not listed on source</span>;
-    }
-
-    return <span className="text-muted-foreground">Not detected</span>;
-  };
-
   return (
     <Card className="mb-4 bg-muted/30 border-muted">
       <CardContent className="pt-4 pb-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           {/* Job Walk */}
           <div className="space-y-1">
             <Label className="text-xs uppercase tracking-wide text-muted-foreground">
@@ -137,12 +106,28 @@ export function HighSignalPanel({ project }: HighSignalPanelProps) {
             <div className="text-sm">{renderEligibility()}</div>
           </div>
 
-          {/* Documents Access */}
+          {/* Engineer's Estimate - extraction not yet implemented */}
           <div className="space-y-1">
             <Label className="text-xs uppercase tracking-wide text-muted-foreground">
-              Documents Access
+              Engineer's Estimate
             </Label>
-            <div className="text-sm">{renderDocuments()}</div>
+            <div className="text-sm text-muted-foreground">Not detected</div>
+          </div>
+
+          {/* Bond Requirements - extraction not yet implemented */}
+          <div className="space-y-1">
+            <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+              Bond Requirements
+            </Label>
+            <div className="text-sm text-muted-foreground">Not detected</div>
+          </div>
+
+          {/* Addenda - extraction not yet implemented */}
+          <div className="space-y-1">
+            <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+              Addenda
+            </Label>
+            <div className="text-sm text-muted-foreground">Not detected</div>
           </div>
         </div>
       </CardContent>
