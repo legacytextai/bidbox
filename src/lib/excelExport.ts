@@ -1,14 +1,16 @@
-import * as XLSX from 'xlsx';
+import { loadXLSX } from './xlsxLoader';
 import { CallListEntry } from './callListGenerator';
 import { BidListResult } from './bidListGenerator';
 
 /**
  * Export call list to Excel file and trigger download
  */
-export function exportCallListToExcel(
+export async function exportCallListToExcel(
   entries: CallListEntry[],
   projectName: string
-): void {
+): Promise<void> {
+  const XLSX = await loadXLSX();
+  
   // Prepare data with headers
   const data = entries.map(entry => ({
     'Company Name': entry.company_name || '',
@@ -25,7 +27,7 @@ export function exportCallListToExcel(
   const ws = XLSX.utils.json_to_sheet(data);
 
   // Set column widths
-  ws['!cols'] = [
+  (ws as any)['!cols'] = [
     { wch: 30 }, // Company Name
     { wch: 20 }, // Contact Name
     { wch: 15 }, // Phone
@@ -54,10 +56,11 @@ export function exportCallListToExcel(
 /**
  * Export bid list to Excel file with two sheets: My Subs and Network Subs
  */
-export function exportBidListToExcel(
+export async function exportBidListToExcel(
   result: BidListResult,
   projectName: string
-): void {
+): Promise<void> {
+  const XLSX = await loadXLSX();
   const wb = XLSX.utils.book_new();
 
   // Sheet 1: My Subs (Private Pool)
@@ -72,7 +75,7 @@ export function exportBidListToExcel(
   }));
 
   const wsPrivate = XLSX.utils.json_to_sheet(privateData);
-  wsPrivate['!cols'] = [
+  (wsPrivate as any)['!cols'] = [
     { wch: 30 }, // Company Name
     { wch: 20 }, // Contact Name
     { wch: 15 }, // Phone
@@ -94,7 +97,7 @@ export function exportBidListToExcel(
   }));
 
   const wsNetwork = XLSX.utils.json_to_sheet(networkData);
-  wsNetwork['!cols'] = [
+  (wsNetwork as any)['!cols'] = [
     { wch: 30 }, // Business Name
     { wch: 12 }, // License #
     { wch: 15 }, // Phone
@@ -127,7 +130,9 @@ export interface NetworkSubExportEntry {
   trades: string;
 }
 
-export function exportNetworkSubsToExcel(subs: NetworkSubExportEntry[]): void {
+export async function exportNetworkSubsToExcel(subs: NetworkSubExportEntry[]): Promise<void> {
+  const XLSX = await loadXLSX();
+  
   const data = subs.map((sub) => ({
     'Company Name': sub.company_name || '',
     'License #': sub.license_number || '',
@@ -139,7 +144,7 @@ export function exportNetworkSubsToExcel(subs: NetworkSubExportEntry[]): void {
 
   const ws = XLSX.utils.json_to_sheet(data);
 
-  ws['!cols'] = [
+  (ws as any)['!cols'] = [
     { wch: 30 }, // Company Name
     { wch: 12 }, // License #
     { wch: 12 }, // License Status
@@ -158,7 +163,9 @@ export function exportNetworkSubsToExcel(subs: NetworkSubExportEntry[]): void {
 /**
  * Create and download a template Excel file for subcontractor import
  */
-export function downloadImportTemplate(): void {
+export async function downloadImportTemplate(): Promise<void> {
+  const XLSX = await loadXLSX();
+  
   const templateData = [
     {
       'License Number': '1234567',
@@ -182,7 +189,7 @@ export function downloadImportTemplate(): void {
 
   const ws = XLSX.utils.json_to_sheet(templateData);
 
-  ws['!cols'] = [
+  (ws as any)['!cols'] = [
     { wch: 15 }, // License Number
     { wch: 25 }, // Company Name
     { wch: 20 }, // Contact Name
