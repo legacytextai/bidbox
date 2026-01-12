@@ -105,12 +105,17 @@ const CalendarGrid = ({ projects }: CalendarGridProps) => {
     navigate(`/projects/${projectId}`);
   };
 
+  // Calculate dynamic row height based on number of weeks
+  const weekCount = weeks.length;
+  // Roughly: viewport height - header - metrics - nav - day headers - padding
+  // Use flex-1 to distribute remaining space evenly among rows
+
   return (
-    <div className="calendar-print-root">
-      <div className="calendar-print-wrapper">
-        <div className="w-full max-w-7xl mx-auto print-calendar-container">
+    <div className="calendar-print-root h-full flex flex-col">
+      <div className="calendar-print-wrapper flex-1 flex flex-col min-h-0">
+        <div className="w-full max-w-7xl mx-auto print-calendar-container flex-1 flex flex-col min-h-0">
           {/* Month Navigation */}
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center justify-between mb-4 flex-shrink-0">
             <Button variant="outline" size="icon" onClick={handlePrevMonth} className="print:hidden">
               <ChevronLeft className="h-5 w-5" />
             </Button>
@@ -148,7 +153,7 @@ const CalendarGrid = ({ projects }: CalendarGridProps) => {
           </div>
 
           {/* Day Headers (Mon-Fri) */}
-          <div className="grid grid-cols-5 gap-1 mb-1">
+          <div className="grid grid-cols-5 gap-1 mb-1 flex-shrink-0">
             {["Mon", "Tue", "Wed", "Thu", "Fri"].map((day) => (
               <div key={day} className="text-center text-sm font-medium text-muted-foreground py-2">
                 {day}
@@ -156,12 +161,12 @@ const CalendarGrid = ({ projects }: CalendarGridProps) => {
             ))}
           </div>
 
-          {/* Calendar Grid */}
-          <div className="border border-border rounded-lg overflow-hidden print-calendar-grid">
+          {/* Calendar Grid - fills remaining space */}
+          <div className="border border-border rounded-lg overflow-hidden print-calendar-grid flex-1 flex flex-col min-h-0">
             {weeks.map((week, weekIndex) => (
               <div
                 key={weekIndex}
-                className="grid grid-cols-5 divide-x divide-border border-b last:border-b-0 border-border"
+                className="grid grid-cols-5 divide-x divide-border border-b last:border-b-0 border-border flex-1"
               >
                 {week.map((day) => {
                   const dayEvents = eventsForDay(day);
@@ -171,11 +176,11 @@ const CalendarGrid = ({ projects }: CalendarGridProps) => {
                   return (
                     <div
                       key={day.toISOString()}
-                      className={`min-h-[160px] p-3 ${isCurrentMonth ? "bg-background" : "bg-muted/30"}`}
+                      className={`p-2 overflow-hidden ${isCurrentMonth ? "bg-background" : "bg-muted/30"}`}
                     >
                       {/* Date Number */}
                       <div
-                        className={`text-sm font-medium mb-1 w-7 h-7 flex items-center justify-center rounded-full ${
+                        className={`text-sm font-medium mb-1 w-6 h-6 flex items-center justify-center rounded-full ${
                           isTodayDate
                             ? "bg-primary text-primary-foreground"
                             : isCurrentMonth
@@ -187,7 +192,7 @@ const CalendarGrid = ({ projects }: CalendarGridProps) => {
                       </div>
 
                       {/* Events */}
-                      <div className="space-y-1.5">
+                      <div className="space-y-1 overflow-y-auto max-h-[calc(100%-32px)]">
                         {dayEvents.map((event) => {
                           const isBidDue = event.type === "bid_due";
                           const label = isBidDue ? "Bid Due" : "Job Walk";
@@ -196,21 +201,21 @@ const CalendarGrid = ({ projects }: CalendarGridProps) => {
                             <button
                               key={event.id}
                               onClick={() => handleEventClick(event.projectId)}
-                              className={`w-full text-left rounded px-2.5 py-2 text-sm transition-colors cursor-pointer ${
+                              className={`w-full text-left rounded px-2 py-1.5 text-xs transition-colors cursor-pointer ${
                                 isBidDue
                                   ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
                                   : "bg-gray-600 text-white hover:bg-gray-700"
                               }`}
                             >
                               <span
-                                className={`inline-block text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded mb-1 ${
+                                className={`inline-block text-[9px] font-semibold uppercase tracking-wide px-1 py-0.5 rounded mb-0.5 ${
                                   isBidDue ? "bg-destructive-foreground/20" : "bg-white/20"
                                 }`}
                               >
                                 {label}
                               </span>
-                              <div className="font-medium truncate leading-snug">{event.projectName}</div>
-                              <div className={`text-xs ${isBidDue ? "text-destructive-foreground/80" : "text-white/80"}`}>
+                              <div className="font-medium truncate leading-tight">{event.projectName}</div>
+                              <div className={`text-[10px] ${isBidDue ? "text-destructive-foreground/80" : "text-white/80"}`}>
                                 {format(new Date(event.datetime), "MM/dd @ h:mm a")}
                               </div>
                             </button>
