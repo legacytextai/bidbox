@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, RefreshCw } from "lucide-react";
 import bidboxLogo from "@/assets/bidbox-logo-auth.png";
 
 const authSchema = z.object({
@@ -193,7 +193,7 @@ const Auth = () => {
             </Button>
           </form>
 
-          <div className="mt-4 text-center">
+          <div className="mt-4 text-center space-y-2">
             <button
               type="button"
               onClick={() => setIsLogin(!isLogin)}
@@ -203,10 +203,65 @@ const Auth = () => {
                 ? "Don't have an account? Sign up"
                 : "Already have an account? Sign in"}
             </button>
+            
+            {isLogin && (
+              <ResendVerificationButton email={email} />
+            )}
           </div>
         </div>
       </div>
     </div>
+  );
+};
+
+const ResendVerificationButton = ({ email }: { email: string }) => {
+  const [loading, setLoading] = useState(false);
+  const { toast } = useToast();
+
+  const handleResend = async () => {
+    if (!email) {
+      toast({
+        title: "Email required",
+        description: "Please enter your email address first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.resend({
+        type: "signup",
+        email,
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Email sent",
+        description: "Check your inbox for the verification link",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to resend verification email",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleResend}
+      disabled={loading}
+      className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors mx-auto"
+    >
+      <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} />
+      {loading ? "Sending..." : "Resend verification email"}
+    </button>
   );
 };
 
