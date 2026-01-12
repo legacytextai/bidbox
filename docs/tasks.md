@@ -1,7 +1,7 @@
 # BidBox Implementation Tasks
 
 **Source of Truth for Feature Implementation**  
-Last Updated: 2026-01-06
+Last Updated: 2026-01-12
 
 ---
 
@@ -873,6 +873,79 @@ USING (
 - Add change notification emails when bid_due_at changes
 - Display change alert banner when `crawl_changes` is populated
 - Add admin dashboard for monitoring re-crawl success rates
+
+---
+
+### Task 2.17: One Link HighSignalPanel & Enhanced Extraction [✅ COMPLETED]
+
+**Goal**: Create read-only panel displaying high-signal project requirements extracted from One Link crawls, and enhance extraction to capture cost/bond/addenda fields.
+
+**Status**: ✅ Completed 2026-01-12
+
+**Deliverables**:
+
+1. **HighSignalPanel Component**
+   - New component: `src/components/HighSignalPanel.tsx`
+   - Displays 5 risk signal columns in responsive grid:
+     - Job Walk (status, date, details)
+     - Eligibility Restrictions (status, notes)
+     - Engineer's Estimate (formatted currency)
+     - Bond Requirements (bid/payment/performance %)
+     - Addenda (count, details)
+   - Only renders for One Link projects with completed crawls
+   - Graceful "Not detected" fallbacks for missing data
+
+2. **Enhanced Semantic Extraction**
+   - Updated LLM prompt in `crawl-project` to extract:
+     - `engineers_estimate` (amount, currency, raw_text)
+     - `bonds` (bid_bond_percent, payment_bond_percent, performance_bond_percent, notes)
+     - `addenda` (count, details)
+   - Added extraction rules for cost/bond/addenda patterns
+   - All new fields stored in `crawl_snapshot.semantic`
+
+3. **Integration**
+   - Panel integrated into ProjectDetail page after ProjectSignals
+   - Conditional render: only shows for source_url + last_crawled_at
+
+**Files Modified**:
+- `supabase/functions/crawl-project/index.ts` — Enhanced LLM prompts + schema
+- `src/components/HighSignalPanel.tsx` — New component
+- `src/pages/ProjectDetail.tsx` — Panel integration
+
+**How to test**:
+1. Create project from PlanetBids URL with visible estimate/bond info
+2. Wait for crawl to complete
+3. Verify HighSignalPanel displays extracted values
+4. For projects without those fields, verify "Not detected" fallbacks
+
+**Design Decisions**:
+- No database schema changes — data stored in existing crawl_snapshot JSONB
+- Panel is read-only — no edit capability
+- Documents Access field removed as unnecessary
+
+---
+
+### Task 2.18: Calendar Viewport Fit [✅ COMPLETED]
+
+**Goal**: Ensure entire calendar month fits within viewport without scrolling.
+
+**Status**: ✅ Completed 2026-01-12
+
+**Problem**: Last week of month was cut off, requiring scroll to view.
+
+**Solution**:
+- Updated `CalendarGrid.tsx` to use viewport-based height calculations
+- Changed from fixed `min-h-[160px]` cells to dynamic height based on weeks count
+- Updated `CalendarDashboard.tsx` to use flex layout filling remaining height
+
+**Files Modified**:
+- `src/components/CalendarGrid.tsx` — Dynamic cell heights
+- `src/pages/CalendarDashboard.tsx` — Flex layout
+
+**How to test**:
+1. Navigate to /calendar
+2. Verify all weeks of current month are visible without scrolling
+3. Navigate between months, verify consistent fit
 
 ---
 
