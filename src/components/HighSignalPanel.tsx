@@ -86,6 +86,59 @@ export function HighSignalPanel({ project }: HighSignalPanelProps) {
     );
   };
 
+  // Engineer's Estimate
+  const renderEngineersEstimate = () => {
+    const estimate = project.crawl_snapshot?.semantic?.engineers_estimate;
+    if (!estimate?.amount) {
+      return <span className="text-muted-foreground">Not detected</span>;
+    }
+    const formatted = new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: estimate.currency || 'USD',
+      maximumFractionDigits: 0
+    }).format(estimate.amount);
+    return <span>{formatted}</span>;
+  };
+
+  // Bond Requirements
+  const renderBondRequirements = () => {
+    const bonds = project.crawl_snapshot?.semantic?.bonds;
+    if (!bonds?.bid_bond_percent && !bonds?.payment_bond_percent && !bonds?.performance_bond_percent) {
+      return <span className="text-muted-foreground">Not detected</span>;
+    }
+    const parts: string[] = [];
+    if (bonds.bid_bond_percent != null) parts.push(`Bid: ${bonds.bid_bond_percent}%`);
+    if (bonds.payment_bond_percent != null) parts.push(`Payment: ${bonds.payment_bond_percent}%`);
+    if (bonds.performance_bond_percent != null) parts.push(`Performance: ${bonds.performance_bond_percent}%`);
+    return (
+      <div className="space-y-0.5">
+        <span>{parts.join(' · ')}</span>
+        {bonds.notes && (
+          <p className="text-xs text-muted-foreground">{bonds.notes}</p>
+        )}
+      </div>
+    );
+  };
+
+  // Addenda
+  const renderAddenda = () => {
+    const addenda = project.crawl_snapshot?.semantic?.addenda;
+    if (addenda?.count == null) {
+      return <span className="text-muted-foreground">Not detected</span>;
+    }
+    if (addenda.count === 0) {
+      return <span className="text-muted-foreground">None</span>;
+    }
+    return (
+      <div className="space-y-0.5">
+        <span>{addenda.count} addend{addenda.count === 1 ? 'um' : 'a'}</span>
+        {addenda.details && (
+          <p className="text-xs text-muted-foreground">{addenda.details}</p>
+        )}
+      </div>
+    );
+  };
+
   return (
     <Card className="mb-4 bg-muted/30 border-muted">
       <CardContent className="pt-4 pb-4">
@@ -106,28 +159,28 @@ export function HighSignalPanel({ project }: HighSignalPanelProps) {
             <div className="text-sm">{renderEligibility()}</div>
           </div>
 
-          {/* Engineer's Estimate - extraction not yet implemented */}
+          {/* Engineer's Estimate */}
           <div className="space-y-1">
             <Label className="text-xs uppercase tracking-wide text-muted-foreground">
               Engineer's Estimate
             </Label>
-            <div className="text-sm text-muted-foreground">Not detected</div>
+            <div className="text-sm">{renderEngineersEstimate()}</div>
           </div>
 
-          {/* Bond Requirements - extraction not yet implemented */}
+          {/* Bond Requirements */}
           <div className="space-y-1">
             <Label className="text-xs uppercase tracking-wide text-muted-foreground">
               Bond Requirements
             </Label>
-            <div className="text-sm text-muted-foreground">Not detected</div>
+            <div className="text-sm">{renderBondRequirements()}</div>
           </div>
 
-          {/* Addenda - extraction not yet implemented */}
+          {/* Addenda */}
           <div className="space-y-1">
             <Label className="text-xs uppercase tracking-wide text-muted-foreground">
               Addenda
             </Label>
-            <div className="text-sm text-muted-foreground">Not detected</div>
+            <div className="text-sm">{renderAddenda()}</div>
           </div>
         </div>
       </CardContent>

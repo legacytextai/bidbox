@@ -342,6 +342,20 @@ RULES FOR JOB WALK EXTRACTION:
 - Extract the meeting location/address if provided
 - Only mark mandatory as true if words like "mandatory", "required", "must attend", "failure to attend will disqualify" appear
 
+RULES FOR COST/BOND EXTRACTION:
+- Look for "Estimated Bid Value", "Engineer's Estimate", "Estimated Cost", "Budget", "Project Value"
+- Extract the numeric value and currency (e.g., "$7,500,000.00" → 7500000, "USD")
+- Look for "Bid Bond", "Payment Bond", "Performance Bond", "Bid Security" percentages
+- Common patterns: "Bid Bond: 10%", "Payment Bond (100%)", "Bid Security: 5%"
+- Only extract if explicitly stated with a percentage or dollar amount
+- If not found, return null
+
+RULES FOR ADDENDA EXTRACTION:
+- Search for "Addenda", "Addendum", "Amendment", "Revision"
+- Count how many addenda are listed or referenced
+- Look for patterns like "Addendum 1", "Addenda (3)", "2 addenda issued"
+- Only count if explicitly mentioned, do not infer
+
 GENERAL RULES:
 - Only mark values as true if EXPLICITLY stated in the text
 - If something is ambiguous or not mentioned, return null
@@ -414,6 +428,33 @@ Extract the information using the provided function.`
                         accessible: { type: "boolean", description: "Can documents be downloaded without login?" }
                       },
                       required: ["visible"]
+                    },
+                    engineers_estimate: {
+                      type: "object",
+                      properties: {
+                        amount: { type: "number", description: "Estimated project value as a number (no commas, no currency symbol). e.g. 7500000 for $7,500,000" },
+                        currency: { type: "string", description: "Currency code, typically USD" },
+                        raw_text: { type: "string", description: "Original text exactly as shown on page, e.g. '$7,500,000.00'" }
+                      },
+                      description: "Engineer's Estimate or Estimated Bid Value if explicitly stated. Return null if not found."
+                    },
+                    bonds: {
+                      type: "object",
+                      properties: {
+                        bid_bond_percent: { type: "number", description: "Bid bond percentage as number (e.g., 10 for 10%)" },
+                        payment_bond_percent: { type: "number", description: "Payment bond percentage as number (e.g., 100 for 100%)" },
+                        performance_bond_percent: { type: "number", description: "Performance bond percentage as number (e.g., 100 for 100%)" },
+                        notes: { type: "string", description: "Additional bond requirements, conditions, or alternative amounts if stated" }
+                      },
+                      description: "Bond requirements if explicitly stated. Return null if not found."
+                    },
+                    addenda: {
+                      type: "object",
+                      properties: {
+                        count: { type: "number", description: "Number of addenda detected. Use 0 if 'no addenda' or 'none' is stated." },
+                        details: { type: "string", description: "List of addenda with dates/numbers if available, e.g. 'Addendum 1 (12/15/2025), Addendum 2 (12/20/2025)'" }
+                      },
+                      description: "Addenda/amendments detected on the page. Return null if not mentioned."
                     },
                     disqualification_language: {
                       type: "string",
