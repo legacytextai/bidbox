@@ -229,11 +229,18 @@ const CalendarGrid = ({ projects }: CalendarGridProps) => {
                                 : "Job Walk"}
                               className={`w-full text-left rounded px-2 py-1.5 text-xs transition-colors cursor-pointer ${eventColor}`}
                             >
-                              <span
-                                className={`inline-block text-[9px] font-semibold uppercase tracking-wide px-1 py-0.5 rounded mb-0.5 ${badgeBg}`}
-                              >
-                                {label}
-                              </span>
+                              <div className="flex items-center gap-1 mb-0.5 flex-wrap">
+                                <span className={`inline-block text-[9px] font-semibold uppercase tracking-wide px-1 py-0.5 rounded ${badgeBg}`}>
+                                  {label}
+                                </span>
+                                {isBidDue && (
+                                  <span className={`inline-block text-[9px] font-semibold uppercase tracking-wide px-1 py-0.5 rounded ${
+                                    event.isReadyToBid ? "bg-white/30" : "bg-white/20"
+                                  }`}>
+                                    {event.isReadyToBid ? "Ready" : "Not Ready"}
+                                  </span>
+                                )}
+                              </div>
                               <div className="font-medium truncate leading-tight">{event.projectName}</div>
                               <div className={`text-[10px] ${subtitleColor}`}>
                                 {format(new Date(event.datetime), "MM/dd @ h:mm a")}
