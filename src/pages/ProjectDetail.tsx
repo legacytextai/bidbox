@@ -23,6 +23,7 @@ import { getProjectDisplayStatus } from "@/lib/projectStatus";
 import { CountySelect } from "@/components/CountySelect";
 import { ProjectSignals } from "@/components/ProjectSignals";
 import { HighSignalPanel } from "@/components/HighSignalPanel";
+import { BidReadinessChecklist } from "@/components/BidReadinessChecklist";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -574,6 +575,9 @@ const ProjectDetail = () => {
 
           {/* Project Signals from One Link crawl */}
           <ProjectSignals project={project} className="mb-4" onRefresh={project.source_url ? handleReCrawl : undefined} isRefreshing={isRecrawling} />
+
+          {/* Bid Readiness Checklist - Manual readiness tracking */}
+          <BidReadinessChecklist projectId={id!} />
 
           {/* High-Signal Panel (read-only) - Requirements & Risk Signals */}
           {project?.source_url && project?.last_crawled_at && (

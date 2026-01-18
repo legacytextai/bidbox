@@ -211,6 +211,71 @@ export type Database = {
         }
         Relationships: []
       }
+      project_bid_readiness: {
+        Row: {
+          addenda_issued: boolean | null
+          addenda_reviewed: boolean | null
+          addenda_reviewed_at: string | null
+          bid_sheet_complete: boolean | null
+          bond_delivery_method: string | null
+          bond_in_person_delivered: boolean | null
+          bond_online_submitted: boolean | null
+          bond_required: boolean | null
+          job_walk_attended_by: string | null
+          job_walk_completed: boolean | null
+          job_walk_mandatory: boolean | null
+          project_id: string
+          proposal_notarized: boolean | null
+          proposal_prepared: boolean | null
+          proposal_signed: boolean | null
+          updated_at: string | null
+        }
+        Insert: {
+          addenda_issued?: boolean | null
+          addenda_reviewed?: boolean | null
+          addenda_reviewed_at?: string | null
+          bid_sheet_complete?: boolean | null
+          bond_delivery_method?: string | null
+          bond_in_person_delivered?: boolean | null
+          bond_online_submitted?: boolean | null
+          bond_required?: boolean | null
+          job_walk_attended_by?: string | null
+          job_walk_completed?: boolean | null
+          job_walk_mandatory?: boolean | null
+          project_id: string
+          proposal_notarized?: boolean | null
+          proposal_prepared?: boolean | null
+          proposal_signed?: boolean | null
+          updated_at?: string | null
+        }
+        Update: {
+          addenda_issued?: boolean | null
+          addenda_reviewed?: boolean | null
+          addenda_reviewed_at?: string | null
+          bid_sheet_complete?: boolean | null
+          bond_delivery_method?: string | null
+          bond_in_person_delivered?: boolean | null
+          bond_online_submitted?: boolean | null
+          bond_required?: boolean | null
+          job_walk_attended_by?: string | null
+          job_walk_completed?: boolean | null
+          job_walk_mandatory?: boolean | null
+          project_id?: string
+          proposal_notarized?: boolean | null
+          proposal_prepared?: boolean | null
+          proposal_signed?: boolean | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_bid_readiness_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: true
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       project_files: {
         Row: {
           created_at: string
