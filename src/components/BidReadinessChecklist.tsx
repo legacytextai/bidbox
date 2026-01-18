@@ -6,7 +6,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { CheckCircle2, Circle } from "lucide-react";
+import { CheckCircle2, Circle, ClipboardCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 
@@ -182,13 +182,18 @@ export function BidReadinessChecklist({ projectId }: BidReadinessChecklistProps)
   const overallStatus = getOverallStatus();
 
   return (
-    <Card className="mb-4 border-l-4 border-l-blue-600 border-t border-r border-b border-muted bg-background shadow-sm">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-lg font-semibold uppercase tracking-wide text-foreground">
-          Bid Readiness Checklist
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="pt-0">
+    <Card className="mb-4 overflow-hidden border-0 shadow-md bg-slate-50/50 dark:bg-slate-900/50">
+      {/* Blue header band */}
+      <div className="bg-blue-600 px-6 py-4">
+        <div className="flex items-center gap-3">
+          <ClipboardCheck className="h-6 w-6 text-white" />
+          <h2 className="text-lg font-semibold uppercase tracking-wide text-white">
+            Bid Readiness Checklist
+          </h2>
+        </div>
+      </div>
+      
+      <CardContent className="pt-4 px-6">
         <Accordion type="multiple" className="w-full">
           {/* Bid Bond Section */}
           <AccordionItem value="bond" className="border-b-0">
@@ -443,9 +448,9 @@ export function BidReadinessChecklist({ projectId }: BidReadinessChecklistProps)
 
         {/* Overall Status Bar */}
         <div className={cn(
-          "mt-4 py-2 px-3 rounded-md text-sm font-medium text-center",
+          "mt-4 py-3 px-4 rounded-lg text-sm font-semibold text-center",
           overallStatus.ready 
-            ? "bg-green-500/10 text-green-600 border border-green-500/20" 
+            ? "bg-green-500 text-white shadow-sm" 
             : "bg-red-500/10 text-red-600 border border-red-500/20"
         )}>
           {overallStatus.message}
