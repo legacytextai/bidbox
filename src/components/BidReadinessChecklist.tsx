@@ -159,13 +159,15 @@ export function BidReadinessChecklist({ projectId }: BidReadinessChecklistProps)
     
     // ONLY ready if ALL 5 sections are green
     if (greenCount === 5) {
-      return { ready: true, message: "READY TO BID" };
+      return { ready: true, message: "READY TO BID", greenCount, total: 5 };
     }
     
     const notGreenCount = 5 - greenCount;
     return { 
       ready: false, 
-      message: `NOT READY TO BID (${notGreenCount} item${notGreenCount > 1 ? "s" : ""} remaining)` 
+      message: `NOT READY TO BID (${notGreenCount} item${notGreenCount > 1 ? "s" : ""} remaining)`,
+      greenCount,
+      total: 5
     };
   };
 
@@ -185,11 +187,30 @@ export function BidReadinessChecklist({ projectId }: BidReadinessChecklistProps)
     <Card className="mb-4 overflow-hidden border-0 shadow-md bg-slate-50/50 dark:bg-slate-900/50">
       {/* Blue header band */}
       <div className="bg-blue-600 px-6 py-4">
-        <div className="flex items-center gap-3">
-          <ClipboardCheck className="h-6 w-6 text-white" />
-          <h2 className="text-lg font-semibold uppercase tracking-wide text-white">
-            Bid Readiness Checklist
-          </h2>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <ClipboardCheck className="h-6 w-6 text-white" />
+            <h2 className="text-lg font-semibold uppercase tracking-wide text-white">
+              Bid Readiness Checklist
+            </h2>
+          </div>
+          {/* Progress indicator */}
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
+              {[...Array(5)].map((_, i) => (
+                <div
+                  key={i}
+                  className={cn(
+                    "h-2 w-2 rounded-full transition-colors",
+                    i < overallStatus.greenCount ? "bg-green-400" : "bg-white/30"
+                  )}
+                />
+              ))}
+            </div>
+            <span className="text-sm font-medium text-white/90">
+              {overallStatus.greenCount}/5
+            </span>
+          </div>
         </div>
       </div>
       
