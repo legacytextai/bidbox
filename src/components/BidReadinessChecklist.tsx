@@ -6,7 +6,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { CheckCircle2, Circle, AlertCircle, MinusCircle } from "lucide-react";
+import { CheckCircle2, Circle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 
@@ -32,19 +32,13 @@ interface BidReadinessChecklistProps {
   projectId: string;
 }
 
-type SectionStatus = "green" | "yellow" | "red" | "gray";
+type SectionStatus = "green" | "red";
 
 const StatusIcon = ({ status, className }: { status: SectionStatus; className?: string }) => {
-  switch (status) {
-    case "green":
-      return <CheckCircle2 className={cn("h-5 w-5 text-green-500", className)} />;
-    case "yellow":
-      return <AlertCircle className={cn("h-5 w-5 text-yellow-500", className)} />;
-    case "red":
-      return <Circle className={cn("h-5 w-5 text-red-500 fill-red-500", className)} />;
-    case "gray":
-      return <MinusCircle className={cn("h-5 w-5 text-muted-foreground", className)} />;
+  if (status === "green") {
+    return <CheckCircle2 className={cn("h-5 w-5 text-green-500", className)} />;
   }
+  return <Circle className={cn("h-5 w-5 text-red-500 fill-red-500", className)} />;
 };
 
 export function BidReadinessChecklist({ projectId }: BidReadinessChecklistProps) {
@@ -109,9 +103,12 @@ export function BidReadinessChecklist({ projectId }: BidReadinessChecklistProps)
 
   // Status computation functions
   const getBondStatus = (): SectionStatus => {
-    if (data.bond_required === false) return "gray";
-    if (data.bond_required === null) return "gray";
+    // Not answered = not ready
+    if (data.bond_required === null) return "red";
+    // Explicitly not required = ready
+    if (data.bond_required === false) return "green";
     
+    // Required - check delivery
     const method = data.bond_delivery_method;
     if (!method) return "red";
     
@@ -122,36 +119,30 @@ export function BidReadinessChecklist({ projectId }: BidReadinessChecklistProps)
       return data.bond_in_person_delivered ? "green" : "red";
     }
     if (method === "both") {
-      if (data.bond_online_submitted && data.bond_in_person_delivered) return "green";
-      if (data.bond_online_submitted || data.bond_in_person_delivered) return "yellow";
-      return "red";
+      return (data.bond_online_submitted && data.bond_in_person_delivered) ? "green" : "red";
     }
-    return "gray";
+    return "red";
   };
 
   const getJobWalkStatus = (): SectionStatus => {
-    if (data.job_walk_mandatory === null) return "gray";
-    if (data.job_walk_mandatory === false) return "gray";
+    if (data.job_walk_mandatory === null) return "red";
+    if (data.job_walk_mandatory === false) return "green";
     return data.job_walk_completed ? "green" : "red";
   };
 
   const getAddendaStatus = (): SectionStatus => {
-    if (data.addenda_issued === null) return "gray";
-    if (data.addenda_issued === false) return "gray";
+    if (data.addenda_issued === null) return "red";
+    if (data.addenda_issued === false) return "green";
     return data.addenda_reviewed ? "green" : "red";
   };
 
   const getProposalStatus = (): SectionStatus => {
-    if (data.proposal_prepared === null && data.proposal_signed === null && data.proposal_notarized === null) {
-      return "gray";
-    }
-    if (data.proposal_prepared && data.proposal_signed && data.proposal_notarized) return "green";
-    if (data.proposal_prepared || data.proposal_signed || data.proposal_notarized) return "yellow";
-    return "red";
+    return (data.proposal_prepared && data.proposal_signed && data.proposal_notarized) 
+      ? "green" 
+      : "red";
   };
 
   const getBidSheetStatus = (): SectionStatus => {
-    if (data.bid_sheet_complete === null) return "gray";
     return data.bid_sheet_complete ? "green" : "red";
   };
 
