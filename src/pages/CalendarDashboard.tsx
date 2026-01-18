@@ -75,10 +75,10 @@ const CalendarDashboard = () => {
               <div className="text-sm text-muted-foreground mt-1">Projects Ready for Bid</div>
             </div>
 
-            {/* Top 3 (Placeholder) */}
+            {/* Bids Submitted (Placeholder) */}
             <div className="text-center bg-card border border-border rounded-xl px-6 py-4 min-w-[160px] opacity-50">
               <div className="text-4xl font-bold text-muted-foreground">0</div>
-              <div className="text-sm text-muted-foreground mt-1">Top 3</div>
+              <div className="text-sm text-muted-foreground mt-1">Bids Submitted</div>
             </div>
           </div>
         </div>
