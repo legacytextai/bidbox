@@ -164,17 +164,17 @@ export function BidReadinessChecklist({ projectId }: BidReadinessChecklistProps)
       getBidSheetStatus(),
     ];
     
-    const redCount = statuses.filter(s => s === "red").length;
-    const yellowCount = statuses.filter(s => s === "yellow").length;
+    const greenCount = statuses.filter(s => s === "green").length;
     
-    if (redCount === 0 && yellowCount === 0) {
+    // ONLY ready if ALL 5 sections are green
+    if (greenCount === 5) {
       return { ready: true, message: "READY TO BID" };
     }
     
-    const remaining = redCount + yellowCount;
+    const notGreenCount = 5 - greenCount;
     return { 
       ready: false, 
-      message: `NOT READY TO BID (${remaining} item${remaining > 1 ? "s" : ""} remaining)` 
+      message: `NOT READY TO BID (${notGreenCount} item${notGreenCount > 1 ? "s" : ""} remaining)` 
     };
   };
 
