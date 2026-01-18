@@ -18,6 +18,7 @@ interface Project {
   bid_due_at: string;
   public_token: string;
   timezone: string;
+  is_ready_to_bid: boolean | null;
   submission_count?: number;
 }
 
@@ -70,7 +71,8 @@ const Projects = () => {
         status,
         bid_due_at,
         public_token,
-        timezone
+        timezone,
+        is_ready_to_bid
       `)
       .order("bid_due_at", { ascending: true });
 
@@ -147,10 +149,21 @@ const Projects = () => {
                 onClick={() => navigate(`/projects/${project.id}`)}
                 className="bg-card border border-border rounded-lg p-6 hover:shadow-lg transition-all cursor-pointer"
               >
-                <div className="flex items-start justify-between mb-4">
-                  <h3 className="font-semibold text-lg text-foreground">
-                    {project.name}
-                  </h3>
+                <div className="flex items-start justify-between mb-2">
+                  <div>
+                    <h3 className="font-semibold text-lg text-foreground">
+                      {project.name}
+                    </h3>
+                    <span
+                      className={`inline-block text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded mt-1 ${
+                        project.is_ready_to_bid
+                          ? "bg-green-500/15 text-green-600"
+                          : "bg-red-500/15 text-red-600"
+                      }`}
+                    >
+                      {project.is_ready_to_bid ? "Ready to Submit" : "Not Ready to Submit"}
+                    </span>
+                  </div>
                   {(() => {
                     const displayStatus = getProjectDisplayStatus(project);
                     return (
@@ -169,7 +182,7 @@ const Projects = () => {
                   })()}
                 </div>
                 
-                <p className="text-sm text-muted-foreground mb-2">
+                <p className="text-sm text-muted-foreground mb-2 mt-2">
                   Bid Date: {formatInProjectTimezone(project.bid_due_at, project.timezone || "America/Los_Angeles", "MMM d, yyyy h:mm a zzz")}
                 </p>
                 
