@@ -78,6 +78,56 @@
 **Phase 4.1 – GC Profile & Calendar Enhancements** ✅ Completed 2026-01-05
 
 - [x] Estimating email field in /settings
+
+---
+
+**Phase 4.2 – Bid Readiness Checklist** ✅ Completed 2026-01-18
+
+**Objective:** Provide estimators with a manual checklist to verify project-critical bureaucratic requirements before bid submission.
+
+**Design Principles:**
+- Manual confirmation required (no automation or assumptions)
+- Estimator must consciously verify each requirement
+- Awareness over enforcement
+
+**Database Schema:**
+- [x] Created `project_bid_readiness` table with all checklist fields
+- [x] Added `is_ready_to_bid` boolean to `projects` table
+- [x] Created `update_project_bid_readiness` trigger on checklist changes
+- [x] Created `evaluate_bid_readiness()` SQL function for automatic status calculation
+
+**Component Implementation:**
+- [x] `BidReadinessChecklist` component (`src/components/BidReadinessChecklist.tsx`)
+- [x] 5 collapsible Accordion sections:
+  - Bid Bond (required? delivery method? submitted/delivered?)
+  - Pre-Bid / Job Walk (mandatory? completed? attended by?)
+  - Addenda Review (issued? reviewed? reviewed date?)
+  - Bid Proposal (prepared? signed? notarized?)
+  - Bid Sheet (complete?)
+- [x] Status icons: Green CheckCircle2 (ready), Red filled Circle (not ready)
+- [x] Progress indicator: 5 dots + X/5 counter in header
+- [x] Auto-save on every interaction
+- [x] Overall status banner: "READY TO BID" (all green) or "NOT READY TO BID (X items remaining)"
+
+**Visual Integration:**
+- [x] Calendar event readiness badges (`[BID DUE] [READY]` or `[BID DUE] [NOT READY]`)
+- [x] Calendar color coding: Green card for ready, Red card for not ready
+- [x] "Projects Ready for Bid" live counter tile on `/calendar` dashboard
+- [x] "Ready to Submit" / "Not Ready to Submit" badges on `/projects` page
+
+**Placement:** ProjectDetail page, below ProjectSignals, above project metadata
+
+**Access:** GC admin only
+
+**Explicit Non-Goals:**
+- No automation of readiness decisions
+- No blocking of bid submissions
+- No notifications or reminders
+- No workflow enforcement
+
+---
+
+**Phase 4.1 (continued)
 - [x] Display estimating contact in public bid room (with mailto: link)
 - [x] Job walk date/time field on projects (create + edit)
 - [x] Calendar integration for job walk events (gray badge)

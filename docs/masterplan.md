@@ -268,6 +268,11 @@ Fast to scaffold, secure by default, and matches Lovable's strengths.
 - ✅ **One Link project ingestion** (create from link, semantic extraction, daily re-crawl)
 - ✅ **HighSignalPanel** (job walk, eligibility, estimate, bonds, addenda)
 - ✅ **Calendar viewport optimization** (full month visible without scroll)
+- ✅ **Bid Readiness Checklist** (2026-01-18)
+  - Manual 5-section checklist for bid preparation verification
+  - Sections: Bid Bond, Job Walk, Addenda, Proposal, Bid Sheet
+  - Database-backed with auto-sync to `is_ready_to_bid` flag
+  - Calendar and Projects page visual indicators (green/red badges)
 
 **Phase 3.5: Trade Selection Layer** ✅ Database Complete  
 - ✅ Create `trade_types` table (state-agnostic reference table)
