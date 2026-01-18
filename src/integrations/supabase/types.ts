@@ -362,6 +362,7 @@ export type Database = {
           gc_id: string
           id: string
           instructions: string | null
+          is_ready_to_bid: boolean | null
           job_walk_at: string | null
           job_walk_details: string | null
           job_walk_exists: boolean | null
@@ -392,6 +393,7 @@ export type Database = {
           gc_id: string
           id?: string
           instructions?: string | null
+          is_ready_to_bid?: boolean | null
           job_walk_at?: string | null
           job_walk_details?: string | null
           job_walk_exists?: boolean | null
@@ -422,6 +424,7 @@ export type Database = {
           gc_id?: string
           id?: string
           instructions?: string | null
+          is_ready_to_bid?: boolean | null
           job_walk_at?: string | null
           job_walk_details?: string | null
           job_walk_exists?: boolean | null
