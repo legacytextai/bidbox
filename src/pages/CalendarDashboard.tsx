@@ -55,6 +55,7 @@ const CalendarDashboard = () => {
   }
 
   const projectCount = projects.length;
+  const readyCount = projects.filter(p => p.is_ready_to_bid).length;
 
   return (
     <Layout showSidebar>
@@ -68,10 +69,10 @@ const CalendarDashboard = () => {
               <div className="text-sm text-muted-foreground mt-1">Projects Scheduled</div>
             </div>
 
-            {/* Bids Submitted (Placeholder) */}
-            <div className="text-center bg-card border border-border rounded-xl px-6 py-4 min-w-[160px] opacity-50">
-              <div className="text-4xl font-bold text-muted-foreground">0</div>
-              <div className="text-sm text-muted-foreground mt-1">Bids Submitted</div>
+            {/* Projects Ready for Bid */}
+            <div className="text-center bg-card border border-border rounded-xl px-6 py-4 min-w-[160px]">
+              <div className="text-4xl font-bold text-green-600">{readyCount}</div>
+              <div className="text-sm text-muted-foreground mt-1">Projects Ready for Bid</div>
             </div>
 
             {/* Top 3 (Placeholder) */}
