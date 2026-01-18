@@ -24,6 +24,7 @@ interface Project {
   agency: string | null;
   bid_due_at: string;
   job_walk_at: string | null;
+  is_ready_to_bid: boolean;
 }
 
 interface CalendarEvent {
@@ -33,6 +34,7 @@ interface CalendarEvent {
   agency: string | null;
   type: 'bid_due' | 'job_walk';
   datetime: string;
+  isReadyToBid: boolean;
 }
 
 interface CalendarGridProps {
@@ -58,6 +60,7 @@ const CalendarGrid = ({ projects }: CalendarGridProps) => {
         agency: project.agency,
         type: 'bid_due',
         datetime: project.bid_due_at,
+        isReadyToBid: project.is_ready_to_bid,
       });
     }
     
@@ -69,6 +72,7 @@ const CalendarGrid = ({ projects }: CalendarGridProps) => {
         agency: project.agency,
         type: 'job_walk',
         datetime: project.job_walk_at,
+        isReadyToBid: project.is_ready_to_bid,
       });
     }
     
@@ -196,26 +200,42 @@ const CalendarGrid = ({ projects }: CalendarGridProps) => {
                         {dayEvents.map((event) => {
                           const isBidDue = event.type === "bid_due";
                           const label = isBidDue ? "Bid Due" : "Job Walk";
+                          
+                          // Color logic: green = ready, red = not ready, gray = job walk
+                          const eventColor = isBidDue
+                            ? event.isReadyToBid
+                              ? "bg-green-600 text-white hover:bg-green-700"
+                              : "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            : "bg-gray-600 text-white hover:bg-gray-700";
+                          
+                          const badgeBg = isBidDue
+                            ? event.isReadyToBid
+                              ? "bg-white/20"
+                              : "bg-destructive-foreground/20"
+                            : "bg-white/20";
+                          
+                          const subtitleColor = isBidDue
+                            ? event.isReadyToBid
+                              ? "text-white/80"
+                              : "text-destructive-foreground/80"
+                            : "text-white/80";
 
                           return (
                             <button
                               key={event.id}
                               onClick={() => handleEventClick(event.projectId)}
-                              className={`w-full text-left rounded px-2 py-1.5 text-xs transition-colors cursor-pointer ${
-                                isBidDue
-                                  ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                  : "bg-gray-600 text-white hover:bg-gray-700"
-                              }`}
+                              title={isBidDue 
+                                ? (event.isReadyToBid ? "Ready to bid" : "Not ready to bid - checklist incomplete")
+                                : "Job Walk"}
+                              className={`w-full text-left rounded px-2 py-1.5 text-xs transition-colors cursor-pointer ${eventColor}`}
                             >
                               <span
-                                className={`inline-block text-[9px] font-semibold uppercase tracking-wide px-1 py-0.5 rounded mb-0.5 ${
-                                  isBidDue ? "bg-destructive-foreground/20" : "bg-white/20"
-                                }`}
+                                className={`inline-block text-[9px] font-semibold uppercase tracking-wide px-1 py-0.5 rounded mb-0.5 ${badgeBg}`}
                               >
                                 {label}
                               </span>
                               <div className="font-medium truncate leading-tight">{event.projectName}</div>
-                              <div className={`text-[10px] ${isBidDue ? "text-destructive-foreground/80" : "text-white/80"}`}>
+                              <div className={`text-[10px] ${subtitleColor}`}>
                                 {format(new Date(event.datetime), "MM/dd @ h:mm a")}
                               </div>
                             </button>

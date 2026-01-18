@@ -12,6 +12,7 @@ interface Project {
   agency: string | null;
   bid_due_at: string;
   job_walk_at: string | null;
+  is_ready_to_bid: boolean;
 }
 
 const CalendarDashboard = () => {
@@ -32,7 +33,7 @@ const CalendarDashboard = () => {
       const now = new Date().toISOString();
       const { data, error } = await supabase
         .from("projects")
-        .select("id, name, agency, bid_due_at, job_walk_at")
+        .select("id, name, agency, bid_due_at, job_walk_at, is_ready_to_bid")
         .eq("gc_id", user.id)
         .or(`bid_due_at.gte.${now},job_walk_at.gte.${now}`)
         .order("bid_due_at", { ascending: true });
