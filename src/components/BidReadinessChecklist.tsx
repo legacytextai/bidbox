@@ -182,9 +182,9 @@ export function BidReadinessChecklist({ projectId }: BidReadinessChecklistProps)
   const overallStatus = getOverallStatus();
 
   return (
-    <Card className="mb-4 border-muted">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
+    <Card className="mb-4 border-l-4 border-l-blue-600 border-t border-r border-b border-muted bg-background shadow-sm">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-lg font-semibold uppercase tracking-wide text-foreground">
           Bid Readiness Checklist
         </CardTitle>
       </CardHeader>
