@@ -1,9 +1,9 @@
 # BidBox Complete Documentation
 
-> **Generated**: 2026-01-04  
+> **Generated**: 2026-01-25  
 > **Purpose**: Single-file reference for AI agents and external tools  
 > **Usage**: Download and paste into ChatGPT, Claude, or other AI assistants for full project context  
-> **Total Documents**: 17
+> **Total Documents**: 18
 
 ---
 
@@ -13,19 +13,20 @@
 2. [Tasks](#2-tasks)
 3. [GC Control Center PRD](#3-gc-control-center-prd)
 4. [Implementation Plan](#4-implementation-plan)
-5. [Design Guidelines](#5-design-guidelines)
-6. [App Flow - Pages and Roles](#6-app-flow---pages-and-roles)
-7. [BidBox BrandScript](#7-bidbox-brandscript)
-8. [CSLB License Types](#8-cslb-license-types)
-9. [Admin KPI Panel Plan](#9-admin-kpi-panel-plan)
-10. [Admin KPI Tasks](#10-admin-kpi-tasks)
-11. [Stripe Integration Guide](#11-stripe-integration-guide)
-12. [Stripe Steps](#12-stripe-steps)
-13. [Stripe Tasks](#13-stripe-tasks)
-14. [Bug Prompt Template](#14-bug-prompt-template)
-15. [Bug: Header Tagline Visibility](#15-bug-header-tagline-visibility)
-16. [Bug: Sign Out Failure](#16-bug-sign-out-failure)
-17. [Reddit Pain Points (Research)](#17-reddit-pain-points-research)
+5. [One Link PRD](#5-one-link-prd)
+6. [Design Guidelines](#6-design-guidelines)
+7. [App Flow - Pages and Roles](#7-app-flow---pages-and-roles)
+8. [BidBox BrandScript](#8-bidbox-brandscript)
+9. [CSLB License Types](#9-cslb-license-types)
+10. [Admin KPI Panel Plan](#10-admin-kpi-panel-plan)
+11. [Admin KPI Tasks](#11-admin-kpi-tasks)
+12. [Stripe Integration Guide](#12-stripe-integration-guide)
+13. [Stripe Steps](#13-stripe-steps)
+14. [Stripe Tasks](#14-stripe-tasks)
+15. [Bug Prompt Template](#15-bug-prompt-template)
+16. [Bug: Header Tagline Visibility](#16-bug-header-tagline-visibility)
+17. [Bug: Sign Out Failure](#17-bug-sign-out-failure)
+18. [Reddit Pain Points (Research)](#18-reddit-pain-points-research)
 
 ---
 
@@ -57,7 +58,7 @@ Give GCs a fast, no-login tool that makes them more informed, organized, and eff
 
 ---
 
-### ⭐ GC Control Center Direction (NEW)
+### ⭐ GC Control Center Direction
 
 BidBox is evolving from a "simple bid room" into the **GC Control Center**:
 
@@ -99,7 +100,7 @@ See `docs/gc-control-center-prd.md` for full strategic PRD.
   - View/download bids  
 - All file storage via Supabase (not Lovable file system)
 
-**Control Center Features (New):**
+**Control Center Features (Implemented):**
 - **Trade Selection**: Select required license types when creating projects (C-10 Electrical, C-20 HVAC, etc.)
 - **Two-Pool Subcontractor Architecture**:
   - GC's Private Pool: Subs the GC has personally added
@@ -107,42 +108,37 @@ See `docs/gc-control-center-prd.md` for full strategic PRD.
 - **Call List Generator**: Excel export grouped by trade, sorted by engagement priority
 - **Engagement Tracking**: Views, downloads, submissions per subcontractor
 - **Coverage Intelligence**: Visual indicators showing which trades have coverage
-
----
-
-### 🛠️ High-Level Tech Stack
-
-- **Frontend:** React + TypeScript + shadcn/ui + Tailwind CSS    
-- **Backend:** Supabase (Postgres + Storage + Auth)    
-- **Auth:** Email/password for GCs only    
-- **File Storage:** Supabase Storage    
-- **Public Links:** Secure `/bid/[token]` pages for subs    
-- **Export:** Download all bids (ZIP or CSV)    
-- **No sub accounts, no email/SMS invites in v0**
-
-Why this stack?    
-Fast to scaffold, secure by default, and matches Lovable's strengths.
+- **One Link Project Ingestion**: Create projects from public works URLs with automatic metadata extraction
 
 ---
 
 ### 📊 Conceptual Data Model (ERD in words)
 
-**users**    
-- id    
-- email    
-- password_hash    
-- company_name  
+**profiles**    
+- id (PK, FK → auth.users.id)
+- email
+- company_name
+- created_at
+- stripe_customer_id
+- estimating_email (nullable) — Displayed as "Estimating Contact" on public bid room
 
 **projects**    
 - id    
-- gc_id (FK → users)    
+- gc_id (FK → profiles)    
 - name    
 - location    
 - agency    
 - bid_due_at    
+- job_walk_at (nullable) — Optional job walk date/time
 - instructions    
 - public_token    
-- status ("live" or "dead")  
+- status ("live" or "dead")
+- county
+- timezone
+- view_count
+- source_url (nullable) — One Link source URL
+- portal_type (nullable) — Detected portal type
+- is_ready_to_bid (boolean) — Bid readiness status
 
 **project_files**    
 - id    
@@ -160,7 +156,16 @@ Fast to scaffold, secure by default, and matches Lovable's strengths.
 - email    
 - division (optional)
 
-**trade_types** (NEW - State-Agnostic Architecture)
+**project_bid_readiness** (NEW)
+- project_id (PK, FK → projects.id)
+- bond_required, bond_delivery_method, bond_online_submitted, bond_in_person_delivered
+- job_walk_mandatory, job_walk_completed, job_walk_attended_by
+- addenda_issued, addenda_reviewed, addenda_reviewed_at
+- proposal_prepared, proposal_signed, proposal_notarized
+- bid_sheet_complete
+- updated_at
+
+**trade_types** (State-Agnostic Architecture)
 - id (uuid, PK)
 - state_code (nullable — "CA", "TX", "FL", null for national)
 - code (text — "C-10", "Roofing", etc.)
@@ -170,7 +175,7 @@ Fast to scaffold, secure by default, and matches Lovable's strengths.
 - is_default (boolean)
 - created_at
 
-**project_trades** (NEW)
+**project_trades**
 - id (uuid, PK)
 - project_id (FK → projects)
 - trade_type_id (FK → trade_types)
@@ -207,7 +212,7 @@ Fast to scaffold, secure by default, and matches Lovable's strengths.
 
 ### 🔒 Security Decisions (Audit Reference)
 
-> **Last Reviewed**: 2025-12-15
+> **Last Reviewed**: 2026-01-12
 
 #### SD-001: Two-Pool Subcontractor Access Model
 
@@ -225,13 +230,7 @@ Fast to scaffold, secure by default, and matches Lovable's strengths.
 | `subcontractors` | BidBox (shared) | ✅ All authenticated | ❌ Blocked |
 | `gc_subcontractors` | Per-GC (`gc_id`) | ✅ Own rows only | ❌ Blocked |
 
-**Do NOT**:
-- Add ownership columns to `subcontractors`
-- Restrict `subcontractors` to admin-only without product decision
-- Merge the two-pool model into a single table
-- Flag authenticated network pool access as a vulnerability
-
-**References**: `docs/gc-control-center-prd.md` Section 6, `docs/tasks.md` Security Decisions, Lovable memory `architecture/two-pool-subcontractor-model`
+**References**: `docs/gc-control-center-prd.md` Section 6
 
 ---
 
@@ -245,11 +244,24 @@ Fast to scaffold, secure by default, and matches Lovable's strengths.
 - Accept uploads    
 - View/manage bids  
 
-**v1** 🔄 In Progress  
+**v1** ✅ Mostly Complete  
 - Download all bids (ZIP/CSV)    
 - Responsive mobile layout polish    
 - PDF preview viewer    
-- Countdown component  
+- Countdown component
+- ✅ Calendar print (single-page, iframe-based)
+- ✅ Estimating email field + public display
+- ✅ Job walk date tracking + calendar display
+- ✅ Required trades display on public bid room
+- ✅ Network subs pagination + full export
+- ✅ **One Link project ingestion** (create from link, semantic extraction, daily re-crawl)
+- ✅ **HighSignalPanel** (job walk, eligibility, estimate, bonds, addenda)
+- ✅ **Calendar viewport optimization** (full month visible without scroll)
+- ✅ **Bid Readiness Checklist** (2026-01-18)
+  - Manual 5-section checklist for bid preparation verification
+  - Sections: Bid Bond, Job Walk, Addenda, Proposal, Bid Sheet
+  - Database-backed with auto-sync to `is_ready_to_bid` flag
+  - Calendar and Projects page visual indicators (green/red badges)
 
 **Phase 3.5: Trade Selection Layer** ✅ Database Complete  
 - ✅ Create `trade_types` table (state-agnostic reference table)
@@ -258,17 +270,11 @@ Fast to scaffold, secure by default, and matches Lovable's strengths.
 - 📋 Add trade multi-select to `/projects/new`
 - 📋 Display selected trades on project admin page
 
-**Phase 4: Subcontractor Directory** 📋 Planned  
-- Create `subcontractors` table with `trade_type_id` FK (BidBox Network Pool)
-- Create `gc_subcontractors` table with `trade_type_id` FK (GC's Private Pool)
-- Build directory management UI
-- Map subs to project trades via `trade_type_id`
-- (Future) Seed BidBox Network with real data
-
-**Phase 5: Engagement Tracking** 📋 Planned  
-- Track plan views (enhance existing)
-- Track file downloads
-- Display engagement status per sub
+**Phase 4: Subcontractor Directory** ✅ Complete  
+- ✅ Create `subcontractors` table with `trade_type_id` FK (BidBox Network Pool)
+- ✅ Create `gc_subcontractors` table with `trade_type_id` FK (GC's Private Pool)
+- ✅ Build directory management UI
+- ✅ Map subs to project trades via `trade_type_id`
 
 **Phase 6: Bid List Generator** ✅ Complete  
 - ✅ Merge two pools (Private + Network) for project coverage
@@ -287,28 +293,6 @@ Fast to scaffold, secure by default, and matches Lovable's strengths.
 
 ---
 
-### ⚠️ Risks & Mitigations
-
-| Risk | Mitigation |  
-|------|------------|  
-| Subs upload junk files or spam | Add file type validation + upload rate limits |  
-| GCs forget their links | Add copyable links in dashboard; regenerate token option |  
-| File size too big | Enforce Supabase upload limits (25MB) |  
-| Confusion between GC/public views | Use visual headers + URL structure (`/projects/[id]` vs `/bid/[token]`) |
-
----
-
-### 🌱 Future Expansion Ideas
-
-- Invite-only bid rooms with tracking    
-- Bidder analytics (viewed/not viewed)    
-- "Bid received" email to GC    
-- Integrate bid forms by division    
-- Optional contractor registry    
-- Public works bid log export format
-
----
-
 ### 💳 Pricing & Stripe Integration (Implemented 2025-11-30)
 
 **Current Pricing Tiers:**
@@ -324,29 +308,7 @@ Fast to scaffold, secure by default, and matches Lovable's strengths.
 - ✅ Edge functions: `create-checkout`, `stripe-webhook`
 - ✅ Frontend: `useSubscription` hook, PricingMvp checkout, Settings display
 - ✅ Free tier enforcement (3 project limit with upgrade prompt)
-- ⚠️ PENDING: Register webhook endpoint in Stripe Dashboard
-
-**Documentation:**
-- `docs/stripe-tasks.md` - Detailed task breakdown with status
-- `docs/stripe-steps.md` - Implementation guide
-
----
-
-### 🤖 Future AI Roadmap
-
-These features represent high-leverage, high-value AI capabilities that will differentiate BidBox after the MVP and v1 are stable.
-
-**🔥 AI Feature #1 — Bid Scope Comparison (Leveling Assistant)**
-- Read all uploaded bid PDFs
-- Extract line items, scope notes, exclusions, inclusions, unit costs
-- Normalize the text
-- Highlight missing scope, suspicious exclusions, outlier prices
-
-**🔥 AI Feature #2 — Auto-Build CSI Trade Breakdown from Plans**
-- Upload plans/specs → AI automatically generates trade list, quantities, risks
-
-**🔥 AI Feature #3 — Subcontractor Quote Risk Scoring**
-- AI evaluates each sub's proposal for ambiguity, missing items, high-risk exclusions
+- ✅ Webhook endpoint registered in Stripe Dashboard
 
 ---
 
@@ -369,7 +331,32 @@ BidBox is building a long-term competitive moat by populating the Network Pool w
 
 ---
 
+### 🔗 One Link Project Ingestion (Complete)
+
+> **Status**: ✅ COMPLETE (2026-01-12)
+
+One Link enables GCs to create projects by pasting a public works project URL. BidBox extracts metadata, tracks changes, and becomes the system of record.
+
+**What's Working**:
+- Paste link → Auto-extract project details
+- Background crawl with "Analyzing project..." loading UX
+- Semantic extraction for job walk, eligibility, estimates, bonds, addenda
+- Daily re-crawl (5 AM PST) with change detection
+- Manual refresh button with staleness indicators
+- HighSignalPanel displaying 5 risk signal columns
+
+**Supported Portals**: Caltrans, PlanetBids, EPRO, ERSP, BonfireHub, RAMP LA
+
+**Key Files**:
+- `supabase/functions/crawl-project/index.ts` — Extraction engine
+- `src/components/HighSignalPanel.tsx` — Risk signal display
+- `src/components/ProjectSignals.tsx` — Source link + staleness
+
+---
+
 ### 🗺️ Regional Filtering for California Projects
+
+BidBox uses county-based regional filtering to provide GCs with geographically relevant Network Subs:
 
 **Three California Regions:**
 - **Southern CA** (7 counties): Imperial, Los Angeles, Orange, Riverside, San Bernardino, San Diego, Ventura
@@ -386,12 +373,31 @@ BidBox is building a long-term competitive moat by populating the Network Pool w
 # 2. Tasks
 
 > **Source**: `docs/tasks.md`  
-> **Note**: This is an excerpt. Full file is 1,672 lines.
+> **Last Updated**: 2026-01-18
 
 # BidBox Implementation Tasks
 
-**Source of Truth for Feature Implementation**  
-Last Updated: 2026-01-01
+**Source of Truth for Feature Implementation**
+
+---
+
+## 📅 Session Changelog
+
+### 2026-01-18: Bid Readiness Checklist
+
+**Completed**:
+- Bid Readiness Checklist feature (Task 2.19)
+- Calendar visual integration (readiness badges, color coding, ready counter)
+- Projects page visual integration (ready/not ready badges)
+
+**Key Insight**:
+Estimators require explicit manual verification of bureaucratic requirements. The checklist prioritizes awareness and clarity over automation or enforcement. Each section must be consciously confirmed — the system makes no assumptions.
+
+**Scope Boundaries** (intentionally not built):
+- No automation of checklist completion
+- No bid blocking based on readiness
+- No notifications or reminders
+- One Link documentation unchanged
 
 ---
 
@@ -406,15 +412,6 @@ Last Updated: 2026-01-01
 
 ---
 
-## 📋 Task Status Legend
-
-- [ ] Not Started
-- [x] Completed
-- [🔄] In Progress
-- [⚠️] Blocked/Needs Review
-
----
-
 ## 🔐 Security Decisions (Audit Reference)
 
 ### SD-001: Two-Pool Subcontractor Access Model [FINAL]
@@ -423,129 +420,62 @@ Last Updated: 2026-01-01
 **Status**: Reviewed and closed — Do not reopen without product decision
 
 **Summary**: BidBox uses two distinct subcontractor tables with different access models:
-
 1. **`subcontractors`** (Network Pool) - Shared, BidBox-owned, readable by ALL authenticated users
 2. **`gc_subcontractors`** (Private Pool) - Per-GC private directory, readable ONLY by owning GC
 
+### SD-002 through SD-006: Additional Security Decisions
+
+All documented in full `docs/tasks.md` — covers sub_trade_mappings, subscriptions, cslb_cache, and bids table protections.
+
 ---
 
-## 🔴 Phase 0: CRITICAL SECURITY FIXES ✅ COMPLETED
+## ✅ Phase 0: Critical Security Fixes - COMPLETED
 
-- [x] Task 0.1: Fix Projects Table RLS Policy
-- [x] Task 0.2: Fix Project Files Table RLS Policy
-- [x] Task 0.3: Fix Storage Bucket Policies
-- [x] Task 0.4: Add File Upload Validation
-- [x] Task 0.5: Enable Leaked Password Protection
-- [x] Task 0.6: Implement Drag-and-Drop File Upload
-- [x] Task 0.8: Fix Subs Network Trade Search URL Overflow
+All 8 security tasks completed including RLS policies, storage buckets, file validation, and drag-and-drop implementation.
 
 ---
 
 ## ✅ Phase 1: MVP Foundation - COMPLETED
 
-- [x] Task 1.1: Authentication System
-- [x] Task 1.2: Projects Dashboard
-- [x] Task 1.3: New Project Creation
-- [x] Task 1.4: Project Detail View
-- [x] Task 1.5: Public Bid Room Page
+All 5 tasks completed: Authentication, Projects Dashboard, New Project Creation, Project Detail View, Public Bid Room.
 
 ---
 
-## 🎯 Phase 2: MVP Polish & Core Features
+## ✅ Phase 2: MVP Polish & Core Features
 
-- [ ] Task 2.1: Add Countdown Timer to Bid Room
-- [ ] Task 2.2: Late Bid Handling
-- [x] Task 2.3: Make Location/Agency Fields Optional
-- [x] Task 2.3.5: Update PRD with Final Branding
-- [x] Task 2.3.6: Enhance Bid Room UI
-- [x] Task 2.3.7: Fix Datetime Timezone Bug
-- [ ] Task 2.4: Token Regeneration Feature
-- [ ] Task 2.5: Settings Page Basic Structure
-
----
-
-## 🚀 Phase 3: v1 Features (Post-MVP)
-
-- [ ] Task 3.1: Download All Bids as ZIP
-- [ ] Task 3.2: Email Notifications
-- [ ] Task 3.3: CSV Export of Bids
-- [ ] Task 3.4: PDF Preview
-- [ ] Task 3.5: Basic Analytics Dashboard
+Key completed tasks:
+- Task 2.0: Calendar Print Single-Page Output ✅
+- Task 2.3.7: Fix Datetime Timezone Bug ✅
+- Task 2.6: Calendar Dashboard MVP ✅
+- Task 2.15-2.17: One Link Project Ingestion ✅
+- Task 2.18: Calendar Viewport Fit ✅
+- Task 2.19: Bid Readiness Checklist ✅
 
 ---
 
-## 💳 Phase 4: Stripe Integration ✅ COMPLETED
+## ✅ Phase 3.5: Trade Selection Layer - Database Complete
 
-- [x] Task 4.1: Stripe Account & Product Setup
-- [x] Task 4.2: Enable Stripe Integration
-- [x] Task 4.3: Database Schema Updates
-- [x] Task 4.4: Create `create-checkout` Edge Function
-- [x] Task 4.5: Create `stripe-webhook` Edge Function
-- [x] Task 4.6: Register Webhook in Stripe Dashboard
-- [x] Task 4.7: Frontend Integration
-
----
-
-## 🎯 Phase 3.5: Trade Selection Layer ✅ COMPLETED
-
-- [x] Task 3.5.0: Create `trade_types` Reference Table
-- [x] Task 3.5.1: Create `project_trades` Table
-- [x] Task 3.5.2: Seed California CSLB License Types
-- [x] Task 3.5.2.1: Add C-61 Limited Specialty D-Codes
-- [x] Task 3.5.3: Add Trade Multi-Select to `/projects/new`
-- [x] Task 3.5.4: Update Project Creation Logic
-- [x] Task 3.5.5: Display Trades on Project Admin Page
+All schema tasks completed. UI tasks pending.
 
 ---
 
 ## ✅ Phase 4: Subcontractor Directory - COMPLETED
 
-- [x] Task 4.1: `subcontractors` table (BidBox Network Pool)
-- [x] Task 4.2: `gc_subcontractors` table (GC Private Pool)
-- [x] Task 4.3: Directory Management UI
-- [x] Task 4.4: Junction tables for trade mapping
+All 4 core tasks completed including Network Pool, Private Pool, Directory UI, and junction tables.
 
 ---
 
-## 🎯 Phase 5: Engagement Tracking (Planned)
+## ✅ Phase 6: Bid List Generator - COMPLETED
 
-- [ ] Task 5.1: Track Plan Views
-- [ ] Task 5.2: Track File Downloads
-- [ ] Task 5.3: Display Engagement Status
+All tasks completed including two-sheet Excel export, regional filtering, and trade bias fix.
 
 ---
 
-## 🎯 Phase 6: Bid List Generator ✅ COMPLETED
+## 🔄 Phase 7: CSLB Network Directory Seeding - In Progress
 
-- [x] Task 6.1: Build Bid List Generator Service
-- [x] Task 6.2: Two-Sheet Excel Export
-- [x] Task 6.3: BidListButton Component
-- [x] Task 6.4: Integration
-- [x] Task 6.4.1: Fix Network Subs Trade Bias Bug
-- [x] Task 6.5: California County-Based Regional Filtering
-
----
-
-## 🚀 Phase 7: CSLB Network Directory Seeding Initiative
-
-**Status**: 🔄 In Progress
-
-### Phase 7.1: Foundational Architecture ✅ MOSTLY COMPLETE
-
-- [x] 7.1.1-7.1.6: Core infrastructure complete
-- [x] 7.1.9: Enhanced progress logging
-
-### Phase 7.6: Compliance & Scheduled Jobs
-
-- [x] 7.6.0: Weekly CSLB data refresh cron job (Sundays 2 AM UTC)
-- [🔄] 7.6.4: Network Pool Gap Recovery (offset 90,018 of ~290,000)
-
-**Progress Tracking** (Updated: 2026-01-01):
-| Run | Offset Range | New Contractors | Total Pool |
-|-----|--------------|-----------------|------------|
-| 1-6 | 0 → 30,006 | +77 | 224,606 |
-| 7-10 | 30,006 → 55,011 | +38 | 224,644 |
-| 11-17 | 55,011 → 90,018 | +127 | 224,771 |
+**Status**: 224,771 contractors seeded  
+**Gap Recovery**: offset 90,018 of ~290,000  
+**Weekly Cron**: Active (Sundays 2 AM UTC)
 
 ---
 
@@ -579,7 +509,6 @@ BidBox is evolving from a "simple bid room" into the **GC Control Center** — a
 ## 2. The GC Control Center Vision
 
 A single, frictionless operating system for preconstruction — one that makes GCs:
-
 - **More informed** — Know which trades are covered and where gaps exist
 - **More organized** — All subs, files, and quotes in one place
 - **More effective** — Action-ready call lists ranked by priority
@@ -596,25 +525,12 @@ A single, frictionless operating system for preconstruction — one that makes G
 
 ---
 
-## 4. Why "Select Trades for Your Job" Is Foundational
+## 4. Four Pillars of the Control Center
 
-Selecting trades (by license type) when creating a project becomes a **core system primitive**.
-
-It enables:
-- Mapping GC needs → Required subcontractor categories
-- Generating trade-specific call sheets
-- Surfacing trade-specific coverage gaps
-- Tracking compliance per trade
-- Enabling future AI features
-
----
-
-## 5. Four Pillars of the Control Center
-
-### Pillar 1 — Trade Intelligence
-### Pillar 2 — Subcontractor Organization
-### Pillar 3 — Engagement Visibility
-### Pillar 4 — Bid-Day Command Center
+- **Pillar 1 — Trade Intelligence**: Select required trades, view coverage heatmap
+- **Pillar 2 — Subcontractor Organization**: Two-pool architecture
+- **Pillar 3 — Engagement Visibility**: Track views, downloads, submissions
+- **Pillar 4 — Bid-Day Command Center**: Auto-generated call lists, coverage meters
 
 ---
 
@@ -623,37 +539,11 @@ It enables:
 1. **GC's Private Pool** — Subcontractors the GC has personally added
 2. **BidBox Network Pool** — Curated, verified subcontractors maintained by BidBox
 
-### Regional Filtering
-- County Selection: Required field on project creation
-- Region Mapping: 58 CA counties → 3 regions
-- Network Subs: Filtered to same region as project county
-- Private Pool: Remains unfiltered
-
 ### Security Model
 | Pool | Table | Access Rule |
 |------|-------|-------------|
 | Network Pool | `subcontractors` | All authenticated users |
 | Private Pool | `gc_subcontractors` | GC's own rows only |
-
----
-
-## 7. Queen Bee Features
-
-### Primary: Trade Selection + Curated Sub Mapping
-### Secondary: Call List Generator
-
----
-
-## 10. Network Pool Moat Strategy
-
-The BidBox Network Pool is a strategic competitive moat built through the CSLB Network Directory Seeding Initiative.
-
-**Tiered Seeding Strategy:**
-| Tier | Focus | Target Count |
-|------|-------|--------------|
-| Tier 1 | Hot Trades | ~50,000 |
-| Tier 2 | Full CSLB Harvest | 290,000+ |
-| Tier 3 | Enrichment | Ongoing |
 
 ---
 
@@ -665,19 +555,53 @@ The BidBox Network Pool is a strategic competitive moat built through the CSLB N
 
 ### 🧱 Step-by-Step Build Sequence
 
-**Phase 1 – Foundations** ✅ Complete
-**Phase 2 – GC Internal Pages** ✅ Complete
-**Phase 3 – Public Bid Page** ✅ Complete
+**Phase 1 – Foundations** ✅ Complete  
+**Phase 2 – GC Internal Pages** ✅ Complete  
+**Phase 3 – Public Bid Page** ✅ Complete  
 **Phase 4 – Polish + Export** 🔄 In Progress
 
 ---
 
 ### GC Control Center Phases
 
-**Phase 3.5 – Trade Selection Layer** ✅ Database Complete
-**Phase 4 – Subcontractor Directory** ✅ Complete
-**Phase 5 – Engagement Tracking** 📋 Planned
-**Phase 6 – Call List Generator** ✅ Completed
+**Phase 3.5 – Trade Selection Layer** ✅ Database Complete  
+**Phase 4 – Subcontractor Directory** ✅ Complete  
+**Phase 4.1 – GC Profile & Calendar Enhancements** ✅ Complete  
+**Phase 4.2 – Bid Readiness Checklist** ✅ Complete (2026-01-18)  
+**Phase 5 – Engagement Tracking** 📋 Planned  
+**Phase 6 – Call List Generator** ✅ Completed  
+**Phase 7 – CSLB Network Seeding** 🔄 In Progress
+
+---
+
+### Phase 4.2 – Bid Readiness Checklist ✅ Completed 2026-01-18
+
+**Objective:** Provide estimators with a manual checklist to verify project-critical bureaucratic requirements before bid submission.
+
+**Design Principles:**
+- Manual confirmation required (no automation or assumptions)
+- Estimator must consciously verify each requirement
+- Awareness over enforcement
+
+**Database Schema:**
+- [x] Created `project_bid_readiness` table with all checklist fields
+- [x] Added `is_ready_to_bid` boolean to `projects` table
+- [x] Created `update_project_bid_readiness` trigger on checklist changes
+- [x] Created `evaluate_bid_readiness()` SQL function for automatic status calculation
+
+**Component Implementation:**
+- [x] `BidReadinessChecklist` component (`src/components/BidReadinessChecklist.tsx`)
+- [x] 5 collapsible Accordion sections
+- [x] Status icons: Green CheckCircle2 (ready), Red filled Circle (not ready)
+- [x] Progress indicator: 5 dots + X/5 counter in header
+- [x] Auto-save on every interaction
+- [x] Overall status banner: "READY TO BID" (all green) or "NOT READY TO BID (X items remaining)"
+
+**Visual Integration:**
+- [x] Calendar event readiness badges
+- [x] Calendar color coding: Green card for ready, Red card for not ready
+- [x] "Projects Ready for Bid" live counter tile on `/calendar` dashboard
+- [x] "Ready to Submit" / "Not Ready to Submit" badges on `/projects` page
 
 ---
 
@@ -687,32 +611,96 @@ The BidBox Network Pool is a strategic competitive moat built through the CSLB N
 > 
 > - **Network Pool Size**: 224,771 contractors
 > - **Gap Recovery**: In progress (offset 90,018 of ~290,000)
-> - **License Range**: 8 to 1,148,273
 > - **Weekly Cron**: Active (Sundays 2 AM UTC)
-
-### Scraping Pipeline Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    CSLB Scraping Pipeline                   │
-├─────────────────────────────────────────────────────────────┤
-│  ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌───────┐ │
-│  │ Scheduler│───▶│ Firecrawl│───▶│ Parser   │───▶│ Store │ │
-│  │ (Cron)   │    │ /Browser │    │ /Mapper  │    │ (DB)  │ │
-│  └──────────┘    └──────────┘    └──────────┘    └───────┘ │
-│                                                             │
-│  Rate: 1 req/sec    Batch: 100-500    Resumable: Yes       │
-└─────────────────────────────────────────────────────────────┘
-```
 
 ---
 
-# 5. Design Guidelines
+# 5. One Link PRD
+
+> **Source**: `docs/one_link`
+
+# 📘 PRD: One Link Project Ingestion Initiative
+
+**Status:** ✅ Implementation Complete  
+**Last Updated:** 2026-01-12
+
+---
+
+## 1. Executive Summary
+
+The **One Link initiative** introduces a new primary workflow for creating and managing public works projects in BidBox:
+
+> **Paste a public works project link → BidBox becomes the system of record.**
+
+This initiative re-centers BidBox around **link-based project ingestion**, dramatically reducing setup friction, eliminating manual data entry, and enabling BidBox to act as a **daily project homebase**.
+
+---
+
+## 2. Goals & Non-Goals
+
+### Goals
+- Enable users to create a BidBox project by pasting a **single project link**
+- Automatically extract and normalize key project metadata
+- Surface risk signals (job walks, restrictions, gated docs, eligibility)
+- Establish BidBox as the **system of record** for external projects
+- Reduce time-to-project-creation to seconds
+
+### Non-Goals (Phase 1)
+- Opportunity discovery or crawling bid listings
+- Automated bidding or submission
+- Full document parsing or OCR
+
+---
+
+## 3. Supported Portals
+
+| Portal | Type | Crawl Status |
+|--------|------|--------------|
+| Caltrans | State | ✅ Supported |
+| PlanetBids | SaaS | ✅ Supported |
+| EPRO | County | ✅ Supported |
+| ERSP (LADWP) | Enterprise | ✅ Supported |
+| BonfireHub | SaaS | ✅ Supported |
+| RAMP LA | Aggregator | ✅ Supported |
+
+---
+
+## 4. Extracted Data Fields
+
+**Core Metadata:**
+- Project name, agency, location
+- Bid due date/time
+- Source URL, portal type
+
+**Risk Signals (HighSignalPanel):**
+- Job walk exists, mandatory, date/details
+- Eligibility restrictions
+- Estimate range
+- Bond requirements
+- Addenda count and dates
+
+**Crawl Tracking:**
+- `last_crawled_at` timestamp
+- `crawl_snapshot` (raw extracted data)
+- `crawl_changes` (delta since last crawl)
+
+---
+
+## 5. Implementation Files
+
+- `supabase/functions/crawl-project/index.ts` — Main extraction engine
+- `supabase/functions/recrawl-projects/index.ts` — Daily re-crawl cron
+- `src/components/HighSignalPanel.tsx` — 5-column risk signal display
+- `src/components/ProjectSignals.tsx` — Source link + staleness indicator
+
+---
+
+# 6. Design Guidelines
 
 > **Source**: `docs/design-guidelines.md`
 
 ## Emotional Thesis  
-Feels like a contractor's war room — sharp, no-frills, deadline-driven. Every UI decision should scream: *"Don't screw this up on bid day."*
+Feels like a contractor's war room — sharp, no-frills, deadline-driven.
 
 ## Typography
 
@@ -727,11 +715,10 @@ Feels like a contractor's war room — sharp, no-frills, deadline-driven. Every 
 | Purpose | Hex | Usage |
 |---------|-----|-------|
 | **Primary** (black) | `#121212` | Text, backgrounds |
-| **BidBox Blue** | `#1D4ED8` | **PRIMARY BRAND COLOR** - CTAs, links, accents, icons |
+| **BidBox Blue** | `#1D4ED8` | **PRIMARY BRAND COLOR** - CTAs, links, accents |
 | **Accent Orange** | `#D92D20` | Urgent badges only |
 | **Soft Gray** | `#F4F4F5` | Backgrounds |
-| **Outline** | `#E4E4E7` | Borders |
-| **Success Green** | `#12B76A` | Success states |
+| **Success Green** | `#12B76A` | Success states, Ready badges |
 
 ## Layout & Spacing
 
@@ -739,31 +726,9 @@ Feels like a contractor's war room — sharp, no-frills, deadline-driven. Every 
 - **GC dashboard**: `max-width: 1200px`
 - **Public bid page**: `max-width: 800px`
 
-## Motion & Interaction
-
-- **File upload success**: 250ms fade-in
-- **Copy link**: 200ms glow
-- **Countdown timer**: smooth tick, **digits remain black**
-
-## Header & Branding
-
-- **Sidebar Logo**: "BB" in vibrant blue (#1D4ED8)
-- **Logo Strategy**: Use "BB" mark only — avoid duplicate "BidBox" text
-
-## Voice & Tone
-
-- Personality: Direct, helpful, focused
-- Avoid humor, over-friendly nudges, or techy jargon
-
-## Accessibility
-
-- All form fields = labeled
-- Buttons = `aria-pressed` and focus indicators
-- Countdown timer = `aria-live="polite"`
-
 ---
 
-# 6. App Flow - Pages and Roles
+# 7. App Flow - Pages and Roles
 
 > **Source**: `docs/app-flow-pages-and-roles.md`
 
@@ -783,135 +748,51 @@ Feels like a contractor's war room — sharp, no-frills, deadline-driven. Every 
 
 ## 📄 Core Pages
 
-### `/auth/*` - Register / Login for GCs only
-### `/projects` - GC home dashboard
-### `/projects/new` - Form to create a project
-### `/projects/[id]` - GC admin view for individual project
-### `/bid/[token]` - Public page with no login
+| Route | Purpose | Auth |
+|-------|---------|------|
+| `/auth/*` | Register/Login | Public |
+| `/calendar` | GC home dashboard | Required |
+| `/projects` | All projects list | Required |
+| `/projects/new` | Create project | Required |
+| `/projects/[id]` | Project admin view | Required |
+| `/bid/[token]` | Public bid room | No auth |
+| `/settings` | GC profile/settings | Required |
+| `/settings/subcontractors` | Private pool management | Required |
+| `/subs-network` | Network pool browser | Required |
+| `/admin/*` | Admin-only pages | Admin role |
 
 ---
 
-## 🔄 End-to-End Flows
-
-### GC Flow
-1. Logs in → 2. Goes to `/projects` → 3. Creates project → 4. Uploads files → 5. Gets public link → 6. Shares with subs → 7. Receives bids → 8. Manages via `/projects/[id]`
-
-### Sub Flow
-1. Receives link → 2. Opens bid room → 3. Views plans → 4. Submits quote → 5. Gets confirmation
-
----
-
-## 🔐 Access Rules
-
-| Page | GC | Sub | Auth Required |
-|------|----|-----|---------------|
-| `/projects` | ✅ | ❌ | Yes |
-| `/projects/new` | ✅ | ❌ | Yes |
-| `/projects/[id]` | ✅ | ❌ | Yes |
-| `/bid/[token]` | ❌ | ✅ | No |
-
----
-
-# 7. BidBox BrandScript
+# 8. BidBox BrandScript
 
 > **Source**: `docs/bidbox_brandscript`
 
-# 🔵 BidBox MVP — Full StoryBrand Framework
+## The Hero
+**The GC estimator** — juggling subs, scattered files, bid day chaos, and bloated enterprise tools.
 
-## 1. The Character (Hero)
+## The Problem
+- **External**: "Bidding is chaos."
+- **Internal**: "This shouldn't be this hard."
+- **Philosophical**: "A modern GC shouldn't need enterprise software just to share files."
 
-**The hero is the GC estimator.**
+## The Guide (BidBox)
+You understand the workflow. You bring credibility through simplicity, reliability, and GC-first design.
 
-He's juggling:
-- Subcontractors who don't respond
-- Dropbox links scattered across email
-- Files too big to email
-- Bid day chaos
-- SmartBid / BuildingConnected that are bloated, slow, expensive
-- "Did the sub get my plans?" uncertainty
-
-He desperately wants **simplicity and control**.
-
----
-
-## 2. The Problem
-
-**External Problem** — "Bidding is chaos."
-**Internal Problem** — "This shouldn't be this hard."
-**Philosophical Problem** — "A modern GC shouldn't need enterprise software just to share files."
-
----
-
-## 3. The Guide (BidBox)
-
-You understand the workflow because you work in construction. You bring credibility through simplicity, reliability, and GC-first design.
-
----
-
-## 4. The Plan
-
-**Process Plan:**
+## The Plan
 1. Create a bid room - Upload plans → set due date → generate a link
 2. Share with subs - Send the public link — no logins
 3. Collect bids cleanly - Subs upload quotes → you receive everything in one place
 
-**Agreement Plan:**
-- Zero friction
-- Zero logins for subs
-- Zero bloat
-- Always works
-
----
-
-## 5. The Call to Action
-
-**Direct CTA**: Start Free
-**Transitional CTA**: See a Sample Bid Room
-
----
-
-## 6. Failure (What They're Avoiding)
-
-- Subs miss files
-- Bids arrive late
-- Hours wasted chasing emails
-- Bid coverage suffers
-- Money is lost
-
----
-
-## 7. Success (The Transformation)
-
-With BidBox:
-- Estimators feel *in control*
-- Subs respond faster
-- Files never get lost
-- Bid rooms look professional
-- Everything becomes clear, predictable, trackable
-
-The estimator transforms into a **calm, confident, organized leader**.
-
----
-
-## ⭐ One-Liner
-
+## One-Liner
 **"BidBox helps general contractors share bid files instantly and collect subcontractor quotes without logins, confusion, or chaos — so you can win more bids with less stress."**
 
 ---
 
-# 8. CSLB License Types
+# 9. CSLB License Types
 
 > **Source**: `docs/cslb-license-types.md`
 
 # California CSLB License Types Reference
-
-**For BidBox Trade Selection Feature**
-
-## ⚠️ State-Agnostic Architecture Note
-
-The BidBox architecture is **state-agnostic** and supports nationwide expansion.
-
----
 
 ## Class A — General Engineering
 | Code | Name |
@@ -927,99 +808,25 @@ The BidBox architecture is **state-agnostic** and supports nationwide expansion.
 
 | Code | Name |
 |------|------|
-| C-4 | Boiler, Hot Water Heating & Steam Fitting |
-| C-7 | Low Voltage Systems |
-| C-8 | Concrete |
 | C-10 | Electrical |
 | C-12 | Earthwork and Paving |
-| C-13 | Fencing |
-| C-15 | Flooring and Floor Covering |
-| C-16 | Fire Protection |
-| C-17 | Glazing |
 | C-20 | HVAC |
-| C-21 | Building Moving/Demolition |
-| C-23 | Ornamental Metal |
 | C-27 | Landscaping |
-| C-29 | Masonry |
 | C-33 | Painting and Decorating |
-| C-34 | Pipeline |
-| C-35 | Lathing and Plastering |
 | C-36 | Plumbing |
-| C-38 | Refrigeration |
 | C-39 | Roofing |
-| C-42 | Sanitation System |
 | C-43 | Sheet Metal |
-| C-45 | Electrical Sign |
-| C-46 | Solar |
-| C-50 | Reinforcing Steel |
 | C-51 | Structural Steel |
-| C-53 | Swimming Pool |
-| C-54 | Ceramic and Mosaic Tile |
-| C-55 | Water Conditioning |
-| C-57 | Well Drilling |
-| C-60 | Welding |
-| C-61 | Limited Specialty |
 
-## C-61 Limited Specialty — Active D-Codes (29 Total)
-
-| Code | Name |
-|------|------|
-| C-61/D-3 | Awnings Contractor |
-| C-61/D-4 | Central Vacuum Systems |
-| C-61/D-6 | Concrete-Related Services |
-| C-61/D-9 | Drilling, Blasting and Oil Field Work |
-| C-61/D-10 | Elevated Floors |
-| C-61/D-12 | Synthetic Products |
-| C-61/D-16 | Hardware, Locks and Safes |
-| C-61/D-21 | Machinery and Pumps |
-| C-61/D-24 | Metal Products |
-| C-61/D-28 | Doors, Gates and Activating Devices |
-| C-61/D-29 | Paperhanging |
-| C-61/D-30 | Pile Driving and Pressure Foundation Jacking |
-| C-61/D-31 | Pole Installation and Maintenance |
-| C-61/D-34 | Prefabricated Equipment |
-| C-61/D-35 | Pool and Spa Maintenance |
-| C-61/D-38 | Sand and Water Blasting |
-| C-61/D-39 | Scaffolding |
-| C-61/D-40 | Service Station Equipment and Maintenance |
-| C-61/D-41 | Siding and Decking |
-| C-61/D-42 | Non-Electrical Sign Installation |
-| C-61/D-49 | Tree Service |
-| C-61/D-50 | Suspended Ceilings |
-| C-61/D-52 | Window Coverings |
-| C-61/D-53 | Wood Tanks |
-| C-61/D-56 | Trenching Only |
-| C-61/D-59 | Hydroseed Spraying |
-| C-61/D-62 | Air and Water Balancing |
-| C-61/D-63 | Construction Clean-up |
-| C-61/D-64 | Non-specialized |
-| C-61/D-65 | Weatherization and Energy Conservation |
+(Full list of 43 trade types in database)
 
 ---
 
-# 9. Admin KPI Panel Plan
+# 10. Admin KPI Panel Plan
 
 > **Source**: `docs/admin_kpi_panel_plan.md`
 
-# Admin KPI Analytics Panel — Plan
-
-## 1. Purpose & Goals
-
-### Why Platform KPIs Matter Now
-- **Growth Monitoring**: Track GC acquisition and retention trends
-- **Engagement Validation**: Measure if bid rooms are actually being used
-- **Product-Market Fit**: Identify power users vs. one-time users
-
-### Success Metrics
-| Goal | Target |
-|------|--------|
-| GC Growth | +5 GCs/month |
-| Engagement | 60%+ projects receive bids |
-| Retention | 40%+ GCs active in 30d |
-
----
-
-## 2. KPI Specifications (8 Metrics)
+## KPI Specifications (8 Metrics)
 
 1. **Total Registered GCs**
 2. **Active GCs (30d)**
@@ -1032,126 +839,54 @@ The BidBox architecture is **state-agnostic** and supports nationwide expansion.
 
 ---
 
-## 3. Data Architecture
-
-- Admin Role System with `user_roles` table
-- `has_role()` Security Definer Function
-- View count tracking on projects table
-
----
-
-## 4. Frontend Architecture
-
-- Route: `/admin/analytics`
-- Components: KPICard, KPIGrid, GCMetricsTable
-
----
-
-# 10. Admin KPI Tasks
+# 11. Admin KPI Tasks
 
 > **Source**: `docs/admin_kpi_tasks.md`
-
-# Admin KPI Analytics Panel — Implementation Tasks
 
 ## Summary
 
 | Phase | Tasks | Status |
 |-------|-------|--------|
-| Phase 1 | 6 tasks | ✅ Completed |
-| Phase 2 | 10 tasks | ✅ Completed |
-| Phase 3 | 3 tasks | ✅ Completed |
-| Phase 4 | 7 tasks | ✅ Completed |
-| Phase 5 | 5 tasks | ✅ Completed |
-| **Total** | **31 tasks** | **✅ All Complete** |
+| Phase 1-5 | 31 tasks | ✅ All Complete |
 
 All phases of the Admin KPI Analytics Panel have been successfully implemented.
 
 ---
 
-# 11. Stripe Integration Guide
+# 12. Stripe Integration Guide
 
-> **Source**: `docs/stripe.md`  
-> **Note**: Full file is 5,198 lines. This is an excerpt of key sections.
-
-# How to integrate Stripe
+> **Source**: `docs/stripe.md`
 
 ## Payment Links Approach (Recommended)
 
-### Why Payment Links:
-- Easiest to Implement
-- No Complex Backend Logic
-- Minimal Security Risk
-- Quick Time-to-Market
-
-### Implementation Plan:
+### Implementation:
 1. Create a Supabase Edge Function to generate a Stripe checkout session
 2. When a user hits their generation limit, offer a purchase option
 3. After successful payment, update their credits in the profiles table
 
 ---
 
-## The Checkout Session Object
-
-Key attributes:
-- `id` - Unique identifier
-- `mode` - payment, setup, or subscription
-- `payment_status` - paid, unpaid, no_payment_required
-- `success_url` - Redirect URL after success
-- `url` - The checkout URL
-
----
-
-## Webhooks
-
-Subscribe to:
-- `checkout.session.completed`
-- `customer.subscription.updated`
-- `customer.subscription.deleted`
-- `invoice.payment_succeeded`
-- `invoice.payment_failed`
-
----
-
-# 12. Stripe Steps
+# 13. Stripe Steps
 
 > **Source**: `docs/stripe-steps.md`
 
-# Stripe Integration Guide (React + Supabase + Edge Functions)
+## ✅ All Steps Complete
 
-## ✅ Step 1: Stripe Dashboard Setup
-
-1. Create One-Time Product: "Early Access Lifetime" - $199
-2. Create Subscription Product: "Tier 1" - $49/month (future)
-
-## ✅ Step 2: Supabase Database Schema
-
-- `profiles` table with `stripe_customer_id`
-- `subscriptions` table
-
-## ✅ Step 3: Environment Variables
-
-- `STRIPE_SECRET_KEY`
-- `STRIPE_WEBHOOK_SECRET`
-
-## ✅ Step 4: Create Checkout Session Edge Function
-
-Location: `supabase/functions/create-checkout/index.ts`
-
-## ✅ Step 5: React Integration
-
-## ✅ Step 6: Stripe Webhook Edge Function
-
-Location: `supabase/functions/stripe-webhook/index.ts`
-
-## ✅ Step 7: Testing & Going Live
+1. Stripe Dashboard Setup ✅
+2. Supabase Database Schema ✅
+3. Environment Variables ✅
+4. Create Checkout Session Edge Function ✅
+5. React Integration ✅
+6. Stripe Webhook Edge Function ✅
+7. Testing & Going Live ✅
 
 ---
 
-# 13. Stripe Tasks
+# 14. Stripe Tasks
 
 > **Source**: `docs/stripe-tasks.md`
 
-## Task Summary
+## Task Summary — All Complete
 
 | Component | Status |
 |-----------|--------|
@@ -1167,16 +902,13 @@ Location: `supabase/functions/stripe-webhook/index.ts`
 
 ---
 
-# 14. Bug Prompt Template
+# 15. Bug Prompt Template
 
 > **Source**: `docs/bug_prompt.md`
 
 # BidBox Bug Report Template
 
-*A structured approach to single-pass bug fixes*
-
 ## Phase 1: Evidence Gathering
-
 - Environment & Route
 - Reproduction Steps
 - Expected vs Actual Behavior
@@ -1184,103 +916,59 @@ Location: `supabase/functions/stripe-webhook/index.ts`
 - Data Context
 
 ## Phase 2: Root-Cause Analysis Checklist
-
-- UI Layer
-- RLS Policies
-- Storage Buckets
-- Edge Functions
-- Client-Side Logic
+- UI Layer, RLS Policies, Storage Buckets, Edge Functions, Client-Side Logic
 
 ## Phase 3: One Coherent Solution Plan
-
 **DO NOT** propose incremental patches. Propose a complete fix.
 
 ## Phase 4: Verify & Test Matrix
-
-- Core Functionality
-- Edge Cases
-- Regression Tests
-
-## What NOT to Do
-
-- ❌ Incremental Guessing
-- ❌ Environment Confusion
-- ❌ Vague Descriptions
-- ❌ Missing User Context
-- ❌ Skipping Verification
+- Core Functionality, Edge Cases, Regression Tests
 
 ---
 
-# 15. Bug: Header Tagline Visibility
+# 16. Bug: Header Tagline Visibility
 
 > **Source**: `docs/bug-header-tagline-visibility.md`
 
 ## Issue Summary
-The tagline "Bid Better, Win More." appears under the BidBox header logo in the external preview window and published site.
-
-## Affected File
-`src/components/Layout.tsx` - PublicLayout component, lines 158-173
+The tagline "Bid Better, Win More." appears under the BidBox header logo.
 
 ## Status
-Pending user clarification - was the tagline intentional or should it be removed?
+Pending user clarification.
 
 ---
 
-# 16. Bug: Sign Out Failure
+# 17. Bug: Sign Out Failure
 
 > **Source**: `docs/bug-report-sign-out-failure.md`
 
 ## Issue Summary
-User authentication sign out fails with an error toast "Failed to sign out".
-
-## Steps to Reproduce
-1. Navigate to `/projects`
-2. Open sidebar
-3. Click "Logout"
-
-## Possible Causes
-- Supabase Auth Session Issue
-- Client State Mismatch
-- RLS Policy Conflict
+User authentication sign out fails with "Failed to sign out" error.
 
 ## Suggested Fixes
 1. Add error logging to toast message
-2. Force local signout by clearing localStorage/sessionStorage
+2. Force local signout by clearing localStorage
 3. Implement retry logic
 
 ---
 
-# 17. Reddit Pain Points (Research)
+# 18. Reddit Pain Points (Research)
 
-> **Source**: `docs/reddit_painpoints`  
-> **Note**: Full file is 6,984 lines. This is a summary of key themes.
+> **Source**: `docs/reddit_painpoints`
 
 ## Key Themes from Reddit Research
 
 ### 🚨 Theme 1: "I hate platforms that require subs to log in."
 - Subs will ignore login systems
 - Proprietary portals are a "royal PIA"
-- Many subs simply won't bid work requiring portal entry
 
 ### 🚨 Theme 2: "Everything in bidding is overly complicated."
-- GCs juggle too many tools: email, spreadsheets, text, multiple portals
-- Estimators spend too much time on admin tasks
+- GCs juggle too many tools
 - Need for simple, streamlined process
 
 ### 🚨 Theme 3: "I don't want to pay enterprise pricing for basic features."
 - BuildingConnected, Procore seen as overpriced
 - Small/mid GCs priced out of good tools
-- Need affordable alternatives
-
-### Sub Perspective Pain Points
-- Having to use multiple different bidding systems
-- Each GC uses different platforms
-- "I currently have active accounts in iSQFT, iBeam, Procore, PanteraTools, Buzzsaw, BIM360, Bluebeam Studio, PlanGrid, Fieldwire..."
-
-### GC Perspective Pain Points
-- Managing 60 trades with 3 bids per trade = 180 companies
-- Organizing bids from multiple sources (email, text, fax, portals)
-- Getting subs to respond consistently
 
 ### Market Opportunity
 - Need for aggregation platform for subs
@@ -1292,5 +980,5 @@ User authentication sign out fails with an error toast "Failed to sign out".
 
 **End of BidBox Complete Documentation**
 
-*Total documents included: 17*  
-*Last generated: 2026-01-04*
+*Total documents included: 18*  
+*Last generated: 2026-01-25*
