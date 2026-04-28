@@ -1,19 +1,34 @@
 ## Goal
-Save the previously-generated revised BidBox Backend Architecture Summary (with Section 7 rewritten to remove all OpenAI references) as a downloadable Markdown file.
 
-## Steps
+Bypass email verification for the user `test@bidbox.com` so they can sign in immediately without clicking a verification link.
 
-1. **Write the file** to `/mnt/documents/bidbox_backend_architecture_summary_v2.md` containing the full report, word-for-word identical to the prior version, with Section 7 replaced to describe only:
-   - The LLM in use: `google/gemini-3-flash-preview`
-   - That it is accessed via the **Lovable AI Gateway** (no third-party API keys required)
-   - Where it's invoked: `supabase/functions/crawl-project/index.ts`
-   - How it's integrated: OpenAI-compatible `chat/completions` endpoint with **tool calling** (`extract_project_info` schema) to force structured JSON output for project metadata (bid dates, scope, bonds, contacts, estimates)
-   - Fallback/error behavior as it exists in the code
-   - No mention of OpenAI as a provider or alternative
+## Current State
 
-2. **Emit a `<lov-artifact>` tag** so the file appears as a downloadable artifact in chat.
+- User exists in `auth.users`:
+  - id: `2ad0a491-0986-489c-88e2-f18b73f9ef1b`
+  - email: `test@bidbox.com`
+  - `email_confirmed_at`: `NULL` (unverified — blocks login)
 
-## Notes
-- No code in the project will be modified.
-- Sections 1–6 and 8–11 will be carried over verbatim from the prior report.
-- File will be a sibling of the original (`_v2` suffix) so the first version remains available.
+## Change
+
+Run a one-off SQL migration that sets `email_confirmed_at = now()` for this single user. This is the standard Supabase way to manually confirm an account without sending or clicking a verification email.
+
+```sql
+UPDATE auth.users
+SET email_confirmed_at = now(),
+    confirmed_at = now()
+WHERE email = 'test@bidbox.com'
+  AND email_confirmed_at IS NULL;
+```
+
+Scoped to that one email. Idempotent (the `IS NULL` guard makes re-runs a no-op). No app code changes, no RLS changes, no auth-config changes — global signup verification stays ON for everyone else.
+
+## Verification
+
+After the migration runs, the user can go to `/auth`, enter `test@bidbox.com` + their password, and sign in directly. I'll also re-query `auth.users` to confirm `email_confirmed_at` is now populated.
+
+## Not Doing
+
+- Not disabling email verification globally (would weaken security for all future signups).
+- Not changing the user's password — only confirming the email.
+- Not touching any other user.
