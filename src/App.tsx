@@ -20,6 +20,7 @@ import AdminNetworkSubs from "./pages/AdminNetworkSubs";
 import SubcontractorDirectory from "./pages/SubcontractorDirectory";
 import CalendarDashboard from "./pages/CalendarDashboard";
 import SubsNetwork from "./pages/SubsNetwork";
+import Opportunities from "./pages/Opportunities";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -37,6 +38,7 @@ const App = () => (
             <Route path="/landing-full" element={<LandingFull />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/calendar" element={<CalendarDashboard />} />
+            <Route path="/opportunities" element={<Opportunities />} />
             <Route path="/projects" element={<Projects />} />
             <Route path="/projects/new" element={<NewProject />} />
             <Route path="/projects/:id" element={<ProjectDetail />} />
