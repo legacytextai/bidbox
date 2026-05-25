@@ -14,6 +14,50 @@ export type Database = {
   }
   public: {
     Tables: {
+      agent_runs: {
+        Row: {
+          candidates_found: number | null
+          candidates_new: number | null
+          completed_at: string | null
+          created_at: string
+          errors: number | null
+          id: string
+          raw_log: string | null
+          source_id: string | null
+          started_at: string
+        }
+        Insert: {
+          candidates_found?: number | null
+          candidates_new?: number | null
+          completed_at?: string | null
+          created_at?: string
+          errors?: number | null
+          id?: string
+          raw_log?: string | null
+          source_id?: string | null
+          started_at?: string
+        }
+        Update: {
+          candidates_found?: number | null
+          candidates_new?: number | null
+          completed_at?: string | null
+          created_at?: string
+          errors?: number | null
+          id?: string
+          raw_log?: string | null
+          source_id?: string | null
+          started_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_runs_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "opportunity_sources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bids: {
         Row: {
           bid_item: string | null
@@ -181,6 +225,124 @@ export type Database = {
           phone?: string | null
           state_code?: string | null
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      opportunity_candidates: {
+        Row: {
+          agency: string | null
+          bid_due_at: string | null
+          converted_project_id: string | null
+          crawl_data: Json | null
+          created_at: string
+          id: string
+          last_crawled_at: string | null
+          portal_type: string | null
+          raw_title: string | null
+          review_notes: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          scope_text: string | null
+          source_id: string
+          source_url: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          agency?: string | null
+          bid_due_at?: string | null
+          converted_project_id?: string | null
+          crawl_data?: Json | null
+          created_at?: string
+          id?: string
+          last_crawled_at?: string | null
+          portal_type?: string | null
+          raw_title?: string | null
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          scope_text?: string | null
+          source_id: string
+          source_url: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          agency?: string | null
+          bid_due_at?: string | null
+          converted_project_id?: string | null
+          crawl_data?: Json | null
+          created_at?: string
+          id?: string
+          last_crawled_at?: string | null
+          portal_type?: string | null
+          raw_title?: string | null
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          scope_text?: string | null
+          source_id?: string
+          source_url?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "opportunity_candidates_converted_project_id_fkey"
+            columns: ["converted_project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "opportunity_candidates_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "opportunity_candidates_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "opportunity_sources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      opportunity_sources: {
+        Row: {
+          created_at: string
+          id: string
+          last_scanned_at: string | null
+          listing_url: string
+          name: string
+          portal_type: string
+          scan_enabled: boolean
+          scan_interval_hours: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_scanned_at?: string | null
+          listing_url: string
+          name: string
+          portal_type: string
+          scan_enabled?: boolean
+          scan_interval_hours?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_scanned_at?: string | null
+          listing_url?: string
+          name?: string
+          portal_type?: string
+          scan_enabled?: boolean
+          scan_interval_hours?: number
+          updated_at?: string
         }
         Relationships: []
       }
