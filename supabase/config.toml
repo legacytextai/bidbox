@@ -23,3 +23,6 @@ verify_jwt = true
 
 [functions.recrawl-projects]
 verify_jwt = false
+
+[functions.scan-opportunities]
+verify_jwt = true
