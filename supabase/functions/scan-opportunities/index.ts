@@ -14,11 +14,17 @@ interface OpportunitySource {
   scan_interval_hours: number;
 }
 
-interface ExtractedOpportunity {
+interface PlanetBidsOpportunity {
+  title: string;
+  invitation_number: string | null;
+  bid_id: string | null;
+  due_date: string | null;
+}
+
+interface GenericOpportunity {
   url: string;
   title: string;
-  agency?: string | null;
-  bid_due_date?: string | null;
+  bid_due_date: string | null;
 }
 
 interface SourceRunResult {
@@ -29,12 +35,20 @@ interface SourceRunResult {
   errors: number;
 }
 
+function extractPortalId(url: string): string | null {
+  const match = url.match(/\/portal\/(\d+)\//);
+  return match ? match[1] : null;
+}
+
+function buildPlanetBidsDetailUrl(portalId: string, bidId: string): string {
+  return `https://vendors.planetbids.com/portal/${portalId}/bo/bo-detail/${bidId}`;
+}
+
 function isValidCandidateUrl(url: string, listingUrl: string): boolean {
   try {
     const parsed = new URL(url);
     if (parsed.protocol !== "https:") return false;
     if (url === listingUrl) return false;
-    // Must have either a query string or a path with more than 2 segments
     const hasQuery = parsed.search.length > 1;
     const pathSegments = parsed.pathname.split("/").filter(Boolean);
     const hasDeepPath = pathSegments.length >= 2;
@@ -44,20 +58,17 @@ function isValidCandidateUrl(url: string, listingUrl: string): boolean {
   }
 }
 
-// Parse a date string from the listing page into a UTC ISO string.
-// Treats bare dates (YYYY-MM-DD) as noon PST to avoid date boundary issues.
 function parseBidDueDate(raw: string | null | undefined): string | null {
   if (!raw) return null;
   try {
-    // If it already looks like an ISO datetime, parse directly
     if (raw.includes("T")) {
       const d = new Date(raw);
       return isNaN(d.getTime()) ? null : d.toISOString();
     }
-    // Bare date: treat as noon PST (UTC-8)
     const [year, month, day] = raw.split("-").map(Number);
     if (!year || !month || !day) return null;
-    const d = new Date(Date.UTC(year, month - 1, day, 20, 0, 0)); // noon PST = 20:00 UTC
+    // Treat bare date as noon PST (UTC-8) = 20:00 UTC
+    const d = new Date(Date.UTC(year, month - 1, day, 20, 0, 0));
     return isNaN(d.getTime()) ? null : d.toISOString();
   } catch {
     return null;
@@ -69,8 +80,6 @@ async function scanSource(
   supabase: ReturnType<typeof createClient>,
   firecrawlApiKey: string,
   lovableApiKey: string,
-  supabaseUrl: string,
-  supabaseServiceKey: string,
 ): Promise<SourceRunResult> {
   const logLines: string[] = [];
   const log = (msg: string) => {
@@ -110,8 +119,24 @@ async function scanSource(
       .eq("id", runId);
   };
 
-  // Step 1: Firecrawl scrape of listing page
-  log(`[${source.name}] Scraping listing: ${source.listing_url}`);
+  // For PlanetBids: extract portal ID before doing anything else
+  let portalId: string | null = null;
+  if (source.portal_type === "planetbids") {
+    portalId = extractPortalId(source.listing_url);
+    if (!portalId) {
+      log(`[${source.name}] Could not extract portal ID from URL — skipping`);
+      errors++;
+      await finishRun();
+      return { source_id: source.id, source_name: source.name, found: 0, new: 0, errors };
+    }
+    log(`[${source.name}] Portal ID: ${portalId}`);
+  }
+
+  // Step 1: Firecrawl scrape
+  // PlanetBids pages are JS-rendered and need more time to load
+  const waitFor = source.portal_type === "planetbids" ? 8000 : 5000;
+  log(`[${source.name}] Scraping listing (waitFor=${waitFor}ms): ${source.listing_url}`);
+
   let markdown = "";
   try {
     const scrapeResponse = await fetch("https://api.firecrawl.dev/v1/scrape", {
@@ -124,7 +149,7 @@ async function scanSource(
         url: source.listing_url,
         formats: ["markdown"],
         onlyMainContent: true,
-        waitFor: 5000,
+        waitFor,
       }),
     });
 
@@ -152,134 +177,263 @@ async function scanSource(
     return { source_id: source.id, source_name: source.name, found: 0, new: 0, errors };
   }
 
-  // Step 2: LLM extraction of opportunity list
+  // Step 2: LLM extraction — branched by portal type
   log(`[${source.name}] Running LLM extraction...`);
-  let opportunities: ExtractedOpportunity[] = [];
-  try {
-    const llmResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${lovableApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          {
-            role: "system",
-            content: `You are a web scraper assistant. Extract a list of individual bid or project opportunities from a public procurement listing page. Each item must be a distinct project with its own detail page URL. Do not return category links, navigation links, search filters, or the listing page URL itself. Only return items that are clearly individual solicitations or contracts.`,
-          },
-          {
-            role: "user",
-            content: `Extract all individual project opportunities from this procurement listing page.\n\nSOURCE URL: ${source.listing_url}\n\nCONTENT:\n${markdown.substring(0, 15000)}`,
-          },
-        ],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "extract_opportunity_list",
-              description: "Extract a list of individual procurement opportunities from a listing page",
-              parameters: {
-                type: "object",
-                properties: {
-                  opportunities: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        url: {
-                          type: "string",
-                          description: "Full absolute URL to the individual project detail page",
+
+  if (source.portal_type === "planetbids") {
+    // ── PlanetBids path ──────────────────────────────────────────────────────
+    let opportunities: PlanetBidsOpportunity[] = [];
+
+    try {
+      const llmResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${lovableApiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          messages: [
+            {
+              role: "system",
+              content: `You are extracting bid opportunities from a PlanetBids listing page.
+Extract ONLY rows where Stage = Bidding.
+Do NOT return rows where Stage is Closed, Rejected, Awarded, or any value other than Bidding.
+For each qualifying row, find the bid_id by looking for href links in the format /bo-detail/{number} embedded in the page content. The invitation_number alone (e.g. GP-26-0016) does NOT contain the numeric bid_id — it must come from a /bo-detail/{number} link. If no such link is found for a row, set bid_id to null.`,
+            },
+            {
+              role: "user",
+              content: `Extract all active bidding opportunities from this PlanetBids listing page.
+
+SOURCE URL: ${source.listing_url}
+
+CONTENT:
+${markdown.substring(0, 15000)}`,
+            },
+          ],
+          tools: [
+            {
+              type: "function",
+              function: {
+                name: "extract_planetbids_opportunities",
+                description: "Extract active bidding opportunities from a PlanetBids listing page",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    opportunities: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          title: {
+                            type: "string",
+                            description: "Bid title as shown on the listing",
+                          },
+                          invitation_number: {
+                            type: "string",
+                            description: "Invitation or solicitation number (e.g. GP-26-0016)",
+                          },
+                          bid_id: {
+                            type: "string",
+                            description: "Numeric ID found in a /bo-detail/{number} href link on the page. NOT derived from the invitation_number. Null if no such link is found.",
+                          },
+                          due_date: {
+                            type: "string",
+                            description: "Bid closing date in YYYY-MM-DD format if shown, otherwise null",
+                          },
                         },
-                        title: {
-                          type: "string",
-                          description: "Project or bid title as shown on the listing",
-                        },
-                        agency: {
-                          type: "string",
-                          description: "Issuing agency or department name if shown",
-                        },
-                        bid_due_date: {
-                          type: "string",
-                          description: "Bid closing or due date in YYYY-MM-DD format if shown, otherwise null",
-                        },
+                        required: ["title"],
                       },
-                      required: ["url", "title"],
                     },
                   },
+                  required: ["opportunities"],
+                  additionalProperties: false,
                 },
-                required: ["opportunities"],
-                additionalProperties: false,
               },
             },
-          },
-        ],
-        tool_choice: { type: "function", function: { name: "extract_opportunity_list" } },
-      }),
-    });
+          ],
+          tool_choice: { type: "function", function: { name: "extract_planetbids_opportunities" } },
+        }),
+      });
 
-    if (!llmResponse.ok) {
-      const errText = await llmResponse.text();
-      log(`[${source.name}] LLM request failed: ${llmResponse.status} ${errText.substring(0, 300)}`);
+      if (!llmResponse.ok) {
+        const errText = await llmResponse.text();
+        log(`[${source.name}] LLM request failed: ${llmResponse.status} ${errText.substring(0, 300)}`);
+        errors++;
+        await finishRun();
+        return { source_id: source.id, source_name: source.name, found: 0, new: 0, errors };
+      }
+
+      const llmData = await llmResponse.json();
+      const toolCall = llmData.choices?.[0]?.message?.tool_calls?.[0];
+      if (toolCall?.function?.arguments) {
+        const parsed = JSON.parse(toolCall.function.arguments);
+        opportunities = parsed.opportunities || [];
+        log(`[${source.name}] LLM returned ${opportunities.length} raw items`);
+      }
+    } catch (e) {
+      log(`[${source.name}] LLM error: ${e}`);
       errors++;
       await finishRun();
       return { source_id: source.id, source_name: source.name, found: 0, new: 0, errors };
     }
 
-    const llmData = await llmResponse.json();
-    const toolCall = llmData.choices?.[0]?.message?.tool_calls?.[0];
-    if (toolCall?.function?.arguments) {
-      const parsed = JSON.parse(toolCall.function.arguments);
-      opportunities = parsed.opportunities || [];
-      log(`[${source.name}] LLM returned ${opportunities.length} raw items`);
-    }
-  } catch (e) {
-    log(`[${source.name}] LLM error: ${e}`);
-    errors++;
-    await finishRun();
-    return { source_id: source.id, source_name: source.name, found: 0, new: 0, errors };
-  }
-
-  // Step 3: Validate and upsert each candidate
-  for (const opp of opportunities) {
-    if (!opp.url || !isValidCandidateUrl(opp.url, source.listing_url)) {
-      log(`[${source.name}] Skipped invalid URL: ${opp.url}`);
-      continue;
-    }
-
-    candidatesFound++;
-
-    const bidDueAt = parseBidDueDate(opp.bid_due_date);
-
-    const { error: insertError, count } = await supabase
-      .from("opportunity_candidates")
-      .insert({
-        source_id: source.id,
-        source_url: opp.url,
-        portal_type: source.portal_type,
-        raw_title: opp.title?.substring(0, 500) || null,
-        agency: opp.agency?.substring(0, 200) || null,
-        bid_due_at: bidDueAt,
-      })
-      .select()
-      .limit(1);
-
-    if (insertError) {
-      if (insertError.code === "23505") {
-        // Unique violation — candidate already exists, skip silently
-        log(`[${source.name}] Already known: ${opp.url}`);
-      } else {
-        log(`[${source.name}] Insert error for ${opp.url}: ${insertError.message}`);
-        errors++;
+    // Step 3: Build URLs and upsert candidates
+    for (const opp of opportunities) {
+      if (!opp.bid_id) {
+        log(`[${source.name}] Skipped — no bid_id for: ${opp.invitation_number ?? opp.title}`);
+        continue;
       }
-    } else {
-      candidatesNew++;
-      log(`[${source.name}] New candidate: ${opp.title}`);
+
+      const detailUrl = buildPlanetBidsDetailUrl(portalId!, opp.bid_id);
+      candidatesFound++;
+
+      const bidDueAt = parseBidDueDate(opp.due_date);
+
+      const { error: insertError } = await supabase
+        .from("opportunity_candidates")
+        .insert({
+          source_id: source.id,
+          source_url: detailUrl,
+          portal_type: source.portal_type,
+          raw_title: opp.title?.substring(0, 500) || null,
+          agency: source.name,
+          bid_due_at: bidDueAt,
+        });
+
+      if (insertError) {
+        if (insertError.code === "23505") {
+          log(`[${source.name}] Already known: ${detailUrl}`);
+        } else {
+          log(`[${source.name}] Insert error for ${detailUrl}: ${insertError.message}`);
+          errors++;
+        }
+      } else {
+        candidatesNew++;
+        log(`[${source.name}] New candidate: ${opp.title}`);
+      }
+    }
+  } else {
+    // ── Generic path (non-PlanetBids) ────────────────────────────────────────
+    let opportunities: GenericOpportunity[] = [];
+
+    try {
+      const llmResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${lovableApiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          messages: [
+            {
+              role: "system",
+              content: `You are a web scraper assistant. Extract a list of individual bid or project opportunities from a public procurement listing page. Each item must be a distinct project with its own detail page URL. Do not return category links, navigation links, search filters, or the listing page URL itself. Only return items that are clearly individual solicitations or contracts.`,
+            },
+            {
+              role: "user",
+              content: `Extract all individual project opportunities from this procurement listing page.\n\nSOURCE URL: ${source.listing_url}\n\nCONTENT:\n${markdown.substring(0, 15000)}`,
+            },
+          ],
+          tools: [
+            {
+              type: "function",
+              function: {
+                name: "extract_opportunity_list",
+                description: "Extract a list of individual procurement opportunities from a listing page",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    opportunities: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          url: {
+                            type: "string",
+                            description: "Full absolute URL to the individual project detail page",
+                          },
+                          title: {
+                            type: "string",
+                            description: "Project or bid title as shown on the listing",
+                          },
+                          bid_due_date: {
+                            type: "string",
+                            description: "Bid closing or due date in YYYY-MM-DD format if shown, otherwise null",
+                          },
+                        },
+                        required: ["url", "title"],
+                      },
+                    },
+                  },
+                  required: ["opportunities"],
+                  additionalProperties: false,
+                },
+              },
+            },
+          ],
+          tool_choice: { type: "function", function: { name: "extract_opportunity_list" } },
+        }),
+      });
+
+      if (!llmResponse.ok) {
+        const errText = await llmResponse.text();
+        log(`[${source.name}] LLM request failed: ${llmResponse.status} ${errText.substring(0, 300)}`);
+        errors++;
+        await finishRun();
+        return { source_id: source.id, source_name: source.name, found: 0, new: 0, errors };
+      }
+
+      const llmData = await llmResponse.json();
+      const toolCall = llmData.choices?.[0]?.message?.tool_calls?.[0];
+      if (toolCall?.function?.arguments) {
+        const parsed = JSON.parse(toolCall.function.arguments);
+        opportunities = parsed.opportunities || [];
+        log(`[${source.name}] LLM returned ${opportunities.length} raw items`);
+      }
+    } catch (e) {
+      log(`[${source.name}] LLM error: ${e}`);
+      errors++;
+      await finishRun();
+      return { source_id: source.id, source_name: source.name, found: 0, new: 0, errors };
+    }
+
+    for (const opp of opportunities) {
+      if (!opp.url || !isValidCandidateUrl(opp.url, source.listing_url)) {
+        log(`[${source.name}] Skipped invalid URL: ${opp.url}`);
+        continue;
+      }
+
+      candidatesFound++;
+      const bidDueAt = parseBidDueDate(opp.bid_due_date);
+
+      const { error: insertError } = await supabase
+        .from("opportunity_candidates")
+        .insert({
+          source_id: source.id,
+          source_url: opp.url,
+          portal_type: source.portal_type,
+          raw_title: opp.title?.substring(0, 500) || null,
+          agency: source.name,
+          bid_due_at: bidDueAt,
+        });
+
+      if (insertError) {
+        if (insertError.code === "23505") {
+          log(`[${source.name}] Already known: ${opp.url}`);
+        } else {
+          log(`[${source.name}] Insert error for ${opp.url}: ${insertError.message}`);
+          errors++;
+        }
+      } else {
+        candidatesNew++;
+        log(`[${source.name}] New candidate: ${opp.title}`);
+      }
     }
   }
 
-  // Step 4: Update source last_scanned_at
+  // Update source last_scanned_at
   await supabase
     .from("opportunity_sources")
     .update({ last_scanned_at: new Date().toISOString() })
@@ -317,18 +471,16 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Parse optional source_id filter from request body
     let sourceIdFilter: string | null = null;
     if (req.method === "POST") {
       try {
         const body = await req.json();
         sourceIdFilter = body?.source_id ?? null;
       } catch {
-        // No body or non-JSON body — treat as "scan all"
+        // No body or non-JSON — scan all
       }
     }
 
-    // Query due sources
     let query = supabase
       .from("opportunity_sources")
       .select("id, name, portal_type, listing_url, scan_interval_hours")
@@ -337,7 +489,7 @@ serve(async (req) => {
     if (sourceIdFilter) {
       query = query.eq("id", sourceIdFilter);
     } else {
-      const cutoff = new Date(Date.now() - 60 * 60 * 1000).toISOString(); // 1h minimum guard
+      const cutoff = new Date(Date.now() - 60 * 60 * 1000).toISOString();
       query = query.or(`last_scanned_at.is.null,last_scanned_at.lt.${cutoff}`);
     }
 
@@ -362,16 +514,8 @@ serve(async (req) => {
 
     const runs: SourceRunResult[] = [];
     for (const source of sources as OpportunitySource[]) {
-      const result = await scanSource(
-        source,
-        supabase,
-        firecrawlApiKey,
-        lovableApiKey,
-        supabaseUrl,
-        supabaseServiceKey,
-      );
+      const result = await scanSource(source, supabase, firecrawlApiKey, lovableApiKey);
       runs.push(result);
-      // Rate limiting between sources
       if (sources.indexOf(source) < sources.length - 1) {
         await new Promise((resolve) => setTimeout(resolve, 2000));
       }
