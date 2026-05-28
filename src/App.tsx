@@ -21,6 +21,7 @@ import SubcontractorDirectory from "./pages/SubcontractorDirectory";
 import CalendarDashboard from "./pages/CalendarDashboard";
 import SubsNetwork from "./pages/SubsNetwork";
 import Opportunities from "./pages/Opportunities";
+import QualificationProfile from "./pages/QualificationProfile";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -44,6 +45,7 @@ const App = () => (
             <Route path="/projects/:id" element={<ProjectDetail />} />
             <Route path="/bid/:token" element={<BidRoom />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/settings/profile" element={<QualificationProfile />} />
             <Route path="/privacy" element={<PrivacyPolicy />} />
             <Route path="/terms" element={<TermsOfService />} />
             <Route path="/admin/analytics" element={<AdminAnalytics />} />
