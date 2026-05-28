@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { ExternalLink, RefreshCw, Sparkles, ChevronDown } from "lucide-react";
+import { ExternalLink, RefreshCw, ChevronDown } from "lucide-react";
 import { Layout } from "@/components/Layout";
 import {
   Tooltip,
@@ -180,28 +180,6 @@ const Opportunities = () => {
     }
   };
 
-  const handleRequalifyAll = async () => {
-    setRequalifyLoading(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("qualify-candidates", { body: {} });
-      if (error) throw error;
-      const evaluated = data?.evaluated ?? 0;
-      const g = data?.auto_green ?? 0;
-      const y = data?.auto_yellow ?? 0;
-      const r = data?.auto_red ?? 0;
-      const skipped = data?.skipped ?? 0;
-      const errors = data?.errors ?? 0;
-      toast({
-        title: "Re-qualification complete",
-        description: `Evaluated ${evaluated}: ${g} green, ${y} yellow, ${r} red${skipped ? ` · ${skipped} skipped` : ""}${errors ? ` · ${errors} errors` : ""}`,
-      });
-      await loadCandidates();
-    } catch (e: any) {
-      toast({ title: "Re-qualify failed", description: e?.message ?? "Unknown error", variant: "destructive" });
-    } finally {
-      setRequalifyLoading(false);
-    }
-  };
 
   const handleStatusChange = async (id: string, newStatus: CandidateStatus) => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -475,14 +453,7 @@ const Opportunities = () => {
                 </p>
               </div>
               <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  onClick={handleRequalifyAll}
-                  disabled={requalifyLoading}
-                >
-                  <Sparkles className={`h-4 w-4 mr-2 ${requalifyLoading ? "animate-pulse" : ""}`} />
-                  {requalifyLoading ? "Re-qualifying..." : "Re-qualify All"}
-                </Button>
+
                 <Button
                   onClick={handleScanNow}
                   disabled={scanLoading}
