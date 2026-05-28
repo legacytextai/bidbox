@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { FolderOpen, Settings, LogOut, Users, Calendar, Globe, Search } from "lucide-react";
+import { FolderOpen, Settings, LogOut, Users, Calendar, Globe, Search, SlidersHorizontal } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import bidboxLogo from "@/assets/bidbox-logo.png";
@@ -102,6 +102,12 @@ const AppSidebar = ({ onNavigate }: SidebarNavProps) => {
 
       <SidebarFooter className="border-t border-border">
         <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton onClick={() => handleNavigation("/settings/profile")}>
+              <SlidersHorizontal className="h-4 w-4 mr-3" />
+              <span>Bid Profile</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton onClick={() => handleNavigation("/settings")}>
               <Settings className="h-4 w-4 mr-3" />
