@@ -141,6 +141,56 @@ export type Database = {
         }
         Relationships: []
       }
+      gc_qualification_profiles: {
+        Row: {
+          agency_exclusions: string[]
+          bond_capacity: number | null
+          created_at: string
+          id: string
+          licenses_held: string[]
+          max_project_value: number | null
+          min_project_value: number | null
+          profile_id: string
+          target_counties: string[]
+          trade_categories: string[]
+          updated_at: string
+        }
+        Insert: {
+          agency_exclusions?: string[]
+          bond_capacity?: number | null
+          created_at?: string
+          id?: string
+          licenses_held?: string[]
+          max_project_value?: number | null
+          min_project_value?: number | null
+          profile_id: string
+          target_counties?: string[]
+          trade_categories?: string[]
+          updated_at?: string
+        }
+        Update: {
+          agency_exclusions?: string[]
+          bond_capacity?: number | null
+          created_at?: string
+          id?: string
+          licenses_held?: string[]
+          max_project_value?: number | null
+          min_project_value?: number | null
+          profile_id?: string
+          target_counties?: string[]
+          trade_categories?: string[]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gc_qualification_profiles_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       gc_sub_trade_mappings: {
         Row: {
           created_at: string | null
@@ -231,6 +281,8 @@ export type Database = {
       opportunity_candidates: {
         Row: {
           agency: string | null
+          auto_status: string | null
+          auto_status_reason: string | null
           bid_due_at: string | null
           converted_project_id: string | null
           crawl_data: Json | null
@@ -238,6 +290,8 @@ export type Database = {
           id: string
           last_crawled_at: string | null
           portal_type: string | null
+          qualification_score: number | null
+          qualified_at: string | null
           raw_title: string | null
           review_notes: string | null
           reviewed_at: string | null
@@ -250,6 +304,8 @@ export type Database = {
         }
         Insert: {
           agency?: string | null
+          auto_status?: string | null
+          auto_status_reason?: string | null
           bid_due_at?: string | null
           converted_project_id?: string | null
           crawl_data?: Json | null
@@ -257,6 +313,8 @@ export type Database = {
           id?: string
           last_crawled_at?: string | null
           portal_type?: string | null
+          qualification_score?: number | null
+          qualified_at?: string | null
           raw_title?: string | null
           review_notes?: string | null
           reviewed_at?: string | null
@@ -269,6 +327,8 @@ export type Database = {
         }
         Update: {
           agency?: string | null
+          auto_status?: string | null
+          auto_status_reason?: string | null
           bid_due_at?: string | null
           converted_project_id?: string | null
           crawl_data?: Json | null
@@ -276,6 +336,8 @@ export type Database = {
           id?: string
           last_crawled_at?: string | null
           portal_type?: string | null
+          qualification_score?: number | null
+          qualified_at?: string | null
           raw_title?: string | null
           review_notes?: string | null
           reviewed_at?: string | null
