@@ -1,12 +1,24 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { ExternalLink, RefreshCw } from "lucide-react";
+import { ExternalLink, RefreshCw, Sparkles, ChevronDown } from "lucide-react";
 import { Layout } from "@/components/Layout";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 
 type CandidateStatus = "pending" | "red" | "yellow" | "green" | "converted";
+type AutoStatus = "green" | "yellow" | "red" | null;
 
 interface Candidate {
   id: string;
@@ -22,6 +34,10 @@ interface Candidate {
   converted_project_id: string | null;
   created_at: string;
   source_name: string | null;
+  auto_status: AutoStatus;
+  auto_status_reason: string | null;
+  qualification_score: number | null;
+  qualified_at: string | null;
 }
 
 const FILTERS: { label: string; value: string }[] = [
@@ -50,6 +66,19 @@ const PORTAL_STYLES: Record<string, string> = {
   ramp: "bg-indigo-500/10 text-indigo-700",
 };
 
+const AUTO_STATUS_DOT: Record<NonNullable<AutoStatus>, string> = {
+  green: "bg-green-500",
+  yellow: "bg-yellow-400",
+  red: "bg-red-500",
+};
+
+const AUTO_RANK: Record<string, number> = {
+  green: 0,
+  yellow: 1,
+  null: 2,
+  red: 3,
+};
+
 function formatBidDate(iso: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -70,9 +99,11 @@ const Opportunities = () => {
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState("all");
   const [scanLoading, setScanLoading] = useState(false);
+  const [requalifyLoading, setRequalifyLoading] = useState(false);
   const [lastScannedAt, setLastScannedAt] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [convertingId, setConvertingId] = useState<string | null>(null);
+  const [filteredOutOpen, setFilteredOutOpen] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -102,11 +133,14 @@ const Opportunities = () => {
       converted_project_id: row.converted_project_id,
       created_at: row.created_at,
       source_name: row.opportunity_sources?.name ?? null,
+      auto_status: (row.auto_status ?? null) as AutoStatus,
+      auto_status_reason: row.auto_status_reason ?? null,
+      qualification_score: row.qualification_score ?? null,
+      qualified_at: row.qualified_at ?? null,
     }));
 
     setCandidates(rows);
 
-    // Derive last scanned from sources
     const scannedDates: string[] = (data || [])
       .map((r: any) => r.opportunity_sources?.last_scanned_at)
       .filter(Boolean);
@@ -143,6 +177,29 @@ const Opportunities = () => {
       toast({ title: "Scan failed", description: e?.message ?? "Unknown error", variant: "destructive" });
     } finally {
       setScanLoading(false);
+    }
+  };
+
+  const handleRequalifyAll = async () => {
+    setRequalifyLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("qualify-candidates", { body: {} });
+      if (error) throw error;
+      const evaluated = data?.evaluated ?? 0;
+      const g = data?.auto_green ?? 0;
+      const y = data?.auto_yellow ?? 0;
+      const r = data?.auto_red ?? 0;
+      const skipped = data?.skipped ?? 0;
+      const errors = data?.errors ?? 0;
+      toast({
+        title: "Re-qualification complete",
+        description: `Evaluated ${evaluated}: ${g} green, ${y} yellow, ${r} red${skipped ? ` · ${skipped} skipped` : ""}${errors ? ` · ${errors} errors` : ""}`,
+      });
+      await loadCandidates();
+    } catch (e: any) {
+      toast({ title: "Re-qualify failed", description: e?.message ?? "Unknown error", variant: "destructive" });
+    } finally {
+      setRequalifyLoading(false);
     }
   };
 
@@ -203,7 +260,6 @@ const Opportunities = () => {
 
       if (insertError || !newProject) throw insertError ?? new Error("Insert returned no data");
 
-      // Fire-and-forget crawl to enrich the new project
       supabase.functions.invoke("crawl-project", {
         body: { project_id: newProject.id, source_url: candidate.source_url },
       });
@@ -241,68 +297,192 @@ const Opportunities = () => {
     }
   };
 
-  const filtered = candidates.filter((c) =>
-    activeFilter === "all" ? true : c.status === activeFilter
+  // Filter by manual status (filter tabs unchanged)
+  const filtered = useMemo(
+    () => candidates.filter((c) => (activeFilter === "all" ? true : c.status === activeFilter)),
+    [candidates, activeFilter]
+  );
+
+  // For "All" view: sort by auto_status (green→yellow→null→red), keep created_at DESC within bucket,
+  // and split out auto-Red into a "Filtered Out" section.
+  const { visibleCards, filteredOutCards } = useMemo(() => {
+    if (activeFilter !== "all") {
+      return { visibleCards: filtered, filteredOutCards: [] as Candidate[] };
+    }
+    const sorted = [...filtered].sort((a, b) => {
+      const ra = AUTO_RANK[String(a.auto_status)] ?? 2;
+      const rb = AUTO_RANK[String(b.auto_status)] ?? 2;
+      if (ra !== rb) return ra - rb;
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
+    return {
+      visibleCards: sorted.filter((c) => c.auto_status !== "red"),
+      filteredOutCards: sorted.filter((c) => c.auto_status === "red"),
+    };
+  }, [filtered, activeFilter]);
+
+  const renderCard = (candidate: Candidate) => (
+    <div
+      key={candidate.id}
+      className="bg-card border border-border rounded-lg p-6 flex flex-col gap-3"
+    >
+      {/* Title + external link */}
+      <div className="flex items-start justify-between gap-2">
+        <h3 className="font-semibold text-base text-foreground leading-snug">
+          {candidate.raw_title ?? "Untitled Opportunity"}
+        </h3>
+        <a
+          href={candidate.source_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="shrink-0 text-muted-foreground hover:text-foreground"
+          title="Open source page"
+        >
+          <ExternalLink className="h-4 w-4" />
+        </a>
+      </div>
+
+      {/* Badges row */}
+      <div className="flex items-center gap-2 flex-wrap">
+        {candidate.portal_type && (
+          <span
+            className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${
+              PORTAL_STYLES[candidate.portal_type] ?? "bg-gray-500/10 text-gray-600"
+            }`}
+          >
+            {candidate.portal_type}
+          </span>
+        )}
+        <span
+          className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${STATUS_STYLES[candidate.status]}`}
+        >
+          {candidate.status}
+        </span>
+        {candidate.auto_status && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border border-border bg-background text-muted-foreground cursor-help">
+                <span className={`h-1.5 w-1.5 rounded-full ${AUTO_STATUS_DOT[candidate.auto_status]}`} />
+                System: {candidate.auto_status}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs">
+              <p className="text-xs">
+                {candidate.auto_status_reason ?? "No reason provided"}
+              </p>
+              {candidate.qualification_score !== null && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Score: {candidate.qualification_score}
+                </p>
+              )}
+            </TooltipContent>
+          </Tooltip>
+        )}
+      </div>
+
+      {/* Meta */}
+      <div className="text-sm text-muted-foreground space-y-0.5">
+        {candidate.agency && <p>{candidate.agency}</p>}
+        <p>Bid Due: {formatBidDate(candidate.bid_due_at)}</p>
+        {candidate.source_name && (
+          <p className="text-xs">Source: {candidate.source_name}</p>
+        )}
+      </div>
+
+      {/* Status selector */}
+      {candidate.status !== "converted" && (
+        <div className="flex gap-1">
+          {(["red", "yellow", "green"] as CandidateStatus[]).map((s) => (
+            <button
+              key={s}
+              onClick={() => handleStatusChange(candidate.id, s)}
+              className={`flex-1 py-1 rounded text-xs font-semibold transition-colors border ${
+                candidate.status === s
+                  ? s === "red"
+                    ? "bg-red-500 text-white border-red-500"
+                    : s === "yellow"
+                    ? "bg-yellow-400 text-yellow-900 border-yellow-400"
+                    : "bg-green-500 text-white border-green-500"
+                  : "bg-transparent text-muted-foreground border-border hover:bg-accent"
+              }`}
+            >
+              {s.charAt(0).toUpperCase() + s.slice(1)}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Notes */}
+      {candidate.status !== "converted" && (
+        <input
+          type="text"
+          value={notes[candidate.id] ?? ""}
+          onChange={(e) =>
+            setNotes((prev) => ({ ...prev, [candidate.id]: e.target.value }))
+          }
+          onBlur={() => handleNotesSave(candidate.id)}
+          placeholder="Add review notes..."
+          className="w-full text-sm bg-muted/50 border border-border rounded px-2 py-1.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-[hsl(var(--bidbox-blue))]"
+        />
+      )}
+
+      {/* Convert to Project */}
+      {candidate.status === "converted" ? (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => navigate(`/projects/${candidate.converted_project_id}`)}
+        >
+          View Project
+        </Button>
+      ) : (
+        <Button
+          size="sm"
+          disabled={
+            (candidate.status !== "green" && candidate.status !== "yellow") ||
+            convertingId === candidate.id
+          }
+          onClick={() => handleConvert(candidate)}
+          className="bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90 disabled:opacity-40"
+          title={
+            candidate.status !== "green" && candidate.status !== "yellow"
+              ? "Set status to Yellow or Green to convert"
+              : undefined
+          }
+        >
+          {convertingId === candidate.id ? "Converting..." : "Convert to Project"}
+        </Button>
+      )}
+    </div>
   );
 
   return (
     <Layout showSidebar={true}>
-      {loading ? (
-        <div className="flex items-center justify-center min-h-[calc(100vh-4rem)]">
-          <p className="text-muted-foreground">Loading opportunities...</p>
-        </div>
-      ) : (
-        <div className="p-8">
-          {/* Header */}
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h1 className="text-3xl font-bold text-foreground">Opportunities</h1>
-              <p className="text-sm text-muted-foreground mt-1">
-                Last scanned: {timeAgo(lastScannedAt)}
-              </p>
-            </div>
-            <Button
-              onClick={handleScanNow}
-              disabled={scanLoading}
-              className="bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90"
-            >
-              <RefreshCw className={`h-4 w-4 mr-2 ${scanLoading ? "animate-spin" : ""}`} />
-              {scanLoading ? "Scanning..." : "Scan Now"}
-            </Button>
+      <TooltipProvider delayDuration={150}>
+        {loading ? (
+          <div className="flex items-center justify-center min-h-[calc(100vh-4rem)]">
+            <p className="text-muted-foreground">Loading opportunities...</p>
           </div>
-
-          {/* Filter tabs */}
-          <div className="flex gap-2 mb-6 flex-wrap">
-            {FILTERS.map((f) => {
-              const count = f.value === "all"
-                ? candidates.length
-                : candidates.filter((c) => c.status === f.value).length;
-              return (
-                <button
-                  key={f.value}
-                  onClick={() => setActiveFilter(f.value)}
-                  className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                    activeFilter === f.value
-                      ? "bg-[hsl(var(--bidbox-blue))] text-white"
-                      : "bg-muted text-muted-foreground hover:bg-accent"
-                  }`}
+        ) : (
+          <div className="p-8">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h1 className="text-3xl font-bold text-foreground">Opportunities</h1>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Last scanned: {timeAgo(lastScannedAt)}
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={handleRequalifyAll}
+                  disabled={requalifyLoading}
                 >
-                  {f.label} <span className="ml-1 opacity-70">{count}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Cards */}
-          {filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-24 text-center">
-              <p className="text-lg font-medium text-foreground mb-2">No opportunities found</p>
-              <p className="text-sm text-muted-foreground mb-6">
-                {activeFilter === "all"
-                  ? "Click Scan Now to discover new bids from Caltrans and PlanetBids."
-                  : `No candidates with status "${activeFilter}".`}
-              </p>
-              {activeFilter === "all" && (
+                  <Sparkles className={`h-4 w-4 mr-2 ${requalifyLoading ? "animate-pulse" : ""}`} />
+                  {requalifyLoading ? "Re-qualifying..." : "Re-qualify All"}
+                </Button>
                 <Button
                   onClick={handleScanNow}
                   disabled={scanLoading}
@@ -311,131 +491,83 @@ const Opportunities = () => {
                   <RefreshCw className={`h-4 w-4 mr-2 ${scanLoading ? "animate-spin" : ""}`} />
                   {scanLoading ? "Scanning..." : "Scan Now"}
                 </Button>
-              )}
+              </div>
             </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filtered.map((candidate) => (
-                <div
-                  key={candidate.id}
-                  className="bg-card border border-border rounded-lg p-6 flex flex-col gap-3"
-                >
-                  {/* Title + external link */}
-                  <div className="flex items-start justify-between gap-2">
-                    <h3 className="font-semibold text-base text-foreground leading-snug">
-                      {candidate.raw_title ?? "Untitled Opportunity"}
-                    </h3>
-                    <a
-                      href={candidate.source_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      className="shrink-0 text-muted-foreground hover:text-foreground"
-                      title="Open source page"
-                    >
-                      <ExternalLink className="h-4 w-4" />
-                    </a>
-                  </div>
 
-                  {/* Badges row */}
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {candidate.portal_type && (
-                      <span
-                        className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${
-                          PORTAL_STYLES[candidate.portal_type] ?? "bg-gray-500/10 text-gray-600"
-                        }`}
-                      >
-                        {candidate.portal_type}
-                      </span>
-                    )}
-                    <span
-                      className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${STATUS_STYLES[candidate.status]}`}
-                    >
-                      {candidate.status}
-                    </span>
-                  </div>
-
-                  {/* Meta */}
-                  <div className="text-sm text-muted-foreground space-y-0.5">
-                    {candidate.agency && <p>{candidate.agency}</p>}
-                    <p>Bid Due: {formatBidDate(candidate.bid_due_at)}</p>
-                    {candidate.source_name && (
-                      <p className="text-xs">Source: {candidate.source_name}</p>
-                    )}
-                  </div>
-
-                  {/* Status selector */}
-                  {candidate.status !== "converted" && (
-                    <div className="flex gap-1">
-                      {(["red", "yellow", "green"] as CandidateStatus[]).map((s) => (
-                        <button
-                          key={s}
-                          onClick={() => handleStatusChange(candidate.id, s)}
-                          className={`flex-1 py-1 rounded text-xs font-semibold transition-colors border ${
-                            candidate.status === s
-                              ? s === "red"
-                                ? "bg-red-500 text-white border-red-500"
-                                : s === "yellow"
-                                ? "bg-yellow-400 text-yellow-900 border-yellow-400"
-                                : "bg-green-500 text-white border-green-500"
-                              : "bg-transparent text-muted-foreground border-border hover:bg-accent"
-                          }`}
-                        >
-                          {s.charAt(0).toUpperCase() + s.slice(1)}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Notes */}
-                  {candidate.status !== "converted" && (
-                    <input
-                      type="text"
-                      value={notes[candidate.id] ?? ""}
-                      onChange={(e) =>
-                        setNotes((prev) => ({ ...prev, [candidate.id]: e.target.value }))
-                      }
-                      onBlur={() => handleNotesSave(candidate.id)}
-                      placeholder="Add review notes..."
-                      className="w-full text-sm bg-muted/50 border border-border rounded px-2 py-1.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-[hsl(var(--bidbox-blue))]"
-                    />
-                  )}
-
-                  {/* Convert to Project */}
-                  {candidate.status === "converted" ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() =>
-                        navigate(`/projects/${candidate.converted_project_id}`)
-                      }
-                    >
-                      View Project
-                    </Button>
-                  ) : (
-                    <Button
-                      size="sm"
-                      disabled={
-                        (candidate.status !== "green" && candidate.status !== "yellow") ||
-                        convertingId === candidate.id
-                      }
-                      onClick={() => handleConvert(candidate)}
-                      className="bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90 disabled:opacity-40"
-                      title={
-                        candidate.status !== "green" && candidate.status !== "yellow"
-                          ? "Set status to Yellow or Green to convert"
-                          : undefined
-                      }
-                    >
-                      {convertingId === candidate.id ? "Converting..." : "Convert to Project"}
-                    </Button>
-                  )}
-                </div>
-              ))}
+            {/* Filter tabs */}
+            <div className="flex gap-2 mb-6 flex-wrap">
+              {FILTERS.map((f) => {
+                const count = f.value === "all"
+                  ? candidates.length
+                  : candidates.filter((c) => c.status === f.value).length;
+                return (
+                  <button
+                    key={f.value}
+                    onClick={() => setActiveFilter(f.value)}
+                    className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                      activeFilter === f.value
+                        ? "bg-[hsl(var(--bidbox-blue))] text-white"
+                        : "bg-muted text-muted-foreground hover:bg-accent"
+                    }`}
+                  >
+                    {f.label} <span className="ml-1 opacity-70">{count}</span>
+                  </button>
+                );
+              })}
             </div>
-          )}
-        </div>
-      )}
+
+            {/* Cards */}
+            {filtered.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-24 text-center">
+                <p className="text-lg font-medium text-foreground mb-2">No opportunities found</p>
+                <p className="text-sm text-muted-foreground mb-6">
+                  {activeFilter === "all"
+                    ? "Click Scan Now to discover new bids from Caltrans and PlanetBids."
+                    : `No candidates with status "${activeFilter}".`}
+                </p>
+                {activeFilter === "all" && (
+                  <Button
+                    onClick={handleScanNow}
+                    disabled={scanLoading}
+                    className="bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90"
+                  >
+                    <RefreshCw className={`h-4 w-4 mr-2 ${scanLoading ? "animate-spin" : ""}`} />
+                    {scanLoading ? "Scanning..." : "Scan Now"}
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <>
+                {visibleCards.length > 0 && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {visibleCards.map(renderCard)}
+                  </div>
+                )}
+
+                {activeFilter === "all" && filteredOutCards.length > 0 && (
+                  <Collapsible
+                    open={filteredOutOpen}
+                    onOpenChange={setFilteredOutOpen}
+                    className="mt-10"
+                  >
+                    <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+                      <ChevronDown
+                        className={`h-4 w-4 transition-transform ${filteredOutOpen ? "rotate-0" : "-rotate-90"}`}
+                      />
+                      Filtered Out ({filteredOutCards.length})
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="mt-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 opacity-70">
+                        {filteredOutCards.map(renderCard)}
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
+                )}
+              </>
+            )}
+          </div>
+        )}
+      </TooltipProvider>
     </Layout>
   );
 };
