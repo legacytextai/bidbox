@@ -12,7 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { CA_COUNTIES } from "@/lib/californiaRegions";
 import { LICENSE_CLASSES } from "@/lib/licenseClasses";
-import { ChevronDown, Plus, X } from "lucide-react";
+import { ChevronDown, X } from "lucide-react";
 
 interface ProfileRow {
   target_counties: string[];
