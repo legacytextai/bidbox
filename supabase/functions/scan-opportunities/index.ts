@@ -80,6 +80,7 @@ async function scanSource(
   supabase: ReturnType<typeof createClient>,
   firecrawlApiKey: string,
   lovableApiKey: string,
+  authHeader: string,
 ): Promise<SourceRunResult> {
   const logLines: string[] = [];
   const log = (msg: string) => {
@@ -442,6 +443,25 @@ ${markdown.substring(0, 15000)}`,
   log(`[${source.name}] Done. found=${candidatesFound} new=${candidatesNew} errors=${errors}`);
   await finishRun();
 
+  if (authHeader) {
+    try {
+      const qualifyUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/qualify-candidates`;
+      const qualifyRes = await fetch(qualifyUrl, {
+        method: "POST",
+        headers: { Authorization: authHeader, "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (qualifyRes.ok) {
+        const q = await qualifyRes.json();
+        console.log(`[${source.name}] qualify-candidates: evaluated=${q.evaluated} green=${q.auto_green} yellow=${q.auto_yellow} red=${q.auto_red}`);
+      } else {
+        console.warn(`[${source.name}] qualify-candidates returned ${qualifyRes.status}`);
+      }
+    } catch (e) {
+      console.warn(`[${source.name}] qualify-candidates error: ${e}`);
+    }
+  }
+
   return { source_id: source.id, source_name: source.name, found: candidatesFound, new: candidatesNew, errors };
 }
 
@@ -455,6 +475,7 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const firecrawlApiKey = Deno.env.get("FIRECRAWL_API_KEY");
     const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
+    const authHeader = req.headers.get("Authorization") ?? "";
 
     if (!firecrawlApiKey) {
       return new Response(
@@ -514,7 +535,7 @@ serve(async (req) => {
 
     const runs: SourceRunResult[] = [];
     for (const source of sources as OpportunitySource[]) {
-      const result = await scanSource(source, supabase, firecrawlApiKey, lovableApiKey);
+      const result = await scanSource(source, supabase, firecrawlApiKey, lovableApiKey, authHeader);
       runs.push(result);
       if (sources.indexOf(source) < sources.length - 1) {
         await new Promise((resolve) => setTimeout(resolve, 2000));
