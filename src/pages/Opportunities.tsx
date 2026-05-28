@@ -99,7 +99,7 @@ const Opportunities = () => {
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState("all");
   const [scanLoading, setScanLoading] = useState(false);
-  const [requalifyLoading, setRequalifyLoading] = useState(false);
+  
   const [lastScannedAt, setLastScannedAt] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [convertingId, setConvertingId] = useState<string | null>(null);
