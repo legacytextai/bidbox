@@ -12,7 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { CA_COUNTIES } from "@/lib/californiaRegions";
 import { LICENSE_CLASSES } from "@/lib/licenseClasses";
-import { ChevronDown, Plus, X } from "lucide-react";
+import { ChevronDown, X } from "lucide-react";
 
 interface ProfileRow {
   target_counties: string[];
@@ -153,8 +153,9 @@ const QualificationProfile = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [profile, setProfile] = useState<ProfileRow>(EMPTY_PROFILE);
-  const [newExclusion, setNewExclusion] = useState("");
-  const [tradeInput, setTradeInput] = useState("");
+  const [agencyOptions, setAgencyOptions] = useState<{ value: string; label: string }[]>([]);
+  const [agenciesLoading, setAgenciesLoading] = useState(true);
+  const [agenciesError, setAgenciesError] = useState<string | null>(null);
 
   const countyOptions = useMemo(
     () => CA_COUNTIES.map((c) => ({ value: c, label: c })),
@@ -170,6 +171,8 @@ const QualificationProfile = () => {
     [],
   );
 
+  const tradeOptions = licenseOptions;
+
   const load = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
@@ -177,21 +180,29 @@ const QualificationProfile = () => {
       return;
     }
 
-    const { data, error } = await (supabase as any)
-      .from("gc_qualification_profiles")
-      .select(
-        "target_counties, licenses_held, min_project_value, max_project_value, bond_capacity, agency_exclusions, trade_categories",
-      )
-      .eq("profile_id", session.user.id)
-      .maybeSingle();
+    const [profileRes, agenciesRes] = await Promise.all([
+      (supabase as any)
+        .from("gc_qualification_profiles")
+        .select(
+          "target_counties, licenses_held, min_project_value, max_project_value, bond_capacity, agency_exclusions, trade_categories",
+        )
+        .eq("profile_id", session.user.id)
+        .maybeSingle(),
+      (supabase as any)
+        .from("opportunity_sources")
+        .select("name")
+        .eq("scan_enabled", true)
+        .order("name"),
+    ]);
 
-    if (error) {
+    if (profileRes.error) {
       toast({
         title: "Error",
         description: "Failed to load your bid profile",
         variant: "destructive",
       });
-    } else if (data) {
+    } else if (profileRes.data) {
+      const data = profileRes.data;
       setProfile({
         target_counties: data.target_counties ?? [],
         licenses_held: data.licenses_held ?? [],
@@ -202,6 +213,16 @@ const QualificationProfile = () => {
         trade_categories: data.trade_categories ?? [],
       });
     }
+
+    if (agenciesRes.error) {
+      setAgenciesError("Could not load agencies");
+    } else {
+      const names = Array.from(
+        new Set(((agenciesRes.data ?? []) as { name: string }[]).map((r) => r.name).filter(Boolean)),
+      );
+      setAgencyOptions(names.map((n) => ({ value: n, label: n })));
+    }
+    setAgenciesLoading(false);
     setLoading(false);
   }, [navigate, toast]);
 
@@ -209,41 +230,6 @@ const QualificationProfile = () => {
     load();
   }, [load]);
 
-  const addExclusion = () => {
-    const v = newExclusion.trim();
-    if (!v) return;
-    if (profile.agency_exclusions.some((e) => e.toLowerCase() === v.toLowerCase())) {
-      setNewExclusion("");
-      return;
-    }
-    setProfile((p) => ({ ...p, agency_exclusions: [...p.agency_exclusions, v] }));
-    setNewExclusion("");
-  };
-
-  const removeExclusion = (value: string) => {
-    setProfile((p) => ({
-      ...p,
-      agency_exclusions: p.agency_exclusions.filter((e) => e !== value),
-    }));
-  };
-
-  const addTrade = () => {
-    const v = tradeInput.trim();
-    if (!v) return;
-    if (profile.trade_categories.some((t) => t.toLowerCase() === v.toLowerCase())) {
-      setTradeInput("");
-      return;
-    }
-    setProfile((p) => ({ ...p, trade_categories: [...p.trade_categories, v] }));
-    setTradeInput("");
-  };
-
-  const removeTrade = (value: string) => {
-    setProfile((p) => ({
-      ...p,
-      trade_categories: p.trade_categories.filter((t) => t !== value),
-    }));
-  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -431,78 +417,38 @@ const QualificationProfile = () => {
               title="Agency Exclusions"
               description="Agencies you do not bid. Optional."
             >
-              <div className="flex gap-2">
-                <Input
-                  value={newExclusion}
-                  onChange={(e) => setNewExclusion(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      addExclusion();
-                    }
-                  }}
-                  placeholder="e.g. City of Example"
+              {agenciesLoading ? (
+                <p className="text-sm text-muted-foreground">Loading agencies…</p>
+              ) : agenciesError ? (
+                <p className="text-sm text-destructive">
+                  Could not load agencies — try refreshing.
+                </p>
+              ) : agencyOptions.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No active scan sources configured.
+                </p>
+              ) : (
+                <MultiSelect
+                  options={agencyOptions}
+                  selected={profile.agency_exclusions}
+                  onChange={(next) => setProfile((p) => ({ ...p, agency_exclusions: next }))}
+                  placeholder="Select agencies to exclude"
+                  emptyLabel="No agencies excluded"
                 />
-                <Button type="button" variant="outline" onClick={addExclusion}>
-                  <Plus className="h-4 w-4 mr-1" /> Add
-                </Button>
-              </div>
-              {profile.agency_exclusions.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {profile.agency_exclusions.map((value) => (
-                    <Badge key={value} variant="secondary" className="gap-1 pr-1">
-                      <span>{value}</span>
-                      <button
-                        type="button"
-                        onClick={() => removeExclusion(value)}
-                        className="ml-0.5 rounded hover:bg-background/60 p-0.5"
-                        aria-label={`Remove ${value}`}
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </Badge>
-                  ))}
-                </div>
               )}
             </Section>
 
             <Section
               title="Trade Categories"
-              description="Optional. Leave blank to accept all trades."
+              description="Optional. Trade classes you want to bid. Leave blank to accept all trades."
             >
-              <div className="flex gap-2">
-                <Input
-                  value={tradeInput}
-                  onChange={(e) => setTradeInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      addTrade();
-                    }
-                  }}
-                  placeholder="e.g. Paving, Concrete"
-                />
-                <Button type="button" variant="outline" onClick={addTrade}>
-                  <Plus className="h-4 w-4 mr-1" /> Add
-                </Button>
-              </div>
-              {profile.trade_categories.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {profile.trade_categories.map((value) => (
-                    <Badge key={value} variant="secondary" className="gap-1 pr-1">
-                      <span>{value}</span>
-                      <button
-                        type="button"
-                        onClick={() => removeTrade(value)}
-                        className="ml-0.5 rounded hover:bg-background/60 p-0.5"
-                        aria-label={`Remove ${value}`}
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </Badge>
-                  ))}
-                </div>
-              )}
+              <MultiSelect
+                options={tradeOptions}
+                selected={profile.trade_categories}
+                onChange={(next) => setProfile((p) => ({ ...p, trade_categories: next }))}
+                placeholder="Select trade classes"
+                emptyLabel="No trade classes selected (accepts all trades)"
+              />
             </Section>
 
             <div className="flex justify-end pt-2">
