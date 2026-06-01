@@ -143,8 +143,6 @@ export type Database = {
       }
       gc_qualification_profiles: {
         Row: {
-          agency_exclusions: string[]
-          bond_capacity: number | null
           created_at: string
           id: string
           licenses_held: string[]
@@ -152,12 +150,9 @@ export type Database = {
           min_project_value: number | null
           profile_id: string
           target_counties: string[]
-          trade_categories: string[]
           updated_at: string
         }
         Insert: {
-          agency_exclusions?: string[]
-          bond_capacity?: number | null
           created_at?: string
           id?: string
           licenses_held?: string[]
@@ -165,12 +160,9 @@ export type Database = {
           min_project_value?: number | null
           profile_id: string
           target_counties?: string[]
-          trade_categories?: string[]
           updated_at?: string
         }
         Update: {
-          agency_exclusions?: string[]
-          bond_capacity?: number | null
           created_at?: string
           id?: string
           licenses_held?: string[]
@@ -178,7 +170,6 @@ export type Database = {
           min_project_value?: number | null
           profile_id?: string
           target_counties?: string[]
-          trade_categories?: string[]
           updated_at?: string
         }
         Relationships: [
