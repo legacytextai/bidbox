@@ -174,7 +174,7 @@ const QualificationProfile = () => {
 
     const { data, error } = await (supabase as any)
       .from("gc_qualification_profiles")
-      .select("target_counties, licenses_held, min_project_value, max_project_value")
+      .select("target_counties, licenses_held, naics_codes, min_project_value, max_project_value")
       .eq("profile_id", session.user.id)
       .maybeSingle();
 
@@ -188,6 +188,7 @@ const QualificationProfile = () => {
       setProfile({
         target_counties: data.target_counties ?? [],
         licenses_held: data.licenses_held ?? [],
+        naics_codes: data.naics_codes ?? [],
         min_project_value: data.min_project_value ?? null,
         max_project_value: data.max_project_value ?? null,
       });
