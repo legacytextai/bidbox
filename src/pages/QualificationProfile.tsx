@@ -18,6 +18,7 @@ import { ChevronDown, X } from "lucide-react";
 interface ProfileRow {
   target_counties: string[];
   licenses_held: string[];
+  naics_codes: string[];
   min_project_value: number | null;
   max_project_value: number | null;
 }
@@ -25,6 +26,7 @@ interface ProfileRow {
 const EMPTY_PROFILE: ProfileRow = {
   target_counties: [],
   licenses_held: [],
+  naics_codes: [],
   min_project_value: null,
   max_project_value: null,
 };
