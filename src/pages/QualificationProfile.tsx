@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { CA_COUNTIES } from "@/lib/californiaRegions";
 import { LICENSE_CLASSES } from "@/lib/licenseClasses";
+import { ALL_NAICS_CODES, NAICS_SECTORS } from "@/lib/naicsCodes";
 import { ChevronDown, X } from "lucide-react";
 
 interface ProfileRow {
