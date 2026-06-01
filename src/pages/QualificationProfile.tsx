@@ -316,32 +316,6 @@ const QualificationProfile = () => {
             </Section>
 
             <Section
-              title="Licensing"
-              description="License classes your company holds."
-            >
-              <MultiSelect
-                options={licenseOptions}
-                selected={profile.licenses_held}
-                onChange={(next) => setProfile((p) => ({ ...p, licenses_held: next }))}
-                placeholder="Select license classes"
-                emptyLabel="No license classes selected"
-              />
-            </Section>
-
-            <Section
-              title="NAICS Codes"
-              description="Select the NAICS codes that apply to your business. Projects listing any matching code will qualify."
-            >
-              <MultiSelect
-                options={naicsOptions}
-                selected={profile.naics_codes}
-                onChange={(next) => setProfile((p) => ({ ...p, naics_codes: next }))}
-                placeholder="Select NAICS codes"
-                emptyLabel="No NAICS codes selected"
-              />
-            </Section>
-
-            <Section
               title="Project Size"
               description="Dollar range you target. Projects outside this band are auto-flagged."
             >
@@ -379,6 +353,32 @@ const QualificationProfile = () => {
                   </div>
                 </div>
               </div>
+            </Section>
+
+            <Section
+              title="Licensing"
+              description="License classes your company holds."
+            >
+              <MultiSelect
+                options={licenseOptions}
+                selected={profile.licenses_held}
+                onChange={(next) => setProfile((p) => ({ ...p, licenses_held: next }))}
+                placeholder="Select license classes"
+                emptyLabel="No license classes selected"
+              />
+            </Section>
+
+            <Section
+              title="NAICS Codes"
+              description="Select the NAICS codes that apply to your business. Projects listing any matching code will qualify."
+            >
+              <MultiSelect
+                options={naicsOptions}
+                selected={profile.naics_codes}
+                onChange={(next) => setProfile((p) => ({ ...p, naics_codes: next }))}
+                placeholder="Select NAICS codes"
+                emptyLabel="No NAICS codes selected"
+              />
             </Section>
 
             <div className="flex justify-end pt-2">
