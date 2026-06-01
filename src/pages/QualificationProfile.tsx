@@ -329,6 +329,19 @@ const QualificationProfile = () => {
             </Section>
 
             <Section
+              title="NAICS Codes"
+              description="Select the NAICS codes that apply to your business. Projects listing any matching code will qualify."
+            >
+              <MultiSelect
+                options={naicsOptions}
+                selected={profile.naics_codes}
+                onChange={(next) => setProfile((p) => ({ ...p, naics_codes: next }))}
+                placeholder="Select NAICS codes"
+                emptyLabel="No NAICS codes selected"
+              />
+            </Section>
+
+            <Section
               title="Project Size"
               description="Dollar range you target. Projects outside this band are auto-flagged."
             >
