@@ -228,6 +228,7 @@ const QualificationProfile = () => {
         profile_id: session.user.id,
         target_counties: profile.target_counties,
         licenses_held: profile.licenses_held,
+        naics_codes: profile.naics_codes,
         min_project_value: profile.min_project_value,
         max_project_value: profile.max_project_value,
       };
