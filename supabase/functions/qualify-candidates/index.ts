@@ -22,6 +22,7 @@ const AGENCY_COUNTY: Record<string, string> = {
 interface QualificationProfile {
   target_counties:   string[];
   licenses_held:     string[];
+  naics_codes:       string[];
   min_project_value: number | null;
   max_project_value: number | null;
 }
@@ -113,6 +114,31 @@ function qualifyCandidate(
       auto_status_reason: `Project value (${formatDollar(value)}) above maximum (${formatDollar(profile.max_project_value)})`,
       qualification_score: 10,
     };
+  }
+
+  // Combined capability check — fires only when crawl_data carries requirement fields
+  // AND user has zero overlap across both licenses AND naics.
+  // OR logic: matching on EITHER licenses or naics is sufficient to pass.
+  // Dormant until crawl-project populates required_licenses / required_naics in crawl_data.
+  const requiredLicenses = (candidate.crawl_data?.required_licenses as string[] | null) ?? [];
+  const requiredNaics    = (candidate.crawl_data?.required_naics    as string[] | null) ?? [];
+  const hasCapabilityData = requiredLicenses.length > 0 || requiredNaics.length > 0;
+
+  if (hasCapabilityData) {
+    const licenseOverlap = requiredLicenses.some(
+      (l) => profile.licenses_held.some((h) => h.toLowerCase() === l.toLowerCase()),
+    );
+    const naicsOverlap = requiredNaics.some((n) => profile.naics_codes.includes(n));
+
+    if (!licenseOverlap && !naicsOverlap) {
+      const required = [...requiredLicenses, ...requiredNaics].join(", ");
+      return {
+        id: candidate.id,
+        auto_status: "red",
+        auto_status_reason: `No matching capability (requires ${required})`,
+        qualification_score: 10,
+      };
+    }
   }
 
   // ── Yellow rules (collect all flags) ─────────────────────────────────────
@@ -226,7 +252,7 @@ serve(async (req) => {
     const { data: profile, error: profileError } = await supabase
       .from("gc_qualification_profiles")
       .select(
-        "target_counties, licenses_held, min_project_value, max_project_value",
+        "target_counties, licenses_held, naics_codes, min_project_value, max_project_value",
       )
       .eq("profile_id", profileId)
       .maybeSingle();
