@@ -12,11 +12,13 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { CA_COUNTIES } from "@/lib/californiaRegions";
 import { LICENSE_CLASSES } from "@/lib/licenseClasses";
+import { ALL_NAICS_CODES, NAICS_SECTORS } from "@/lib/naicsCodes";
 import { ChevronDown, X } from "lucide-react";
 
 interface ProfileRow {
   target_counties: string[];
   licenses_held: string[];
+  naics_codes: string[];
   min_project_value: number | null;
   max_project_value: number | null;
 }
@@ -24,6 +26,7 @@ interface ProfileRow {
 const EMPTY_PROFILE: ProfileRow = {
   target_counties: [],
   licenses_held: [],
+  naics_codes: [],
   min_project_value: null,
   max_project_value: null,
 };
@@ -162,6 +165,15 @@ const QualificationProfile = () => {
     [],
   );
 
+  const naicsOptions = useMemo(
+    () =>
+      ALL_NAICS_CODES.map((c) => ({
+        value: c.code,
+        label: `${c.code} — ${c.description}`,
+      })),
+    [],
+  );
+
   const load = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
@@ -171,7 +183,7 @@ const QualificationProfile = () => {
 
     const { data, error } = await (supabase as any)
       .from("gc_qualification_profiles")
-      .select("target_counties, licenses_held, min_project_value, max_project_value")
+      .select("target_counties, licenses_held, naics_codes, min_project_value, max_project_value")
       .eq("profile_id", session.user.id)
       .maybeSingle();
 
@@ -185,6 +197,7 @@ const QualificationProfile = () => {
       setProfile({
         target_counties: data.target_counties ?? [],
         licenses_held: data.licenses_held ?? [],
+        naics_codes: data.naics_codes ?? [],
         min_project_value: data.min_project_value ?? null,
         max_project_value: data.max_project_value ?? null,
       });
@@ -224,6 +237,7 @@ const QualificationProfile = () => {
         profile_id: session.user.id,
         target_counties: profile.target_counties,
         licenses_held: profile.licenses_held,
+        naics_codes: profile.naics_codes,
         min_project_value: profile.min_project_value,
         max_project_value: profile.max_project_value,
       };
@@ -311,6 +325,19 @@ const QualificationProfile = () => {
                 onChange={(next) => setProfile((p) => ({ ...p, licenses_held: next }))}
                 placeholder="Select license classes"
                 emptyLabel="No license classes selected"
+              />
+            </Section>
+
+            <Section
+              title="NAICS Codes"
+              description="Select the NAICS codes that apply to your business. Projects listing any matching code will qualify."
+            >
+              <MultiSelect
+                options={naicsOptions}
+                selected={profile.naics_codes}
+                onChange={(next) => setProfile((p) => ({ ...p, naics_codes: next }))}
+                placeholder="Select NAICS codes"
+                emptyLabel="No NAICS codes selected"
               />
             </Section>
 

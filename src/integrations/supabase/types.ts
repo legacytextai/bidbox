@@ -148,6 +148,7 @@ export type Database = {
           licenses_held: string[]
           max_project_value: number | null
           min_project_value: number | null
+          naics_codes: string[]
           profile_id: string
           target_counties: string[]
           updated_at: string
@@ -158,6 +159,7 @@ export type Database = {
           licenses_held?: string[]
           max_project_value?: number | null
           min_project_value?: number | null
+          naics_codes?: string[]
           profile_id: string
           target_counties?: string[]
           updated_at?: string
@@ -168,6 +170,7 @@ export type Database = {
           licenses_held?: string[]
           max_project_value?: number | null
           min_project_value?: number | null
+          naics_codes?: string[]
           profile_id?: string
           target_counties?: string[]
           updated_at?: string
