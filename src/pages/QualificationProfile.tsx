@@ -165,6 +165,15 @@ const QualificationProfile = () => {
     [],
   );
 
+  const naicsOptions = useMemo(
+    () =>
+      ALL_NAICS_CODES.map((c) => ({
+        value: c.code,
+        label: `${c.code} — ${c.description}`,
+      })),
+    [],
+  );
+
   const load = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
