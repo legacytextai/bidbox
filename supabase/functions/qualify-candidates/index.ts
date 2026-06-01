@@ -24,9 +24,6 @@ interface QualificationProfile {
   licenses_held:     string[];
   min_project_value: number | null;
   max_project_value: number | null;
-  bond_capacity:     number | null;
-  agency_exclusions: string[];
-  trade_categories:  string[];
 }
 
 interface Candidate {
@@ -83,22 +80,6 @@ function qualifyCandidate(
     parseValueFromTitle(candidate.raw_title);
 
   // ── Red rules (first match wins, return immediately) ─────────────────────
-
-  // Agency on exclusion list
-  if (
-    profile.agency_exclusions.length > 0 &&
-    candidate.agency &&
-    profile.agency_exclusions.some(
-      (e) => e.toLowerCase() === candidate.agency!.toLowerCase(),
-    )
-  ) {
-    return {
-      id: candidate.id,
-      auto_status: "red",
-      auto_status_reason: `Agency on exclusion list (${candidate.agency})`,
-      qualification_score: 5,
-    };
-  }
 
   // Location confirmed outside all target counties
   if (
@@ -245,7 +226,7 @@ serve(async (req) => {
     const { data: profile, error: profileError } = await supabase
       .from("gc_qualification_profiles")
       .select(
-        "target_counties, licenses_held, min_project_value, max_project_value, bond_capacity, agency_exclusions, trade_categories",
+        "target_counties, licenses_held, min_project_value, max_project_value",
       )
       .eq("profile_id", profileId)
       .maybeSingle();
