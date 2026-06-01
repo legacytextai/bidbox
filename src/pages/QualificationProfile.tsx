@@ -19,9 +19,6 @@ interface ProfileRow {
   licenses_held: string[];
   min_project_value: number | null;
   max_project_value: number | null;
-  bond_capacity: number | null;
-  agency_exclusions: string[];
-  trade_categories: string[];
 }
 
 const EMPTY_PROFILE: ProfileRow = {
@@ -29,9 +26,6 @@ const EMPTY_PROFILE: ProfileRow = {
   licenses_held: [],
   min_project_value: null,
   max_project_value: null,
-  bond_capacity: null,
-  agency_exclusions: [],
-  trade_categories: [],
 };
 
 function parseCurrency(input: string): number | null {
@@ -153,9 +147,6 @@ const QualificationProfile = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [profile, setProfile] = useState<ProfileRow>(EMPTY_PROFILE);
-  const [agencyOptions, setAgencyOptions] = useState<{ value: string; label: string }[]>([]);
-  const [agenciesLoading, setAgenciesLoading] = useState(true);
-  const [agenciesError, setAgenciesError] = useState<string | null>(null);
 
   const countyOptions = useMemo(
     () => CA_COUNTIES.map((c) => ({ value: c, label: c })),
@@ -171,8 +162,6 @@ const QualificationProfile = () => {
     [],
   );
 
-  const tradeOptions = licenseOptions;
-
   const load = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
@@ -180,56 +169,33 @@ const QualificationProfile = () => {
       return;
     }
 
-    const [profileRes, agenciesRes] = await Promise.all([
-      (supabase as any)
-        .from("gc_qualification_profiles")
-        .select(
-          "target_counties, licenses_held, min_project_value, max_project_value, bond_capacity, agency_exclusions, trade_categories",
-        )
-        .eq("profile_id", session.user.id)
-        .maybeSingle(),
-      (supabase as any)
-        .from("opportunity_sources")
-        .select("name")
-        .eq("scan_enabled", true)
-        .order("name"),
-    ]);
+    const { data, error } = await (supabase as any)
+      .from("gc_qualification_profiles")
+      .select("target_counties, licenses_held, min_project_value, max_project_value")
+      .eq("profile_id", session.user.id)
+      .maybeSingle();
 
-    if (profileRes.error) {
+    if (error) {
       toast({
         title: "Error",
         description: "Failed to load your bid profile",
         variant: "destructive",
       });
-    } else if (profileRes.data) {
-      const data = profileRes.data;
+    } else if (data) {
       setProfile({
         target_counties: data.target_counties ?? [],
         licenses_held: data.licenses_held ?? [],
         min_project_value: data.min_project_value ?? null,
         max_project_value: data.max_project_value ?? null,
-        bond_capacity: data.bond_capacity ?? null,
-        agency_exclusions: data.agency_exclusions ?? [],
-        trade_categories: data.trade_categories ?? [],
       });
     }
 
-    if (agenciesRes.error) {
-      setAgenciesError("Could not load agencies");
-    } else {
-      const names = Array.from(
-        new Set(((agenciesRes.data ?? []) as { name: string }[]).map((r) => r.name).filter(Boolean)),
-      );
-      setAgencyOptions(names.map((n) => ({ value: n, label: n })));
-    }
-    setAgenciesLoading(false);
     setLoading(false);
   }, [navigate, toast]);
 
   useEffect(() => {
     load();
   }, [load]);
-
 
   const handleSave = async () => {
     setSaving(true);
@@ -260,9 +226,6 @@ const QualificationProfile = () => {
         licenses_held: profile.licenses_held,
         min_project_value: profile.min_project_value,
         max_project_value: profile.max_project_value,
-        bond_capacity: profile.bond_capacity,
-        agency_exclusions: profile.agency_exclusions,
-        trade_categories: profile.trade_categories,
       };
 
       const { error: upsertError } = await (supabase as any)
@@ -287,7 +250,7 @@ const QualificationProfile = () => {
       if (qError) {
         toast({
           title: "Profile saved",
-          description: "Re-qualification failed — try the Re-qualify All button on Opportunities.",
+          description: "Re-qualification failed — please try again shortly.",
           variant: "destructive",
         });
       } else {
@@ -389,66 +352,6 @@ const QualificationProfile = () => {
                   </div>
                 </div>
               </div>
-            </Section>
-
-            <Section
-              title="Bond Capacity"
-              description="Your maximum single-project bonding capacity."
-            >
-              <div className="space-y-2 max-w-xs">
-                <Label htmlFor="bond-capacity">Bond Capacity</Label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
-                  <Input
-                    id="bond-capacity"
-                    inputMode="numeric"
-                    value={formatCurrency(profile.bond_capacity)}
-                    onChange={(e) =>
-                      setProfile((p) => ({ ...p, bond_capacity: parseCurrency(e.target.value) }))
-                    }
-                    placeholder="50,000,000"
-                    className="pl-7"
-                  />
-                </div>
-              </div>
-            </Section>
-
-            <Section
-              title="Agency Exclusions"
-              description="Agencies you do not bid. Optional."
-            >
-              {agenciesLoading ? (
-                <p className="text-sm text-muted-foreground">Loading agencies…</p>
-              ) : agenciesError ? (
-                <p className="text-sm text-destructive">
-                  Could not load agencies — try refreshing.
-                </p>
-              ) : agencyOptions.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No active scan sources configured.
-                </p>
-              ) : (
-                <MultiSelect
-                  options={agencyOptions}
-                  selected={profile.agency_exclusions}
-                  onChange={(next) => setProfile((p) => ({ ...p, agency_exclusions: next }))}
-                  placeholder="Select agencies to exclude"
-                  emptyLabel="No agencies excluded"
-                />
-              )}
-            </Section>
-
-            <Section
-              title="Trade Categories"
-              description="Optional. Trade classes you want to bid. Leave blank to accept all trades."
-            >
-              <MultiSelect
-                options={tradeOptions}
-                selected={profile.trade_categories}
-                onChange={(next) => setProfile((p) => ({ ...p, trade_categories: next }))}
-                placeholder="Select trade classes"
-                emptyLabel="No trade classes selected (accepts all trades)"
-              />
             </Section>
 
             <div className="flex justify-end pt-2">
