@@ -14,6 +14,47 @@ export type Database = {
   }
   public: {
     Tables: {
+      agent_run_logs: {
+        Row: {
+          artifacts: Json | null
+          completed_at: string | null
+          id: string
+          logs: string | null
+          screenshots: Json | null
+          started_at: string
+          status: string
+          task_id: string
+        }
+        Insert: {
+          artifacts?: Json | null
+          completed_at?: string | null
+          id?: string
+          logs?: string | null
+          screenshots?: Json | null
+          started_at?: string
+          status: string
+          task_id: string
+        }
+        Update: {
+          artifacts?: Json | null
+          completed_at?: string | null
+          id?: string
+          logs?: string | null
+          screenshots?: Json | null
+          started_at?: string
+          status?: string
+          task_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_run_logs_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "agent_tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       agent_runs: {
         Row: {
           candidates_found: number | null
@@ -57,6 +98,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      agent_tasks: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          error: string | null
+          id: string
+          payload: Json
+          priority: number
+          result: Json | null
+          started_at: string | null
+          status: string
+          task_type: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          payload?: Json
+          priority?: number
+          result?: Json | null
+          started_at?: string | null
+          status?: string
+          task_type: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          payload?: Json
+          priority?: number
+          result?: Json | null
+          started_at?: string | null
+          status?: string
+          task_type?: string
+        }
+        Relationships: []
       }
       bids: {
         Row: {
@@ -398,6 +478,36 @@ export type Database = {
           portal_type?: string
           scan_enabled?: boolean
           scan_interval_hours?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      portal_drivers: {
+        Row: {
+          created_at: string
+          driver_mode: string
+          driver_name: string
+          enabled: boolean
+          id: string
+          portal_type: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          driver_mode: string
+          driver_name: string
+          enabled?: boolean
+          id?: string
+          portal_type: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          driver_mode?: string
+          driver_name?: string
+          enabled?: boolean
+          id?: string
+          portal_type?: string
           updated_at?: string
         }
         Relationships: []
