@@ -370,7 +370,7 @@ const QualificationProfile = () => {
 
             <Section
               title="NAICS Codes"
-              description="Select the NAICS codes that apply to your business. Projects listing any matching code will qualify."
+              description="Select the NAICS codes that apply to your business."
             >
               <MultiSelect
                 options={naicsOptions}
