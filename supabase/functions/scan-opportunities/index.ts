@@ -89,6 +89,7 @@ async function scanSource(
         raw_title: candidate.raw_title,
         agency: source.name,
         bid_due_at: candidate.bid_due_at,
+        crawl_data: candidate.crawl_data ?? null,
       });
 
     if (insertError) {

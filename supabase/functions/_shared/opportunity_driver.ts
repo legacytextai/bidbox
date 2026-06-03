@@ -12,6 +12,7 @@ export interface CandidateData {
   source_url: string;
   raw_title: string | null;
   bid_due_at: string | null;
+  crawl_data?: Record<string, unknown> | null;
 }
 
 export interface DriverContext {
