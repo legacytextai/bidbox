@@ -14,6 +14,7 @@ interface SourceRunResult {
   found: number;
   new: number;
   errors: number;
+  queued: number;
 }
 
 async function scanSource(
@@ -42,7 +43,7 @@ async function scanSource(
 
   if (runInsertError || !runRow) {
     console.error(`Failed to create agent_run for source ${source.id}:`, runInsertError);
-    return { source_id: source.id, source_name: source.name, found: 0, new: 0, errors: 1 };
+    return { source_id: source.id, source_name: source.name, found: 0, new: 0, errors: 1, queued: 0 };
   }
 
   const runId: string = runRow.id;
@@ -61,6 +62,33 @@ async function scanSource(
       .eq("id", runId);
   };
 
+  // PlanetBids sources are handled by the Railway worker via agent_tasks queue
+  if (source.portal_type === 'planetbids') {
+    const { error: queueError } = await supabase
+      .from('agent_tasks')
+      .insert({
+        task_type: 'planetbids_scan',
+        status: 'pending',
+        priority: 0,
+        payload: {
+          source_id: source.id,
+          source_name: source.name,
+          listing_url: source.listing_url,
+          portal_type: source.portal_type,
+        },
+      });
+
+    if (queueError) {
+      log(`[${source.name}] Failed to queue PlanetBids task: ${queueError.message}`);
+      await finishRun();
+      return { source_id: source.id, source_name: source.name, found: 0, new: 0, errors: 1, queued: 0 };
+    }
+
+    log(`[${source.name}] PlanetBids task queued → agent_tasks`);
+    await finishRun();
+    return { source_id: source.id, source_name: source.name, found: 0, new: 0, errors: 0, queued: 1 };
+  }
+
   // Dispatch to the appropriate driver based on portal_type
   const { candidates, errors: driverErrors } = await runDriver(source, {
     supabase,
@@ -73,7 +101,7 @@ async function scanSource(
 
   if (driverErrors > 0 && candidates.length === 0) {
     await finishRun();
-    return { source_id: source.id, source_name: source.name, found: 0, new: 0, errors };
+    return { source_id: source.id, source_name: source.name, found: 0, new: 0, errors, queued: 0 };
   }
 
   // Upsert returned candidates
@@ -133,7 +161,7 @@ async function scanSource(
     }
   }
 
-  return { source_id: source.id, source_name: source.name, found: candidatesFound, new: candidatesNew, errors };
+  return { source_id: source.id, source_name: source.name, found: candidatesFound, new: candidatesNew, errors, queued: 0 };
 }
 
 serve(async (req) => {
@@ -216,6 +244,7 @@ serve(async (req) => {
     const totalFound = runs.reduce((s, r) => s + r.found, 0);
     const totalNew = runs.reduce((s, r) => s + r.new, 0);
     const totalErrors = runs.reduce((s, r) => s + r.errors, 0);
+    const totalQueued = runs.reduce((s, r) => s + r.queued, 0);
 
     return new Response(
       JSON.stringify({
@@ -224,6 +253,7 @@ serve(async (req) => {
         total_candidates_found: totalFound,
         total_candidates_new: totalNew,
         total_errors: totalErrors,
+        total_queued: totalQueued,
         runs,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
