@@ -1,6 +1,6 @@
 [build]
 builder = "DOCKERFILE"
-dockerfilePath = "bidbox-worker/Dockerfile"
+dockerfilePath = "Dockerfile.worker"
 
 [deploy]
 startCommand = "node index.js"
