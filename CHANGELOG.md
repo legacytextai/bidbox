@@ -268,3 +268,61 @@ The auto-qualifier writes only `auto_status`, `auto_status_reason`, `qualificati
 | Qualify results not in `agent_runs.raw_log` | Counts in Supabase Functions console logs only. |
 | `types.ts` not regenerated | Must be regenerated from live schema after migration is applied. Lovable used `as any` casts as a workaround. |
 | Branch not merged to main | All Phase 1 work is on `phase1-opportunity-intelligence`. |
+
+---
+
+## [Sprint 1] — 2026-06-02
+
+### Objective
+Prove whether a browser-driver acquisition architecture is viable for PlanetBids and build the foundational infrastructure required to support it.
+
+### Workstream A — Driver Architecture (COMPLETE)
+
+Decoupled BidBox from Firecrawl via a driver abstraction layer.
+
+New files:
+- supabase/functions/_shared/opportunity_driver.ts — OpportunityDriver interface with scan(source, context) method. Defines CandidateData, ScanResult, DriverContext types.
+- supabase/functions/_shared/firecrawl_driver.ts — FirecrawlDriver implementing the interface. Contains all Firecrawl + Gemini LLM logic extracted from scan-opportunities, both PlanetBids and generic paths.
+- supabase/functions/_shared/driver_router.ts — runDriver(source, context) dispatches on source.portal_type. Adding a new driver in Phase C2 is a one-line case addition, zero changes to scan-opportunities.
+
+Refactored: scan-opportunities/index.ts now calls runDriver() instead of Firecrawl directly. ~360 lines removed. Zero behavioral change. All 8 PlanetBids sources continue scanning identically.
+
+### Workstream B — Agent Infrastructure (COMPLETE)
+
+Three new tables deployed to hosted Supabase:
+
+- agent_tasks — unified job queue for all future agent types (discovery, document collection, spec extraction, outreach). Fields: id, task_type, status (CHECK constraint), priority, payload jsonb, result jsonb, error, timestamps. Indexed on status and priority-ordered pending queue.
+- portal_drivers — maps portal_type to driver name and mode. Seeded: planetbids, caltrans, simple_html → firecrawl_driver. Update planetbids row to planetbids_driver when Phase C2 ships.
+- agent_run_logs — per-run audit trail linked to agent_tasks. Fields: id, task_id (FK), status, logs, screenshots jsonb, artifacts jsonb, timestamps.
+
+All three tables have RLS: authenticated read, service_role full write.
+
+### Workstream C — PlanetBids Technology Validation (COMPLETE)
+
+Research spike against City of Irvine PlanetBids portal (portal ID 15927). Technology tested: raw Playwright.
+
+Findings:
+
+1. headless: true — portal renders nothing. Tables: 0, rows: 0. PlanetBids detects headless mode and blocks rendering.
+2. headless: false — portal renders fully. Tables: 2, rows: 32. Full bid list visible including titles, invitation numbers, due dates, stage.
+3. Row click — successfully navigated to bo-detail/141798 (real database ID captured via Ember router navigation).
+4. Detail page extraction (unauthenticated) — title, bid due date, estimated value ($1,410,000), license requirements (Class A / C-10), county (Orange), commodity codes (91200, 91300, 91350, 91382, 91430), scope description, document list all extracted successfully.
+5. Authentication — login via identity.planetbids.com (Stytch OAuth). Bearer token issued and sent on all subsequent api-external.prod.planetbids.com requests. Token interceptable from outgoing request headers.
+6. Document manifest — papi/bid-downloadable-files?bid_id=141798 returns structured JSON with exact file paths on files-prod01.planetbids.com including serverFullPath and serverFilename.
+7. Document download — Plans.pdf (20,864,506 bytes) successfully downloaded to disk using Node.js https.get with intercepted Bearer token and Referer/Origin headers. No Browserbase required for downloads.
+
+### Sprint 1 Feasibility Verdict
+
+PlanetBids Driver Feasible: YES
+
+Winning Technology: Playwright + Bearer token extraction
+
+Confidence: High
+
+Known risks:
+- headless: true blocked by PlanetBids — Browserbase required for production cloud scanning (listing page only)
+- Bearer token expires — production driver must handle token refresh via papi/oauth/refresh/
+- PlanetBids uses commodity codes (91xxx) not NAICS (2xxxxx) — qualification engine needs commodity code support
+- AGENCY_COUNTY lookup in qualify-candidates is static — new sources need manual entries
+
+Recommended next step: Phase C2 — build PlanetBids driver using Playwright + Browserbase for listing scan, Bearer token extraction for document download, wire into driver router.
