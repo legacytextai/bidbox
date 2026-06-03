@@ -1,7 +1,5 @@
-// Playwright via deno.land/x — connectOverCDP does not require a local browser binary.
-// If this import fails at runtime (module not found or version mismatch),
-// replace with:  import { chromium } from "npm:playwright-core@1.40.0";
-import { chromium } from "https://deno.land/x/playwright@v1.40.0/mod.ts";
+import { chromium } from "npm:playwright-core@1.40.0";
+
 import {
   CandidateData,
   DriverContext,
