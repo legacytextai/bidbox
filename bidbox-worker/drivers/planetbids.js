@@ -92,8 +92,8 @@ async function scrapePlanetBids(payload, log) {
       try {
         if (i > 0) {
           await page.goto(listing_url, { waitUntil: 'domcontentloaded', timeout: 60000 });
-          await page.waitForSelector('tr', { timeout: 30000 });
-          await page.waitForTimeout(2000);
+          await page.waitForSelector('tr', { timeout: 45000 });
+          await page.waitForTimeout(4000);
         }
 
         const rows = page.locator('tr').filter({ hasText: 'Bidding' });
@@ -105,7 +105,7 @@ async function scrapePlanetBids(payload, log) {
 
         log(`[${source_name}] Clicking row ${i + 1}/${rowCount}`);
         await rows.nth(i).click();
-        await page.waitForURL('**/bo-detail/**', { timeout: 15000 });
+        await page.waitForURL('**/bo-detail/**', { timeout: 25000 });
 
         const detailUrl = page.url();
         const bidId = extractBidId(detailUrl);
