@@ -220,32 +220,33 @@ serve(async (req) => {
   const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const supabase           = createClient(supabaseUrl, supabaseServiceKey);
 
-  const authHeader = req.headers.get("Authorization");
-  if (!authHeader) {
-    return jsonResponse(401, { success: false, error: "Missing authorization header" });
-  }
-
-  // Identify the calling user via the bearer token (JWT already validated by gateway)
-  const token = authHeader.replace("Bearer ", "");
-  const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-  if (authError || !user) {
-    return jsonResponse(401, { success: false, error: "Invalid token" });
-  }
-  const callerUid = user.id;
-
   try {
     // Parse request body — all fields optional
     let candidateId: string | null = null;
-    let profileId: string = callerUid;
+    let profileId: string | null = null;
 
     if (req.method === "POST") {
       try {
         const body = await req.json();
         candidateId = body?.candidate_id ?? null;
-        profileId   = body?.profile_id   ?? callerUid;
+        profileId   = body?.profile_id   ?? null;
       } catch {
         // No body or invalid JSON — use defaults
       }
+    }
+
+    // profile_id not in body — resolve from bearer token
+    if (!profileId) {
+      const authHeader = req.headers.get("Authorization");
+      if (!authHeader) {
+        return jsonResponse(401, { success: false, error: "Missing authorization header" });
+      }
+      const token = authHeader.replace("Bearer ", "");
+      const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+      if (authError || !user) {
+        return jsonResponse(401, { success: false, error: "Invalid token" });
+      }
+      profileId = user.id;
     }
 
     // Load the qualification profile for the resolved user

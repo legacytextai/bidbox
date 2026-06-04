@@ -117,10 +117,9 @@ async function pollOnce() {
         const qualifyRes = await fetch(qualifyUrl, {
           method: 'POST',
           headers: {
-            Authorization: `Bearer ${process.env.SUPABASE_ANON_KEY}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({}),
+          body: JSON.stringify({ profile_id: '324e7848-6c4d-4fe5-a826-91427265a76e' }),
         });
         if (qualifyRes.ok) {
           const q = await qualifyRes.json();
