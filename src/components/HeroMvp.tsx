@@ -29,8 +29,8 @@ const HeroMvp = () => {
             <div className="space-y-4 animate-slide-in-left">
               <div className="space-y-4">
               <h1 className="text-4xl md:text-5xl font-bold leading-tight">
-                <span className="text-black dark:text-white">The #1 </span>
-                <span className="text-[hsl(var(--bidbox-blue))]">Estimating Bid Desk</span>
+                <span className="text-black dark:text-white">The </span>
+                <span className="text-[hsl(var(--bidbox-blue))]">AI-Powered Bid Desk</span>
                 <span className="text-black dark:text-white"> for Public Works General Contractors.</span>
               </h1>
 
