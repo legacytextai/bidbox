@@ -36,7 +36,7 @@ const HeroMvp = () => {
 
                 <p className="text-xl text-muted-foreground leading-relaxed">
                   Purpose-built AI agents handle the tedious work — from finding projects to submitting bids. <br />
-                  <strong>So you can bid 2–3x more without adding headcount.</strong>
+                  <strong>Bid 2–3x more projects, with more confidence, without adding headcount.</strong>
                 </p>
               </div>
 
