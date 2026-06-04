@@ -326,3 +326,49 @@ Known risks:
 - AGENCY_COUNTY lookup in qualify-candidates is static — new sources need manual entries
 
 Recommended next step: Phase C2 — build PlanetBids driver using Playwright + Browserbase for listing scan, Bearer token extraction for document download, wire into driver router.
+
+---
+
+## [Sprint 1 — Phase C2 + Railway Worker] — 2026-06-03
+
+### Objective
+Move PlanetBids browser automation out of Supabase Edge Functions (which hit WORKER_RESOURCE_LIMIT) and into an external Railway worker that polls agent_tasks.
+
+### Architecture Pivot
+The original C2 design ran Playwright + Browserbase inside a Supabase Edge Function. This immediately hit WORKER_RESOURCE_LIMIT — the edge runtime cannot support a full browser session. The correct architecture was always agent_tasks → external worker, which is exactly what Phase B built the infrastructure for.
+
+### Railway Worker (bidbox-worker/)
+New Node.js service deployed to Railway. Files: index.js (polling loop), drivers/planetbids.js (Playwright driver), lib/supabase.js, Dockerfile.worker, railway.toml.
+
+Polling loop: every 30 seconds, SELECT pending planetbids_scan tasks LIMIT 1, atomic claim via UPDATE WHERE status=pending, run driver, write results, mark complete. Errors are non-fatal — worker continues polling even if a task fails.
+
+PlanetBids driver (Node.js port of the Deno driver from C1): connects to Browserbase via CDP, navigates listing page, clicks each Bidding row, captures bo-detail URL via Ember.js router navigation, extracts metadata from detail page (title, bid due date, estimated value, license requirements, county, commodity codes, scope text), fetches file manifest via papi/bid-downloadable-files API using intercepted Bearer token, returns structured candidates.
+
+After writing candidates: calls qualify-candidates edge function with hardcoded admin profile_id. qualify-candidates updated to accept profile_id in request body (verify_jwt = false) to support service-to-service calls without a user JWT.
+
+### scan-opportunities Modified
+PlanetBids sources (portal_type = planetbids) now INSERT an agent_tasks row and return immediately instead of running runDriver() inline. Non-PlanetBids sources continue using Firecrawl as before. Response includes total_queued count.
+
+### Production Results (first full run)
+- 8 agencies scanned via Railway worker
+- 56 total candidates in database
+- 63 candidates evaluated by qualify-candidates (all Yellow — county confirmed, value unknown)
+- qualify-candidates running automatically after every scan
+- City of San Diego: 15 new on first successful crawl
+- City of Huntington Beach: 5 new
+- City of Carlsbad: 5 new
+- City of Riverside: 4 new
+- Port of Los Angeles: 2 new
+
+### Known Issues
+- Scan Now UI shows immediate completion but worker runs for 20-40 mins asynchronously
+- 1-2 row timeout errors per portal on last rows (re-navigation timing)
+- All candidates Yellow — qualify-candidates not yet reading crawl_data.estimated_value
+- Title extraction includes "Add to My Bids REMAINING X days" noise from detail page
+- No bearer token captured without login — file manifests skipped
+
+### Next Priorities
+- Fix qualify-candidates to read crawl_data.estimated_value for Green/Red determination
+- Add construction relevance filtering (commodity code 91xxx)
+- Expand to all SoCal PlanetBids agencies
+- Phase F: authenticated document download
