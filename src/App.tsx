@@ -37,6 +37,7 @@ const App = () => (
           <Routes>
             <Route path="/" element={<LandingMvp />} />
             <Route path="/landing-mvp" element={<LandingMvp />} />
+            <Route path="/landing-v1" element={<LandingV1 />} />
             <Route path="/landing-full" element={<LandingFull />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/calendar" element={<CalendarDashboard />} />
