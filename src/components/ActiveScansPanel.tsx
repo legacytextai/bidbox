@@ -21,6 +21,7 @@ interface ScanTask {
 interface Props {
   taskIds: string[];
   onDismiss: () => void;
+  isQueuing?: boolean;
 }
 
 const STATUS_LABEL: Record<TaskStatus, string> = {
@@ -45,7 +46,7 @@ function StatusIcon({ status }: { status: TaskStatus }) {
   }
 }
 
-export function ActiveScansPanel({ taskIds, onDismiss }: Props) {
+export function ActiveScansPanel({ taskIds, onDismiss, isQueuing = false }: Props) {
   const [tasks, setTasks] = useState<ScanTask[]>([]);
 
   // Initial fetch
@@ -108,26 +109,28 @@ export function ActiveScansPanel({ taskIds, onDismiss }: Props) {
     return { completed, total, percent, allDone: total > 0 && completed === total };
   }, [tasks]);
 
-  // Auto-dismiss when done
+  // Auto-dismiss when done (but not while still queuing)
   useEffect(() => {
-    if (!allDone) return;
+    if (!allDone || isQueuing) return;
     const t = setTimeout(onDismiss, 10_000);
     return () => clearTimeout(t);
-  }, [allDone, onDismiss]);
+  }, [allDone, isQueuing, onDismiss]);
 
-  if (taskIds.length === 0) return null;
+  if (taskIds.length === 0 && !isQueuing) return null;
 
   return (
     <div className="bg-card border border-border rounded-lg p-5 mb-6">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          {allDone ? (
+          {allDone && !isQueuing ? (
             <CheckCircle2 className="h-5 w-5 text-green-600" />
           ) : (
             <Loader2 className="h-5 w-5 text-[hsl(var(--bidbox-blue))] animate-spin" />
           )}
           <h2 className="font-semibold text-foreground">
-            {allDone
+            {total === 0 && isQueuing
+              ? "Scanning… queuing sources"
+              : allDone && !isQueuing
               ? `Scan Complete — ${total} sources scanned`
               : `Scanning… ${completed} / ${total}`}
           </h2>
