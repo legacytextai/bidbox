@@ -224,9 +224,36 @@ const Opportunities = () => {
     };
   }, [mapRow]);
 
+  // Realtime: stream agent_tasks INSERTs into the panel as soon as scan-opportunities queues them
+  useEffect(() => {
+    if (!scanActive || !scanStartedAt) return;
+    const startedMs = new Date(scanStartedAt).getTime();
+    const channel = supabase
+      .channel(`scan-task-inserts-${startedMs}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "agent_tasks" },
+        (payload) => {
+          const row: any = payload.new;
+          if (row?.task_type !== "planetbids_scan") return;
+          const createdMs = new Date(row.created_at).getTime();
+          if (createdMs < startedMs - 1000) return;
+          setActiveScanTaskIds((prev) => (prev.includes(row.id) ? prev : [...prev, row.id]));
+        },
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [scanActive, scanStartedAt]);
+
   const handleScanNow = async () => {
     setScanLoading(true);
-    const scanStartedAt = new Date().toISOString();
+    const startedAt = new Date().toISOString();
+    setScanStartedAt(startedAt);
+    setActiveScanTaskIds([]);
+    setScanActive(true);
+
     try {
       const { data, error } = await supabase.functions.invoke("scan-opportunities");
       if (error) throw error;
@@ -234,41 +261,46 @@ const Opportunities = () => {
       const totalQueued: number = data?.total_queued ?? 0;
       const sourcesScanned: number = data?.sources_scanned ?? 0;
 
-      // Look up newly-queued PlanetBids task IDs by timestamp (temporary; see plan)
+      // Backstop: catch any tasks that the INSERT subscription missed (e.g. before it subscribed)
       if (totalQueued > 0) {
         const { data: queuedTasks } = await supabase
           .from("agent_tasks")
           .select("id")
           .eq("task_type", "planetbids_scan")
-          .gte("created_at", scanStartedAt);
+          .gte("created_at", startedAt);
         if (queuedTasks && queuedTasks.length > 0) {
-          setActiveScanTaskIds(queuedTasks.map((t: any) => t.id));
+          setActiveScanTaskIds((prev) => {
+            const merged = new Set(prev);
+            queuedTasks.forEach((t: any) => merged.add(t.id));
+            return Array.from(merged);
+          });
         }
-      }
-
-      if (totalQueued > 0) {
         toast({
           title: "Scan Started",
-          description: `${totalQueued} source${totalQueued === 1 ? "" : "s"} queued for scanning. Results will appear automatically as opportunities are discovered.`,
+          description: `${totalQueued} source${totalQueued === 1 ? "" : "s"} queued. Results appear as opportunities are discovered.`,
         });
       } else if (sourcesScanned === 0) {
         toast({
           title: "No sources due",
           description: "All sources were scanned recently. Try again later.",
         });
+        setScanActive(false);
       } else {
         toast({
           title: "Scan complete",
           description: `${data?.total_candidates_new ?? 0} new opportunities found.`,
         });
+        setScanActive(false);
         await loadCandidates();
       }
     } catch (e: any) {
       toast({ title: "Scan failed", description: e?.message ?? "Unknown error", variant: "destructive" });
+      setScanActive(false);
     } finally {
       setScanLoading(false);
     }
   };
+
 
 
 
