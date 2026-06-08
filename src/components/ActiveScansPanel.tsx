@@ -142,7 +142,7 @@ export function ActiveScansPanel({ taskIds, onDismiss, isQueuing = false }: Prop
 
       <Progress value={percent} className="h-2 mb-4" />
 
-      <div className="max-h-64 overflow-y-auto space-y-1.5">
+      <div className="max-h-32 overflow-y-auto space-y-1.5">
         {tasks.length === 0 ? (
           <p className="text-sm text-muted-foreground">Queuing tasks…</p>
         ) : (
