@@ -138,6 +138,7 @@ const Opportunities = () => {
       auto_status_reason: row.auto_status_reason ?? null,
       qualification_score: row.qualification_score ?? null,
       qualified_at: row.qualified_at ?? null,
+      crawl_data: row.crawl_data ?? null,
     }));
 
     setCandidates(rows);
