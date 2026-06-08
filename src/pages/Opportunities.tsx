@@ -555,6 +555,13 @@ const Opportunities = () => {
               </div>
             </div>
 
+            {activeScanTaskIds.length > 0 && (
+              <ActiveScansPanel
+                taskIds={activeScanTaskIds}
+                onDismiss={() => setActiveScanTaskIds([])}
+              />
+            )}
+
             {/* Filter tabs */}
             <div className="flex gap-2 mb-6 flex-wrap">
               {FILTERS.map((f) => {
