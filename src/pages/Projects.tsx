@@ -8,8 +8,8 @@ import { Layout } from "@/components/Layout";
 import { formatInProjectTimezone } from "@/lib/timezoneUtils";
 import { useSubscription } from "@/hooks/useSubscription";
 import { getProjectDisplayStatus } from "@/lib/projectStatus";
+import { ENFORCE_FREE_PROJECT_LIMIT, FREE_PROJECT_LIMIT } from "@/lib/featureFlags";
 
-const FREE_PROJECT_LIMIT = 3;
 
 interface Project {
   id: string;
@@ -115,15 +115,16 @@ const Projects = () => {
   };
 
   const handleNewProject = () => {
-    if (!isSubscribed && projects.length >= FREE_PROJECT_LIMIT) {
+    if (ENFORCE_FREE_PROJECT_LIMIT && !isSubscribed && projects.length >= FREE_PROJECT_LIMIT) {
       navigate("/settings");
       return;
     }
     navigate("/projects/new");
   };
 
-  const canCreateProject = isSubscribed || projects.length < FREE_PROJECT_LIMIT;
-  const isOverLimit = !isSubscribed && projects.length >= FREE_PROJECT_LIMIT;
+  const canCreateProject = isSubscribed || !ENFORCE_FREE_PROJECT_LIMIT || projects.length < FREE_PROJECT_LIMIT;
+  const isOverLimit = ENFORCE_FREE_PROJECT_LIMIT && !isSubscribed && projects.length >= FREE_PROJECT_LIMIT;
+
 
   return (
     <Layout showSidebar={true}>
@@ -135,7 +136,7 @@ const Projects = () => {
         <div className="p-8">
           <div className="flex items-center justify-between mb-8">
             <h1 className="text-3xl font-bold text-foreground">Projects</h1>
-            {!isSubscribed && (
+            {ENFORCE_FREE_PROJECT_LIMIT && !isSubscribed && (
               <p className="text-sm text-muted-foreground">
                 {projects.length}/{FREE_PROJECT_LIMIT} free projects used
               </p>
