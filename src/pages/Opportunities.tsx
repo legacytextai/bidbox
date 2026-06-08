@@ -38,6 +38,7 @@ interface Candidate {
   auto_status_reason: string | null;
   qualification_score: number | null;
   qualified_at: string | null;
+  crawl_data: any | null;
 }
 
 const FILTERS: { label: string; value: string }[] = [
