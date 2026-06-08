@@ -109,14 +109,14 @@ export function ActiveScansPanel({ taskIds, onDismiss, isQueuing = false }: Prop
     return { completed, total, percent, allDone: total > 0 && completed === total };
   }, [tasks]);
 
-  // Auto-dismiss when done
+  // Auto-dismiss when done (but not while still queuing)
   useEffect(() => {
-    if (!allDone) return;
+    if (!allDone || isQueuing) return;
     const t = setTimeout(onDismiss, 10_000);
     return () => clearTimeout(t);
-  }, [allDone, onDismiss]);
+  }, [allDone, isQueuing, onDismiss]);
 
-  if (taskIds.length === 0) return null;
+  if (taskIds.length === 0 && !isQueuing) return null;
 
   return (
     <div className="bg-card border border-border rounded-lg p-5 mb-6">
