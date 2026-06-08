@@ -524,6 +524,42 @@ One Link enables GCs to create projects by pasting a public works project URL. B
 
 ---
 
+### 🛰️ SoCal Agency Expansion
+
+> **Strategic Initiative: Opportunity Intelligence Coverage Expansion**
+>
+> **Status**: 🔄 In Progress (Started 2026-06-08)
+> - Phase E1: Add verified Southern California PlanetBids sources
+> - Phase E2: Build a master agency-to-portal inventory for all other SoCal agencies
+> - Phase E3: Add one scanner driver per non-PlanetBids portal type
+
+BidBox's opportunity intelligence layer should eventually scan every meaningful public works source in Southern California: cities, counties, school districts, ports, transit agencies, water districts, airports, Caltrans, and other public agencies.
+
+**Expansion Strategy:**
+
+1. **PlanetBids first**
+   - The worker already supports PlanetBids through `opportunity_sources`
+   - Adding coverage is configuration-only: insert agency name, `planetbids` portal type, listing URL, and scan cadence
+   - The first verified E1 migration seeds 50+ SoCal PlanetBids portals without changing worker code
+   - The operational source ledger is `docs/opportunity-source-ledger.md`; only scan-verified rows should be treated as proven coverage
+
+2. **Portal inventory second**
+   - Create a source-of-truth inventory for agencies not on PlanetBids
+   - Track portal platform, URL, jurisdiction, priority, and driver status
+   - Expected platforms include Cal eProcure, Bonfire, OpenGov, Periscope/BidSync, DemandStar, and agency-owned portals
+
+3. **Drivers third**
+   - Build reusable drivers by portal type, starting with the highest-value public works sources
+   - Priority candidates: Cal eProcure for Caltrans, Bonfire, OpenGov, then custom agency-direct portals such as LA County, LACMTA, and LADWP
+
+**End State:**
+
+BidBox becomes a live Southern California public works radar. `opportunity_sources` is the coverage map, `agent_tasks` is the shared scan queue, and multiple worker containers can scan agencies horizontally without duplicate work.
+
+See `docs/agent-architecture-task-list.md` for implementation tasks.
+
+---
+
 ### 🗺️ Regional Filtering for California Projects
 
 BidBox uses county-based regional filtering to provide GCs with geographically relevant Network Subs:

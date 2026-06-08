@@ -25,6 +25,24 @@ Estimators require explicit manual verification of bureaucratic requirements. Th
 
 ---
 
+### 2026-06-08: SoCal Agency Expansion Started
+
+**Completed**:
+- Added `docs/agent-architecture-task-list.md` to track the Southern California opportunity-source expansion and agent architecture work
+- Added the first E1 PlanetBids source migration with 50+ verified SoCal agency portals
+- Added `docs/opportunity-source-ledger.md` to track configured, production-enabled, and scan-verified agency coverage
+- Kept the migration additive/idempotent so existing scan history is not wiped
+
+**Key Insight**:
+PlanetBids coverage is the fastest path to broader opportunity intelligence because the worker and `agent_tasks` architecture already support it. The hard part is source discovery and verification, not scraper code.
+
+**Scope Boundaries**:
+- E1 only seeds PlanetBids portals
+- Non-PlanetBids agencies belong in the E2 inventory before new driver work starts
+- Caltrans, LA County, LACMTA, LADWP, and other direct/non-PlanetBids portals are intentionally not mixed into the PlanetBids migration
+
+---
+
 ## 🏗️ Architecture Note: State-Agnostic Licensing
 
 > **CRITICAL**: BidBox uses a **future-proof, state-agnostic trade taxonomy**.
@@ -2336,6 +2354,16 @@ This phase documents the strategic initiative to populate the BidBox Network Poo
 | 7.6 Compliance Jobs | 2-3 days | 7.3 |
 
 **Total Estimate:** 4-8 weeks for Tiers 1-2, ongoing for enrichment
+
+---
+
+## 🛰️ Opportunity Intelligence / Agent Architecture
+
+The detailed source of truth for worker architecture, PlanetBids scraping, agency expansion, document collection, and future portal drivers is:
+
+`docs/agent-architecture-task-list.md`
+
+Keep this broad product task list focused on app-wide implementation history and backlog. Do not duplicate detailed agent/opportunity tasks here.
 
 ---
 

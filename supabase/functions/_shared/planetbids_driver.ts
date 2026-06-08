@@ -42,15 +42,80 @@ function parseBidDueDate(raw: string | null | undefined): string | null {
 }
 
 function parseEstimatedValue(raw: string | null): number | null {
-  if (!raw) return null;
-  const m = raw.match(/\$\s*([\d,]+(?:\.\d+)?)\s*([BbMmKk])?/);
-  if (!m) return null;
-  const n = parseFloat(m[1].replace(/,/g, ""));
-  const s = (m[2] ?? "").toUpperCase();
-  if (s === "B") return n * 1_000_000_000;
-  if (s === "M") return n * 1_000_000;
-  if (s === "K") return n * 1_000;
-  return n;
+  return parseEstimatedValueDetails(raw).estimated_value;
+}
+
+function parseMoneyToken(token: string | null | undefined): number | null {
+  if (!token) return null;
+  const cleaned = token.replace(/\s+/g, " ").trim();
+  const hasDollar = cleaned.includes("$");
+  const hasComma = cleaned.includes(",");
+  const unitMatch = cleaned.match(/([KMB])\b|\b(thousand|million|billion)\b/i);
+  const numberMatch = cleaned.match(/(\d[\d,]*(?:\.\d+)?)/);
+  if (!numberMatch) return null;
+
+  const n = parseFloat(numberMatch[1].replace(/,/g, ""));
+  if (!Number.isFinite(n) || n <= 0) return null;
+
+  const unit = (unitMatch?.[1] ?? unitMatch?.[2] ?? "").toLowerCase();
+  let value = n;
+  if (unit === "b" || unit === "billion") value = n * 1_000_000_000;
+  if (unit === "m" || unit === "million") value = n * 1_000_000;
+  if (unit === "k" || unit === "thousand") value = n * 1_000;
+
+  if (!hasDollar && !hasComma && !unit && value < 10000) return null;
+  return Math.round(value);
+}
+
+function parseEstimatedValueDetails(raw: string | null | undefined): {
+  estimated_value: number | null;
+  estimated_value_raw: string | null;
+  estimated_value_low: number | null;
+  estimated_value_high: number | null;
+} {
+  if (!raw) {
+    return {
+      estimated_value: null,
+      estimated_value_raw: null,
+      estimated_value_low: null,
+      estimated_value_high: null,
+    };
+  }
+
+  const text = String(raw).replace(/\s+/g, " ").trim();
+  const moneyPattern = /(?:\$+\s*)?\d[\d,]*(?:\.\d+)?\s*(?:[KkMmBb]|thousand|million|billion)?/g;
+  const values = [...text.matchAll(moneyPattern)]
+    .map((m) => ({ raw: m[0].trim(), value: parseMoneyToken(m[0]) }))
+    .filter((m): m is { raw: string; value: number } => m.value !== null);
+
+  if (values.length === 0) {
+    return {
+      estimated_value: null,
+      estimated_value_raw: text || null,
+      estimated_value_low: null,
+      estimated_value_high: null,
+    };
+  }
+
+  const first = values[0].value;
+  const second = values[1]?.value ?? null;
+  if (second !== null && /(?:-|–|—|\bto\b|\band\b|\bbetween\b)/i.test(text)) {
+    const low = Math.min(first, second);
+    const high = Math.max(first, second);
+    return {
+      estimated_value: Math.round((low + high) / 2),
+      estimated_value_raw: text,
+      estimated_value_low: low,
+      estimated_value_high: high,
+    };
+  }
+
+  return {
+    estimated_value: first,
+    estimated_value_raw: text,
+    estimated_value_low: null,
+    estimated_value_high: null,
+  };
 }
 
 export class PlanetBidsDriver implements OpportunityDriver {
@@ -182,12 +247,41 @@ export class PlanetBidsDriver implements OpportunityDriver {
               field("Due Date") ||
               null;
 
-            const estimated_value_raw =
-              field("Estimated Value") ||
-              field("Estimated Amount") ||
-              field("Engineer.s Estimate") ||
-              field("Project Value") ||
-              null;
+            const findEstimateRaw = (): string | null => {
+              const labels = [
+                "Engineer's Estimate",
+                "Engineers Estimate",
+                "Estimated Value",
+                "Estimated Amount",
+                "Estimated Cost",
+                "Estimate Range",
+                "Project Estimate",
+                "Project Value",
+                "Construction Estimate",
+                "Cost Estimate",
+                "Budget",
+              ];
+
+              for (const label of labels) {
+                const direct = field(label);
+                if (direct) return `${label}: ${direct}`;
+              }
+
+              const normalized = bodyText.replace(/\s+/g, " ");
+              const labelPattern = labels
+                .map((label) => label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/'/g, "'?"))
+                .join("|");
+              const moneyPattern =
+                "(?:\\$\\s*)?\\d[\\d,]*(?:\\.\\d+)?\\s*(?:[KkMmBb]|thousand|million|billion)?";
+              const re = new RegExp(
+                `(?:${labelPattern})\\s*[:\\-]?\\s*(?:between\\s+)?(${moneyPattern}(?:\\s*(?:-|–|—|to|and)\\s*${moneyPattern})?)`,
+                "i",
+              );
+              const m = normalized.match(re);
+              return m ? m[0].trim().substring(0, 300) : null;
+            };
+
+            const estimated_value_raw = findEstimateRaw();
 
             const license_requirements =
               field("License Type") ||
@@ -218,9 +312,13 @@ export class PlanetBidsDriver implements OpportunityDriver {
             };
           });
 
+          const estimate = parseEstimatedValueDetails(raw.estimated_value_raw);
           const crawl_data: Record<string, unknown> = {
             bid_id: bidId,
-            estimated_value: parseEstimatedValue(raw.estimated_value_raw),
+            estimated_value: estimate.estimated_value,
+            estimated_value_raw: estimate.estimated_value_raw,
+            estimated_value_low: estimate.estimated_value_low,
+            estimated_value_high: estimate.estimated_value_high,
             license_requirements: raw.license_requirements,
             county: raw.county,
             commodity_codes: raw.commodity_codes,
