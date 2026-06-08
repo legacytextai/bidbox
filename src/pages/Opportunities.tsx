@@ -180,22 +180,95 @@ const Opportunities = () => {
     checkAuth();
   }, [navigate, loadCandidates]);
 
+  // Realtime: opportunity_candidates INSERT/UPDATE
+  useEffect(() => {
+    const channel = supabase
+      .channel("opportunity-candidates-feed")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "opportunity_candidates" },
+        async (payload) => {
+          const newRow: any = payload.new;
+          // Fetch joined source name
+          const { data: src } = await supabase
+            .from("opportunity_sources")
+            .select("name, last_scanned_at")
+            .eq("id", newRow.source_id)
+            .maybeSingle();
+          const mapped = mapRow({ ...newRow, opportunity_sources: src ?? null });
+          setCandidates((prev) =>
+            prev.some((c) => c.id === mapped.id) ? prev : [mapped, ...prev],
+          );
+          if (src?.last_scanned_at) setLastScannedAt(src.last_scanned_at);
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "opportunity_candidates" },
+        (payload) => {
+          const updated: any = payload.new;
+          setCandidates((prev) =>
+            prev.map((c) =>
+              c.id === updated.id
+                ? mapRow({ ...updated, opportunity_sources: { name: c.source_name } })
+                : c,
+            ),
+          );
+        },
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [mapRow]);
+
   const handleScanNow = async () => {
     setScanLoading(true);
+    const scanStartedAt = new Date().toISOString();
     try {
       const { data, error } = await supabase.functions.invoke("scan-opportunities");
       if (error) throw error;
-      toast({
-        title: "Scan complete",
-        description: `${data?.total_candidates_new ?? 0} new opportunities found`,
-      });
-      await loadCandidates();
+
+      const totalQueued: number = data?.total_queued ?? 0;
+      const sourcesScanned: number = data?.sources_scanned ?? 0;
+
+      // Look up newly-queued PlanetBids task IDs by timestamp (temporary; see plan)
+      if (totalQueued > 0) {
+        const { data: queuedTasks } = await supabase
+          .from("agent_tasks")
+          .select("id")
+          .eq("task_type", "planetbids_scan")
+          .gte("created_at", scanStartedAt);
+        if (queuedTasks && queuedTasks.length > 0) {
+          setActiveScanTaskIds(queuedTasks.map((t: any) => t.id));
+        }
+      }
+
+      if (totalQueued > 0) {
+        toast({
+          title: "Scan Started",
+          description: `${totalQueued} source${totalQueued === 1 ? "" : "s"} queued for scanning. Results will appear automatically as opportunities are discovered.`,
+        });
+      } else if (sourcesScanned === 0) {
+        toast({
+          title: "No sources due",
+          description: "All sources were scanned recently. Try again later.",
+        });
+      } else {
+        toast({
+          title: "Scan complete",
+          description: `${data?.total_candidates_new ?? 0} new opportunities found.`,
+        });
+        await loadCandidates();
+      }
     } catch (e: any) {
       toast({ title: "Scan failed", description: e?.message ?? "Unknown error", variant: "destructive" });
     } finally {
       setScanLoading(false);
     }
   };
+
+
 
 
   const handleStatusChange = async (id: string, newStatus: CandidateStatus) => {
