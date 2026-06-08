@@ -133,6 +133,28 @@ Commit: `6b9e433`
 - Prevents false positives when a closed project title contains the word "Bidding"
 - Example fixed class: "Pipeline Construction Bidding and Bids ... Closed"
 
+### 4.7.5. Scan Now queue visibility ✅
+- `scan-opportunities` returns `queued_task_ids` and `queued_tasks` for PlanetBids scans
+- Response includes `total_queued`, `total_newly_queued`, and `total_already_queued`
+- Active `pending`, `running`, and `retrying` tasks are de-duped by source before queueing new work
+- `agent_tasks.updated_at` migration added for live progress panels
+
+### 4.7.6. Task lifecycle decision ✅
+- Current canonical statuses remain `pending`, `running`, `complete`, `failed`, `retrying`
+- We are not renaming `complete` to `completed` because the schema and Railway worker already use `complete`
+- Frontend should treat `complete` as the completed terminal state
+- Lifecycle timestamps:
+  - `created_at`: queued
+  - `started_at`: claimed/running
+  - `completed_at`: terminal state (`complete` or `failed`)
+  - `updated_at`: latest task row update after migration
+
+### 4.7.7. last_scanned_at decision ✅
+- Do not update `opportunity_sources.last_scanned_at` at queue time
+- Reason: queueing is not scanning; setting it early would hide failed or pending work as if it completed
+- Duplicate scan clicks are handled by active-task de-duping instead
+- `last_scanned_at` remains a source completion timestamp
+
 ---
 
 ## Task 5 - PHASE D: QUALIFICATION ENGINE ✅ COMPLETE FOR CURRENT RULE SET

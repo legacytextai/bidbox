@@ -15,6 +15,10 @@ interface SourceRunResult {
   new: number;
   errors: number;
   queued: number;
+  task_id: string | null;
+  task_status: string | null;
+  task_created_at: string | null;
+  queue_state: "queued" | "already_queued" | "not_queued";
 }
 
 async function scanSource(
@@ -43,7 +47,7 @@ async function scanSource(
 
   if (runInsertError || !runRow) {
     console.error(`Failed to create agent_run for source ${source.id}:`, runInsertError);
-    return { source_id: source.id, source_name: source.name, found: 0, new: 0, errors: 1, queued: 0 };
+    return { source_id: source.id, source_name: source.name, found: 0, new: 0, errors: 1, queued: 0, task_id: null, task_status: null, task_created_at: null, queue_state: "not_queued" };
   }
 
   const runId: string = runRow.id;
@@ -64,7 +68,40 @@ async function scanSource(
 
   // PlanetBids sources are handled by the Railway worker via agent_tasks queue
   if (source.portal_type === 'planetbids') {
-    const { error: queueError } = await supabase
+    const { data: existingTask, error: existingTaskError } = await supabase
+      .from('agent_tasks')
+      .select('id, status, created_at')
+      .eq('task_type', 'planetbids_scan')
+      .in('status', ['pending', 'running', 'retrying'])
+      .contains('payload', { source_id: source.id })
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (existingTaskError) {
+      log(`[${source.name}] Failed to check active PlanetBids task: ${existingTaskError.message}`);
+      await finishRun();
+      return { source_id: source.id, source_name: source.name, found: 0, new: 0, errors: 1, queued: 0, task_id: null, task_status: null, task_created_at: null, queue_state: "not_queued" };
+    }
+
+    if (existingTask) {
+      log(`[${source.name}] PlanetBids task already active → agent_tasks ${existingTask.id}`);
+      await finishRun();
+      return {
+        source_id: source.id,
+        source_name: source.name,
+        found: 0,
+        new: 0,
+        errors: 0,
+        queued: 1,
+        task_id: existingTask.id,
+        task_status: existingTask.status,
+        task_created_at: existingTask.created_at,
+        queue_state: "already_queued",
+      };
+    }
+
+    const { data: queuedTask, error: queueError } = await supabase
       .from('agent_tasks')
       .insert({
         task_type: 'planetbids_scan',
@@ -76,17 +113,30 @@ async function scanSource(
           listing_url: source.listing_url,
           portal_type: source.portal_type,
         },
-      });
+      })
+      .select('id, status, created_at')
+      .single();
 
-    if (queueError) {
-      log(`[${source.name}] Failed to queue PlanetBids task: ${queueError.message}`);
+    if (queueError || !queuedTask) {
+      log(`[${source.name}] Failed to queue PlanetBids task: ${queueError?.message ?? "insert returned no task"}`);
       await finishRun();
-      return { source_id: source.id, source_name: source.name, found: 0, new: 0, errors: 1, queued: 0 };
+      return { source_id: source.id, source_name: source.name, found: 0, new: 0, errors: 1, queued: 0, task_id: null, task_status: null, task_created_at: null, queue_state: "not_queued" };
     }
 
-    log(`[${source.name}] PlanetBids task queued → agent_tasks`);
+    log(`[${source.name}] PlanetBids task queued → agent_tasks ${queuedTask.id}`);
     await finishRun();
-    return { source_id: source.id, source_name: source.name, found: 0, new: 0, errors: 0, queued: 1 };
+    return {
+      source_id: source.id,
+      source_name: source.name,
+      found: 0,
+      new: 0,
+      errors: 0,
+      queued: 1,
+      task_id: queuedTask.id,
+      task_status: queuedTask.status,
+      task_created_at: queuedTask.created_at,
+      queue_state: "queued",
+    };
   }
 
   // Dispatch to the appropriate driver based on portal_type
@@ -101,7 +151,7 @@ async function scanSource(
 
   if (driverErrors > 0 && candidates.length === 0) {
     await finishRun();
-    return { source_id: source.id, source_name: source.name, found: 0, new: 0, errors, queued: 0 };
+    return { source_id: source.id, source_name: source.name, found: 0, new: 0, errors, queued: 0, task_id: null, task_status: null, task_created_at: null, queue_state: "not_queued" };
   }
 
   // Upsert returned candidates
@@ -161,7 +211,7 @@ async function scanSource(
     }
   }
 
-  return { source_id: source.id, source_name: source.name, found: candidatesFound, new: candidatesNew, errors, queued: 0 };
+  return { source_id: source.id, source_name: source.name, found: candidatesFound, new: candidatesNew, errors, queued: 0, task_id: null, task_status: null, task_created_at: null, queue_state: "not_queued" };
 }
 
 serve(async (req) => {
@@ -225,7 +275,19 @@ serve(async (req) => {
 
     if (!sources || sources.length === 0) {
       return new Response(
-        JSON.stringify({ success: true, sources_scanned: 0, message: "No sources due for scanning" }),
+        JSON.stringify({
+          success: true,
+          sources_scanned: 0,
+          total_candidates_found: 0,
+          total_candidates_new: 0,
+          total_errors: 0,
+          total_queued: 0,
+          total_newly_queued: 0,
+          total_already_queued: 0,
+          queued_task_ids: [],
+          queued_tasks: [],
+          message: "No sources due for scanning",
+        }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
@@ -245,6 +307,16 @@ serve(async (req) => {
     const totalNew = runs.reduce((s, r) => s + r.new, 0);
     const totalErrors = runs.reduce((s, r) => s + r.errors, 0);
     const totalQueued = runs.reduce((s, r) => s + r.queued, 0);
+    const queuedTasks = runs
+      .filter((r) => r.task_id)
+      .map((r) => ({
+        task_id: r.task_id,
+        source_id: r.source_id,
+        source_name: r.source_name,
+        status: r.task_status,
+        created_at: r.task_created_at,
+        queue_state: r.queue_state,
+      }));
 
     return new Response(
       JSON.stringify({
@@ -254,6 +326,10 @@ serve(async (req) => {
         total_candidates_new: totalNew,
         total_errors: totalErrors,
         total_queued: totalQueued,
+        total_newly_queued: runs.filter((r) => r.queue_state === "queued").length,
+        total_already_queued: runs.filter((r) => r.queue_state === "already_queued").length,
+        queued_task_ids: queuedTasks.map((t) => t.task_id),
+        queued_tasks: queuedTasks,
         runs,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
