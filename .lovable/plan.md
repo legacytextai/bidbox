@@ -1,47 +1,47 @@
-# Apply pending migration + redeploy qualifier
+## Why nothing seems to happen when you click Scan Now
 
-## 1. Run migration `20260608000002_mark_expired_opportunity_candidates_red.sql`
+The button does work — when you clicked it just now, 50+ PlanetBids tasks were queued in the database (confirmed). The problem is the UI feedback:
 
-Backfill: mark every existing `opportunity_candidates` row whose `bid_due_at < now()` as:
-- `auto_status = 'red'`
-- `auto_status_reason = 'Bid closed'`
-- `qualification_score = 0`
-- `qualified_at = now()`
+`scan-opportunities` queues sources **one at a time with a 2-second pause between each**. With ~50+ Southern California sources, the HTTP call takes roughly 100 seconds to return. Today the Active Scans panel is only rendered after that response comes back — so the button just sits on "Scanning…" for nearly two minutes with no panel, no toast, no movement. From the user's seat, it looks broken.
 
-This immediately hides the 2024 "Pipeline Construction Bidding" row (and any other past-due rows) from the default `/opportunities` view.
+A second smaller issue: when the panel finally does render, the initial fetch joins by `payload->source_name`, which is fine, but the order of operations means `taskIds` is computed all at once from a single `gte("created_at", scanStartedAt)` query at the end — so even mid-scan we show nothing.
 
-```sql
-UPDATE public.opportunity_candidates
-SET auto_status = 'red',
-    auto_status_reason = 'Bid closed',
-    qualification_score = 0,
-    qualified_at = now()
-WHERE bid_due_at IS NOT NULL
-  AND bid_due_at < now()
-  AND (auto_status IS DISTINCT FROM 'red' OR auto_status_reason IS DISTINCT FROM 'Bid closed');
-```
+## Fix: show the panel the moment tasks start appearing
 
-No schema change, no GRANT/RLS changes — data-only backfill that complements the hard rule already in `qualify-candidates/index.ts` (the "Bid closed" red branch is already in source at lines ~93–104).
+Drive the panel from a live subscription to `agent_tasks` INSERTs instead of waiting for the edge function's response.
 
-## 2. Redeploy edge function `qualify-candidates`
+### Changes in `src/pages/Opportunities.tsx`
 
-The function source already contains the hard red rule (bid due in past → red + "Bid closed", returns immediately). Redeploy so the live runtime matches source. No code edits needed.
+1. When the user clicks Scan Now:
+   - Record `scanStartedAt = new Date().toISOString()` and store it in state (`scanStartedAt`).
+   - Open the panel immediately by setting a `scanActive` flag to `true` (panel shows "Queuing tasks…" until the first row arrives).
+   - Fire-and-forget `supabase.functions.invoke("scan-opportunities")` — do **not** await its full response to render the panel. Still surface the final toast when it resolves (totals + errors).
+   - Clear `scanLoading` once the invoke promise resolves so the button label returns to normal.
 
-## 3. Worker redeploy (Railway)
+2. Add a realtime subscription to `agent_tasks` INSERT events that:
+   - Filters client-side by `created_at >= scanStartedAt` and `task_type === "planetbids_scan"`.
+   - Appends each new task id to `activeScanTaskIds` as it arrives, so the panel grows live while the edge function is still queuing.
 
-Railway auto-deploys from the connected GitHub branch on push. Commit `b1ffff7` (driver fix scoping "Bidding" match to the status cell, not full row text) lives in the `bidbox-worker/` directory and is outside the Lovable build pipeline — Railway picks it up on its own. Nothing to do from this side beyond confirming the deploy went green after the push.
+3. The existing `onDismiss` clears `activeScanTaskIds`, `scanStartedAt`, and `scanActive`.
 
-## Verification after apply
+### Changes in `src/components/ActiveScansPanel.tsx`
 
-1. Re-query: `select count(*) from opportunity_candidates where bid_due_at < now() and auto_status <> 'red'` → expect 0.
-2. Refresh `/opportunities` → 2024 Pipeline row should be gone from the default view (visible only under Filtered Out).
-3. Next worker scan after `b1ffff7` deploys → no new candidates with Closed/Awarded titles containing "Bidding".
+1. Accept an optional `isQueuing: boolean` prop. When `taskIds.length === 0` and `isQueuing` is true, render the header ("Scanning…") + spinner + "Queuing tasks…" placeholder instead of returning `null`. This is what makes the panel appear instantly on click.
 
-## Pull from GitHub
+2. Header counter handles the growing total naturally — `completed / total` already recomputes as new task ids stream in.
 
-Lovable's GitHub sync is bidirectional and automatic — the latest `phase1-opportunity-intelligence` commits sync in without a manual pull step on this side. Worker commit `b1ffff7` is already in the repo per the file tree.
+3. Keep current auto-dismiss (10s after all done) and manual `X` dismiss. Skip auto-dismiss while `isQueuing` is still true (otherwise an empty panel could self-close before any tasks arrive).
 
-## Out of scope
-- No driver code edits (already in `b1ffff7`).
-- No `qualify-candidates` code edits (rule already in source).
-- No new RLS, schema, or UI changes.
+### What stays the same
+
+- No edge function changes. No worker changes. No new migration — `agent_tasks` is already in the realtime publication and already has `updated_at`.
+- Existing realtime subscriptions for `opportunity_candidates` and `agent_tasks` UPDATEs keep handling new candidates and status transitions.
+- Toast on completion still uses `data.total_queued` / `total_candidates_new` from the eventual edge response.
+
+## Acceptance
+
+- Click Scan Now → panel renders within ~100ms showing "Scanning… 0 / 0 — Queuing tasks…".
+- Within seconds the panel populates row-by-row as `agent_tasks` INSERTs stream in.
+- As the Railway worker claims tasks, statuses flip Queued → Scanning → Complete live via the existing UPDATE subscription.
+- New opportunities appear in the grid via the existing `opportunity_candidates` INSERT subscription.
+- Auto-dismiss after all tasks complete, or manual X.
