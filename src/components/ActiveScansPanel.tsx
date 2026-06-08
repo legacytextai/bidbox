@@ -122,13 +122,15 @@ export function ActiveScansPanel({ taskIds, onDismiss, isQueuing = false }: Prop
     <div className="bg-card border border-border rounded-lg p-5 mb-6">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          {allDone ? (
+          {allDone && !isQueuing ? (
             <CheckCircle2 className="h-5 w-5 text-green-600" />
           ) : (
             <Loader2 className="h-5 w-5 text-[hsl(var(--bidbox-blue))] animate-spin" />
           )}
           <h2 className="font-semibold text-foreground">
-            {allDone
+            {total === 0 && isQueuing
+              ? "Scanning… queuing sources"
+              : allDone && !isQueuing
               ? `Scan Complete — ${total} sources scanned`
               : `Scanning… ${completed} / ${total}`}
           </h2>
