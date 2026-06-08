@@ -1,33 +1,21 @@
-## Goal
-Temporarily lift the 3-project free limit for all users during the building phase, with a single switch to re-enable it later.
+# Opportunity Card Tweaks
 
-## Approach: Centralized feature flag
+Scope: `src/pages/Opportunities.tsx` only. No DB/status-value changes.
 
-Create one constant that gates the free-tier limit. Flip it back when ready — no other code changes needed.
+## 1. Relabel status buttons
+In the status selector row, map internal status values to friendly labels:
+- `red` → "No"
+- `yellow` → "Maybe"
+- `green` → "Yes"
 
-### 1. New file: `src/lib/featureFlags.ts`
-```ts
-// Set to true to re-enable the 3-project free tier cap.
-export const ENFORCE_FREE_PROJECT_LIMIT = false;
-export const FREE_PROJECT_LIMIT = 3;
-```
+Keep underlying status values (`red`/`yellow`/`green`) unchanged so filters, `STATUS_STYLES`, auto_status, and DB stay intact. Only the rendered button text changes.
 
-### 2. `src/pages/Projects.tsx`
-- Import `ENFORCE_FREE_PROJECT_LIMIT` and `FREE_PROJECT_LIMIT` from the new file (remove the local `FREE_PROJECT_LIMIT` constant).
-- Change gating logic:
-  - `canCreateProject = isSubscribed || !ENFORCE_FREE_PROJECT_LIMIT || projects.length < FREE_PROJECT_LIMIT`
-  - `isOverLimit = ENFORCE_FREE_PROJECT_LIMIT && !isSubscribed && projects.length >= FREE_PROJECT_LIMIT`
-- Hide the "X/3 free projects used" counter when the flag is off.
-- `handleNewProject` uses the same gate before redirecting to `/settings`.
+## 2. Always-enabled Convert button
+Update the Convert to Project button so it's clickable regardless of manual status:
+- Remove the `(status !== "green" && status !== "yellow")` part of `disabled`. Keep `convertingId === candidate.id` to prevent double-clicks.
+- Remove the gating `title` tooltip.
+- Still hide/replace with "View Project" when `status === "converted"` (unchanged).
 
-### 3. `src/pages/NewProject.tsx`
-- Apply the same flag check around the pre-submit free-tier guard (Task 10.1) so direct navigation to `/projects/new` also bypasses the limit when the flag is off.
+`handleConvert` logic is unchanged — it already works for any status.
 
-### 4. Leave untouched
-- Subscription/Stripe code, `useSubscription` hook, DB schema, and Settings UI all stay as-is. Paid users continue to work normally; flipping the flag back to `true` instantly restores enforcement.
-
-## To re-enable later
-Change one line in `src/lib/featureFlags.ts`:
-```ts
-export const ENFORCE_FREE_PROJECT_LIMIT = true;
-```
+No other files touched.

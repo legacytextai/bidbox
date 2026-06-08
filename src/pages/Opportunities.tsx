@@ -371,7 +371,9 @@ const Opportunities = () => {
       {/* Status selector */}
       {candidate.status !== "converted" && (
         <div className="flex gap-1">
-          {(["red", "yellow", "green"] as CandidateStatus[]).map((s) => (
+          {(["red", "yellow", "green"] as CandidateStatus[]).map((s) => {
+            const label = s === "red" ? "No" : s === "yellow" ? "Maybe" : "Yes";
+            return (
             <button
               key={s}
               onClick={() => handleStatusChange(candidate.id, s)}
@@ -385,9 +387,11 @@ const Opportunities = () => {
                   : "bg-transparent text-muted-foreground border-border hover:bg-accent"
               }`}
             >
-              {s.charAt(0).toUpperCase() + s.slice(1)}
+              {label}
             </button>
-          ))}
+            );
+          })}
+
         </div>
       )}
 
@@ -417,17 +421,9 @@ const Opportunities = () => {
       ) : (
         <Button
           size="sm"
-          disabled={
-            (candidate.status !== "green" && candidate.status !== "yellow") ||
-            convertingId === candidate.id
-          }
+          disabled={convertingId === candidate.id}
           onClick={() => handleConvert(candidate)}
           className="bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90 disabled:opacity-40"
-          title={
-            candidate.status !== "green" && candidate.status !== "yellow"
-              ? "Set status to Yellow or Green to convert"
-              : undefined
-          }
         >
           {convertingId === candidate.id ? "Converting..." : "Convert to Project"}
         </Button>
