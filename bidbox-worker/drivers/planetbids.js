@@ -91,14 +91,21 @@ function parseEstimatedValue(raw) {
 async function scrapePlanetBids(payload, log) {
   const { source_name, listing_url } = payload;
   const candidates = [];
+  const errorMessages = [];
   let errors = 0;
+
+  const recordError = (message) => {
+    const clean = String(message ?? 'Unknown error');
+    errorMessages.push(clean);
+    log(`[${source_name}] ${clean}`);
+  };
 
   const bbApiKey = process.env.BROWSERBASE_API_KEY;
   const bbProjectId = process.env.BROWSERBASE_PROJECT_ID ?? '';
 
   if (!bbApiKey) {
-    log(`[${source_name}] BROWSERBASE_API_KEY not configured`);
-    return { candidates, errors: 1 };
+    recordError('BROWSERBASE_API_KEY not configured');
+    return { candidates, errors: 1, errorMessages };
   }
 
   let browser = null;
@@ -128,7 +135,7 @@ async function scrapePlanetBids(payload, log) {
 
         if (!sessionRes.ok) {
           const errText = await sessionRes.text();
-          log(`[${source_name}] Browserbase session failed: ${sessionRes.status} — ${errText.substring(0, 200)}`);
+          recordError(`Browserbase session failed: ${sessionRes.status} — ${errText.substring(0, 200)}`);
           errors++;
           return;
         }
@@ -152,23 +159,33 @@ async function scrapePlanetBids(payload, log) {
 
         log(`[${source_name}] Loading listing: ${listing_url}`);
         await page.goto(listing_url, { waitUntil: 'domcontentloaded', timeout: 60000 });
-        await page.waitForSelector('tr', { timeout: 30000 });
+        await page.waitForSelector('body', { timeout: 30000 });
         await page.waitForTimeout(3000);
 
-        const rowCount = await page.locator('tr').filter({ hasText: 'Bidding' }).count();
+        const rowLocator = page.locator('tr, [role="row"]').filter({ hasText: 'Bidding' });
+        const rowCount = await rowLocator.count();
         log(`[${source_name}] ${rowCount} Bidding row(s) found`);
 
-        if (rowCount === 0) return;
+        if (rowCount === 0) {
+          const pageText = await page.locator('body').innerText({ timeout: 5000 }).catch(() => '');
+          if (/no\s+(open\s+)?(bid|opportunit|record)|no\s+data|nothing\s+found/i.test(pageText)) {
+            log(`[${source_name}] No active bidding rows found`);
+            return;
+          }
+          recordError(`No Bidding rows rendered. Body preview: ${pageText.replace(/\s+/g, ' ').substring(0, 500)}`);
+          errors++;
+          return;
+        }
 
         for (let i = 0; i < rowCount; i++) {
           try {
             if (i > 0) {
               await page.goto(listing_url, { waitUntil: 'domcontentloaded', timeout: 60000 });
-              await page.waitForSelector('tr', { timeout: 45000 });
+              await page.waitForSelector('body', { timeout: 45000 });
               await page.waitForTimeout(4000 + Math.floor(Math.random() * 1000)); // FIX 4: jitter
             }
 
-            const rows = page.locator('tr').filter({ hasText: 'Bidding' });
+            const rows = page.locator('tr, [role="row"]').filter({ hasText: 'Bidding' });
             const currentCount = await rows.count();
             if (i >= currentCount) {
               log(`[${source_name}] Row ${i}: no longer present — skipping`);
@@ -324,7 +341,7 @@ async function scrapePlanetBids(payload, log) {
 
             log(`[${source_name}] Row ${i + 1}: bid_id=${bidId} title="${(raw.raw_title ?? '').substring(0, 60)}"`);
           } catch (e) {
-            log(`[${source_name}] Row ${i}: error — ${e.message}`);
+            recordError(`Row ${i}: error — ${e.message}`);
             errors++;
           }
         }
@@ -376,9 +393,10 @@ async function scrapePlanetBids(payload, log) {
     ]);
   } catch (e) {
     if (e.message.includes('timed out')) {
-      log(`[${source_name}] ${e.message} — returning ${candidates.length} partial result(s)`);
+      recordError(`${e.message} — returning ${candidates.length} partial result(s)`);
+      errors++;
     } else {
-      log(`[${source_name}] Scrape error: ${e.message}`);
+      recordError(`Scrape error: ${e.message}`);
       errors++;
     }
   } finally {
@@ -388,7 +406,7 @@ async function scrapePlanetBids(payload, log) {
     }
   }
 
-  return { candidates, errors };
+  return { candidates, errors, errorMessages };
 }
 
 module.exports = {

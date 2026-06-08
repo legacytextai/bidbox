@@ -13,9 +13,38 @@ function ts() {
 
 async function runPlanetBidsScan(task, supabase) {
   const { source_id, source_name, listing_url, portal_type } = task.payload;
-  const log = (msg) => console.log(`[${ts()}] ${msg}`);
+  const logs = [];
+  const log = (msg) => {
+    const line = `[${ts()}] ${msg}`;
+    logs.push(line);
+    console.log(line);
+  };
 
-  const { candidates, errors: driverErrors } = await scrapePlanetBids(
+  let runLogId = null;
+  try {
+    const { data: runLog, error: runLogError } = await supabase
+      .from('agent_run_logs')
+      .insert({
+        task_id: task.id,
+        status: 'running',
+        logs: logs.join('\n'),
+      })
+      .select('id')
+      .single();
+    if (runLogError) {
+      console.warn(`[${ts()}] agent_run_logs insert failed: ${runLogError.message}`);
+    } else {
+      runLogId = runLog.id;
+    }
+  } catch (e) {
+    console.warn(`[${ts()}] agent_run_logs insert threw: ${e.message}`);
+  }
+
+  const {
+    candidates,
+    errors: driverErrors,
+    errorMessages = [],
+  } = await scrapePlanetBids(
     { source_id, source_name, listing_url, portal_type },
     log
   );
@@ -51,6 +80,7 @@ async function runPlanetBidsScan(task, supabase) {
       }
     } catch (e) {
       log(`[${source_name}] Candidate insert threw: ${e.message}`);
+      errorMessages.push(`Candidate insert threw: ${e.message}`);
       errors++;
     }
   }
@@ -60,7 +90,26 @@ async function runPlanetBidsScan(task, supabase) {
     .update({ last_scanned_at: new Date().toISOString() })
     .eq('id', source_id);
 
-  return { found, new: newCount, errors };
+  const errorSummary = errorMessages.length > 0
+    ? [...new Set(errorMessages)].slice(0, 5).join(' | ')
+    : null;
+
+  if (runLogId) {
+    try {
+      await supabase
+        .from('agent_run_logs')
+        .update({
+          status: errors > 0 ? 'complete_with_errors' : 'complete',
+          logs: logs.join('\n'),
+          completed_at: new Date().toISOString(),
+        })
+        .eq('id', runLogId);
+    } catch (e) {
+      console.warn(`[${ts()}] agent_run_logs update threw: ${e.message}`);
+    }
+  }
+
+  return { found, new: newCount, errors, errorSummary, logs };
 }
 
 async function pollOnce() {
@@ -104,7 +153,13 @@ async function pollOnce() {
       .from('agent_tasks')
       .update({
         status: 'complete',
-        result: { found: result.found, new: result.new, errors: result.errors },
+        result: {
+          found: result.found,
+          new: result.new,
+          errors: result.errors,
+          error_summary: result.errorSummary,
+        },
+        error: result.errorSummary,
         completed_at: new Date().toISOString(),
       })
       .eq('id', task.id);

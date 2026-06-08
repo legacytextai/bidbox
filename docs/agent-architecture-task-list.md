@@ -112,6 +112,24 @@ Commit: `6b9e433`
 
 ---
 
+## Task 4.7 - PHASE C2 WORKER OBSERVABILITY ✅ COMPLETE
+
+### 4.7.1. Persist worker run logs ✅
+- Railway worker now inserts/updates `agent_run_logs` for each claimed task
+- Logs include driver messages that were previously only visible in Railway stdout
+
+### 4.7.2. Persist soft driver errors ✅
+- Completed tasks with driver-level errors now write `result.error_summary`
+- `agent_tasks.error` is populated even when task status is `complete`
+- This makes failures like selector/render issues visible from Supabase/Lovable
+
+### 4.7.3. PlanetBids row-render diagnostics ✅
+- Initial page wait no longer requires `<tr>` immediately
+- Worker waits for `body`, counts `tr` and `[role="row"]` fallbacks, and records a body preview if no bidding rows render
+- "No active bids" style pages are treated as clean zero-result scans
+
+---
+
 ## Task 5 - PHASE D: QUALIFICATION ENGINE ✅ COMPLETE FOR CURRENT RULE SET
 
 ### 5.1. Profile + Engine Built ✅
