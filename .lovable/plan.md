@@ -1,34 +1,33 @@
 ## Goal
+Temporarily lift the 3-project free limit for all users during the building phase, with a single switch to re-enable it later.
 
-Bypass email verification for the user `test@bidbox.com` so they can sign in immediately without clicking a verification link.
+## Approach: Centralized feature flag
 
-## Current State
+Create one constant that gates the free-tier limit. Flip it back when ready — no other code changes needed.
 
-- User exists in `auth.users`:
-  - id: `2ad0a491-0986-489c-88e2-f18b73f9ef1b`
-  - email: `test@bidbox.com`
-  - `email_confirmed_at`: `NULL` (unverified — blocks login)
-
-## Change
-
-Run a one-off SQL migration that sets `email_confirmed_at = now()` for this single user. This is the standard Supabase way to manually confirm an account without sending or clicking a verification email.
-
-```sql
-UPDATE auth.users
-SET email_confirmed_at = now(),
-    confirmed_at = now()
-WHERE email = 'test@bidbox.com'
-  AND email_confirmed_at IS NULL;
+### 1. New file: `src/lib/featureFlags.ts`
+```ts
+// Set to true to re-enable the 3-project free tier cap.
+export const ENFORCE_FREE_PROJECT_LIMIT = false;
+export const FREE_PROJECT_LIMIT = 3;
 ```
 
-Scoped to that one email. Idempotent (the `IS NULL` guard makes re-runs a no-op). No app code changes, no RLS changes, no auth-config changes — global signup verification stays ON for everyone else.
+### 2. `src/pages/Projects.tsx`
+- Import `ENFORCE_FREE_PROJECT_LIMIT` and `FREE_PROJECT_LIMIT` from the new file (remove the local `FREE_PROJECT_LIMIT` constant).
+- Change gating logic:
+  - `canCreateProject = isSubscribed || !ENFORCE_FREE_PROJECT_LIMIT || projects.length < FREE_PROJECT_LIMIT`
+  - `isOverLimit = ENFORCE_FREE_PROJECT_LIMIT && !isSubscribed && projects.length >= FREE_PROJECT_LIMIT`
+- Hide the "X/3 free projects used" counter when the flag is off.
+- `handleNewProject` uses the same gate before redirecting to `/settings`.
 
-## Verification
+### 3. `src/pages/NewProject.tsx`
+- Apply the same flag check around the pre-submit free-tier guard (Task 10.1) so direct navigation to `/projects/new` also bypasses the limit when the flag is off.
 
-After the migration runs, the user can go to `/auth`, enter `test@bidbox.com` + their password, and sign in directly. I'll also re-query `auth.users` to confirm `email_confirmed_at` is now populated.
+### 4. Leave untouched
+- Subscription/Stripe code, `useSubscription` hook, DB schema, and Settings UI all stay as-is. Paid users continue to work normally; flipping the flag back to `true` instantly restores enforcement.
 
-## Not Doing
-
-- Not disabling email verification globally (would weaken security for all future signups).
-- Not changing the user's password — only confirming the email.
-- Not touching any other user.
+## To re-enable later
+Change one line in `src/lib/featureFlags.ts`:
+```ts
+export const ENFORCE_FREE_PROJECT_LIMIT = true;
+```
