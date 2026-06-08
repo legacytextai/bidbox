@@ -38,6 +38,7 @@ interface Candidate {
   auto_status_reason: string | null;
   qualification_score: number | null;
   qualified_at: string | null;
+  crawl_data: any | null;
 }
 
 const FILTERS: { label: string; value: string }[] = [
@@ -83,6 +84,17 @@ function formatBidDate(iso: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function formatEstimatedValue(value: number | null | undefined): string | null {
+  if (typeof value !== "number" || value <= 0) return null;
+  if (value >= 1_000_000) {
+    return `$${(value / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  }
+  if (value >= 1_000) {
+    return `$${Math.round(value / 1_000)}K`;
+  }
+  return `$${value.toLocaleString("en-US")}`;
 }
 
 function timeAgo(iso: string | null): string {
@@ -137,6 +149,7 @@ const Opportunities = () => {
       auto_status_reason: row.auto_status_reason ?? null,
       qualification_score: row.qualification_score ?? null,
       qualified_at: row.qualified_at ?? null,
+      crawl_data: row.crawl_data ?? null,
     }));
 
     setCandidates(rows);
@@ -363,6 +376,10 @@ const Opportunities = () => {
       <div className="text-sm text-muted-foreground space-y-0.5">
         {candidate.agency && <p>{candidate.agency}</p>}
         <p>Bid Due: {formatBidDate(candidate.bid_due_at)}</p>
+        {(() => {
+          const ev = formatEstimatedValue(candidate.crawl_data?.estimated_value);
+          return ev ? <p>Estimated Value: {ev}</p> : null;
+        })()}
         {candidate.source_name && (
           <p className="text-xs">Source: {candidate.source_name}</p>
         )}
