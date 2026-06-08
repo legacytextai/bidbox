@@ -75,10 +75,12 @@ function qualifyCandidate(
     AGENCY_COUNTY[candidate.agency ?? ""] ??
     null;
 
-  // Resolve value: crawl_data first, raw_title parse as fallback
+  // Resolve value: crawl_data first (only if positive number), raw_title parse as fallback
+  const rawValue = candidate.crawl_data?.estimated_value as number | null | undefined;
   const value: number | null =
-    (candidate.crawl_data?.estimated_value as number | null) ??
-    parseValueFromTitle(candidate.raw_title);
+    (typeof rawValue === "number" && rawValue > 0)
+      ? rawValue
+      : parseValueFromTitle(candidate.raw_title);
 
   // ── Red rules (first match wins, return immediately) ─────────────────────
 
