@@ -21,6 +21,7 @@ interface ScanTask {
 interface Props {
   taskIds: string[];
   onDismiss: () => void;
+  isQueuing?: boolean;
 }
 
 const STATUS_LABEL: Record<TaskStatus, string> = {
