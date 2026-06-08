@@ -16,6 +16,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { ActiveScansPanel } from "@/components/ActiveScansPanel";
 
 type CandidateStatus = "pending" | "red" | "yellow" | "green" | "converted";
 type AutoStatus = "green" | "yellow" | "red" | null;
@@ -116,8 +117,30 @@ const Opportunities = () => {
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [convertingId, setConvertingId] = useState<string | null>(null);
   const [filteredOutOpen, setFilteredOutOpen] = useState(false);
+  const [activeScanTaskIds, setActiveScanTaskIds] = useState<string[]>([]);
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  const mapRow = useCallback((row: any): Candidate => ({
+    id: row.id,
+    source_url: row.source_url,
+    portal_type: row.portal_type,
+    raw_title: row.raw_title,
+    agency: row.agency,
+    bid_due_at: row.bid_due_at,
+    scope_text: row.scope_text,
+    status: row.status as CandidateStatus,
+    review_notes: row.review_notes,
+    reviewed_at: row.reviewed_at,
+    converted_project_id: row.converted_project_id,
+    created_at: row.created_at,
+    source_name: row.opportunity_sources?.name ?? null,
+    auto_status: (row.auto_status ?? null) as AutoStatus,
+    auto_status_reason: row.auto_status_reason ?? null,
+    qualification_score: row.qualification_score ?? null,
+    qualified_at: row.qualified_at ?? null,
+    crawl_data: row.crawl_data ?? null,
+  }), []);
 
   const loadCandidates = useCallback(async () => {
     const { data, error } = await supabase
@@ -131,26 +154,7 @@ const Opportunities = () => {
       return;
     }
 
-    const rows: Candidate[] = (data || []).map((row: any) => ({
-      id: row.id,
-      source_url: row.source_url,
-      portal_type: row.portal_type,
-      raw_title: row.raw_title,
-      agency: row.agency,
-      bid_due_at: row.bid_due_at,
-      scope_text: row.scope_text,
-      status: row.status as CandidateStatus,
-      review_notes: row.review_notes,
-      reviewed_at: row.reviewed_at,
-      converted_project_id: row.converted_project_id,
-      created_at: row.created_at,
-      source_name: row.opportunity_sources?.name ?? null,
-      auto_status: (row.auto_status ?? null) as AutoStatus,
-      auto_status_reason: row.auto_status_reason ?? null,
-      qualification_score: row.qualification_score ?? null,
-      qualified_at: row.qualified_at ?? null,
-      crawl_data: row.crawl_data ?? null,
-    }));
+    const rows: Candidate[] = (data || []).map(mapRow);
 
     setCandidates(rows);
 
@@ -165,7 +169,7 @@ const Opportunities = () => {
     rows.forEach((r) => { initialNotes[r.id] = r.review_notes ?? ""; });
     setNotes(initialNotes);
     setLoading(false);
-  }, [toast]);
+  }, [toast, mapRow]);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -176,22 +180,95 @@ const Opportunities = () => {
     checkAuth();
   }, [navigate, loadCandidates]);
 
+  // Realtime: opportunity_candidates INSERT/UPDATE
+  useEffect(() => {
+    const channel = supabase
+      .channel("opportunity-candidates-feed")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "opportunity_candidates" },
+        async (payload) => {
+          const newRow: any = payload.new;
+          // Fetch joined source name
+          const { data: src } = await supabase
+            .from("opportunity_sources")
+            .select("name, last_scanned_at")
+            .eq("id", newRow.source_id)
+            .maybeSingle();
+          const mapped = mapRow({ ...newRow, opportunity_sources: src ?? null });
+          setCandidates((prev) =>
+            prev.some((c) => c.id === mapped.id) ? prev : [mapped, ...prev],
+          );
+          if (src?.last_scanned_at) setLastScannedAt(src.last_scanned_at);
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "opportunity_candidates" },
+        (payload) => {
+          const updated: any = payload.new;
+          setCandidates((prev) =>
+            prev.map((c) =>
+              c.id === updated.id
+                ? mapRow({ ...updated, opportunity_sources: { name: c.source_name } })
+                : c,
+            ),
+          );
+        },
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [mapRow]);
+
   const handleScanNow = async () => {
     setScanLoading(true);
+    const scanStartedAt = new Date().toISOString();
     try {
       const { data, error } = await supabase.functions.invoke("scan-opportunities");
       if (error) throw error;
-      toast({
-        title: "Scan complete",
-        description: `${data?.total_candidates_new ?? 0} new opportunities found`,
-      });
-      await loadCandidates();
+
+      const totalQueued: number = data?.total_queued ?? 0;
+      const sourcesScanned: number = data?.sources_scanned ?? 0;
+
+      // Look up newly-queued PlanetBids task IDs by timestamp (temporary; see plan)
+      if (totalQueued > 0) {
+        const { data: queuedTasks } = await supabase
+          .from("agent_tasks")
+          .select("id")
+          .eq("task_type", "planetbids_scan")
+          .gte("created_at", scanStartedAt);
+        if (queuedTasks && queuedTasks.length > 0) {
+          setActiveScanTaskIds(queuedTasks.map((t: any) => t.id));
+        }
+      }
+
+      if (totalQueued > 0) {
+        toast({
+          title: "Scan Started",
+          description: `${totalQueued} source${totalQueued === 1 ? "" : "s"} queued for scanning. Results will appear automatically as opportunities are discovered.`,
+        });
+      } else if (sourcesScanned === 0) {
+        toast({
+          title: "No sources due",
+          description: "All sources were scanned recently. Try again later.",
+        });
+      } else {
+        toast({
+          title: "Scan complete",
+          description: `${data?.total_candidates_new ?? 0} new opportunities found.`,
+        });
+        await loadCandidates();
+      }
     } catch (e: any) {
       toast({ title: "Scan failed", description: e?.message ?? "Unknown error", variant: "destructive" });
     } finally {
       setScanLoading(false);
     }
   };
+
+
 
 
   const handleStatusChange = async (id: string, newStatus: CandidateStatus) => {
@@ -477,6 +554,13 @@ const Opportunities = () => {
                 </Button>
               </div>
             </div>
+
+            {activeScanTaskIds.length > 0 && (
+              <ActiveScansPanel
+                taskIds={activeScanTaskIds}
+                onDismiss={() => setActiveScanTaskIds([])}
+              />
+            )}
 
             {/* Filter tabs */}
             <div className="flex gap-2 mb-6 flex-wrap">
