@@ -16,6 +16,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { ActiveScansPanel } from "@/components/ActiveScansPanel";
 
 type CandidateStatus = "pending" | "red" | "yellow" | "green" | "converted";
 type AutoStatus = "green" | "yellow" | "red" | null;
@@ -116,8 +117,30 @@ const Opportunities = () => {
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [convertingId, setConvertingId] = useState<string | null>(null);
   const [filteredOutOpen, setFilteredOutOpen] = useState(false);
+  const [activeScanTaskIds, setActiveScanTaskIds] = useState<string[]>([]);
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  const mapRow = useCallback((row: any): Candidate => ({
+    id: row.id,
+    source_url: row.source_url,
+    portal_type: row.portal_type,
+    raw_title: row.raw_title,
+    agency: row.agency,
+    bid_due_at: row.bid_due_at,
+    scope_text: row.scope_text,
+    status: row.status as CandidateStatus,
+    review_notes: row.review_notes,
+    reviewed_at: row.reviewed_at,
+    converted_project_id: row.converted_project_id,
+    created_at: row.created_at,
+    source_name: row.opportunity_sources?.name ?? null,
+    auto_status: (row.auto_status ?? null) as AutoStatus,
+    auto_status_reason: row.auto_status_reason ?? null,
+    qualification_score: row.qualification_score ?? null,
+    qualified_at: row.qualified_at ?? null,
+    crawl_data: row.crawl_data ?? null,
+  }), []);
 
   const loadCandidates = useCallback(async () => {
     const { data, error } = await supabase
@@ -131,26 +154,7 @@ const Opportunities = () => {
       return;
     }
 
-    const rows: Candidate[] = (data || []).map((row: any) => ({
-      id: row.id,
-      source_url: row.source_url,
-      portal_type: row.portal_type,
-      raw_title: row.raw_title,
-      agency: row.agency,
-      bid_due_at: row.bid_due_at,
-      scope_text: row.scope_text,
-      status: row.status as CandidateStatus,
-      review_notes: row.review_notes,
-      reviewed_at: row.reviewed_at,
-      converted_project_id: row.converted_project_id,
-      created_at: row.created_at,
-      source_name: row.opportunity_sources?.name ?? null,
-      auto_status: (row.auto_status ?? null) as AutoStatus,
-      auto_status_reason: row.auto_status_reason ?? null,
-      qualification_score: row.qualification_score ?? null,
-      qualified_at: row.qualified_at ?? null,
-      crawl_data: row.crawl_data ?? null,
-    }));
+    const rows: Candidate[] = (data || []).map(mapRow);
 
     setCandidates(rows);
 
@@ -165,7 +169,7 @@ const Opportunities = () => {
     rows.forEach((r) => { initialNotes[r.id] = r.review_notes ?? ""; });
     setNotes(initialNotes);
     setLoading(false);
-  }, [toast]);
+  }, [toast, mapRow]);
 
   useEffect(() => {
     const checkAuth = async () => {
