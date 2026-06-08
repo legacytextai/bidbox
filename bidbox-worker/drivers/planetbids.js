@@ -148,6 +148,8 @@ async function scrapePlanetBids(payload, log) {
 
         const bContext = browser.contexts()[0] ?? (await browser.newContext());
         const page = await bContext.newPage();
+        const biddingRows = () =>
+          page.locator('tr, [role="row"]').filter({ has: page.getByText(/^Bidding$/) });
 
         let bearerToken = null;
         page.on('request', (req) => {
@@ -162,7 +164,7 @@ async function scrapePlanetBids(payload, log) {
         await page.waitForSelector('body', { timeout: 30000 });
         await page.waitForTimeout(3000);
 
-        const rowLocator = page.locator('tr, [role="row"]').filter({ hasText: 'Bidding' });
+        const rowLocator = biddingRows();
         const rowCount = await rowLocator.count();
         log(`[${source_name}] ${rowCount} Bidding row(s) found`);
 
@@ -185,7 +187,7 @@ async function scrapePlanetBids(payload, log) {
               await page.waitForTimeout(4000 + Math.floor(Math.random() * 1000)); // FIX 4: jitter
             }
 
-            const rows = page.locator('tr, [role="row"]').filter({ hasText: 'Bidding' });
+            const rows = biddingRows();
             const currentCount = await rows.count();
             if (i >= currentCount) {
               log(`[${source_name}] Row ${i}: no longer present — skipping`);

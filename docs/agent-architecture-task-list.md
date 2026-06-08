@@ -128,6 +128,11 @@ Commit: `6b9e433`
 - Worker waits for `body`, counts `tr` and `[role="row"]` fallbacks, and records a body preview if no bidding rows render
 - "No active bids" style pages are treated as clean zero-result scans
 
+### 4.7.4. Exact status-row matching ✅
+- PlanetBids row selection now requires exact `Bidding` status text inside the row
+- Prevents false positives when a closed project title contains the word "Bidding"
+- Example fixed class: "Pipeline Construction Bidding and Bids ... Closed"
+
 ---
 
 ## Task 5 - PHASE D: QUALIFICATION ENGINE ✅ COMPLETE FOR CURRENT RULE SET
@@ -152,6 +157,12 @@ Commit: `6b9e433`
 - [ ] Add non-PlanetBids construction relevance rules after E2/E3 drivers exist
 - [ ] Revisit scoring after expanded source scan produces a larger candidate set
 - [ ] Replace hardcoded worker profile_id with config or task payload
+
+### 5.5. Expired Bid Handling ✅
+- `qualify-candidates` now auto-reds candidates where `bid_due_at < now()`
+- Reason: `Bid closed`
+- Cleanup migration marks existing expired candidates as auto-red:
+  - `supabase/migrations/20260608000002_mark_expired_opportunity_candidates_red.sql`
 
 ---
 

@@ -161,6 +161,8 @@ export class PlanetBidsDriver implements OpportunityDriver {
 
       const bContext = browser.contexts()[0] ?? (await browser.newContext());
       const page = await bContext.newPage();
+      const biddingRows = () =>
+        page.locator("tr, [role='row']").filter({ has: page.getByText(/^Bidding$/) });
 
       // Intercept Bearer token from outgoing PlanetBids API calls.
       // Captured from the first authenticated request on the listing or detail page.
@@ -175,10 +177,10 @@ export class PlanetBidsDriver implements OpportunityDriver {
       // Load listing page and wait for bid table to render
       log(`[${source.name}] Loading listing: ${source.listing_url}`);
       await page.goto(source.listing_url, { waitUntil: "domcontentloaded", timeout: 60000 });
-      await page.waitForSelector("tr", { timeout: 30000 });
+      await page.waitForSelector("body", { timeout: 30000 });
       await page.waitForTimeout(3000);
 
-      const rowCount = await page.locator("tr").filter({ hasText: "Bidding" }).count();
+      const rowCount = await biddingRows().count();
       log(`[${source.name}] ${rowCount} Bidding row(s) found`);
 
       if (rowCount === 0) {
@@ -193,11 +195,11 @@ export class PlanetBidsDriver implements OpportunityDriver {
         try {
           if (i > 0) {
             await page.goto(source.listing_url, { waitUntil: "domcontentloaded", timeout: 60000 });
-            await page.waitForSelector("tr", { timeout: 30000 });
+            await page.waitForSelector("body", { timeout: 30000 });
             await page.waitForTimeout(2000);
           }
 
-          const rows = page.locator("tr").filter({ hasText: "Bidding" });
+          const rows = biddingRows();
           const currentCount = await rows.count();
           if (i >= currentCount) {
             log(`[${source.name}] Row ${i}: no longer present (table changed?) — skipping`);

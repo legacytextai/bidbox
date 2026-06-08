@@ -84,6 +84,19 @@ function qualifyCandidate(
 
   // ── Red rules (first match wins, return immediately) ─────────────────────
 
+  // Bid due date is already in the past
+  if (candidate.bid_due_at) {
+    const due = new Date(candidate.bid_due_at);
+    if (!isNaN(due.getTime()) && due.getTime() < Date.now()) {
+      return {
+        id: candidate.id,
+        auto_status: "red",
+        auto_status_reason: "Bid closed",
+        qualification_score: 0,
+      };
+    }
+  }
+
   // Location confirmed outside all target counties
   if (
     county &&
