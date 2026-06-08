@@ -589,12 +589,18 @@ const Opportunities = () => {
               </div>
             </div>
 
-            {activeScanTaskIds.length > 0 && (
+            {scanActive && (
               <ActiveScansPanel
                 taskIds={activeScanTaskIds}
-                onDismiss={() => setActiveScanTaskIds([])}
+                isQueuing={scanLoading}
+                onDismiss={() => {
+                  setActiveScanTaskIds([]);
+                  setScanActive(false);
+                  setScanStartedAt(null);
+                }}
               />
             )}
+
 
             {/* Filter tabs */}
             <div className="flex gap-2 mb-6 flex-wrap">
