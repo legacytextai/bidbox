@@ -118,6 +118,8 @@ const Opportunities = () => {
   const [convertingId, setConvertingId] = useState<string | null>(null);
   const [filteredOutOpen, setFilteredOutOpen] = useState(false);
   const [activeScanTaskIds, setActiveScanTaskIds] = useState<string[]>([]);
+  const [scanStartedAt, setScanStartedAt] = useState<string | null>(null);
+  const [scanActive, setScanActive] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
