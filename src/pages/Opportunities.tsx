@@ -43,9 +43,9 @@ interface Candidate {
 const FILTERS: { label: string; value: string }[] = [
   { label: "All", value: "all" },
   { label: "Pending", value: "pending" },
-  { label: "Green", value: "green" },
-  { label: "Yellow", value: "yellow" },
-  { label: "Red", value: "red" },
+  { label: "Yes", value: "green" },
+  { label: "Maybe", value: "yellow" },
+  { label: "No", value: "red" },
   { label: "Converted", value: "converted" },
 ];
 
