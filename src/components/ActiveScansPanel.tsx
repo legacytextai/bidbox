@@ -132,7 +132,7 @@ export function ActiveScansPanel({ taskIds, onDismiss, isQueuing = false }: Prop
               ? "Scanning… queuing sources"
               : allDone && !isQueuing
               ? `Scan Complete — ${total} sources scanned`
-              : `Scanning… ${completed} / ${total}`}
+              : `Scanning… ${Math.min(completed + 1, total)} / ${total}`}
           </h2>
         </div>
         <Button variant="ghost" size="sm" onClick={onDismiss} className="h-7 px-2">
