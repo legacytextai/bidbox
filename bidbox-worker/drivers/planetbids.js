@@ -88,6 +88,96 @@ function parseEstimatedValue(raw) {
   return parseEstimatedValueDetails(raw).estimated_value;
 }
 
+function isPlanetBidsApiResponse(res) {
+  return res.url().includes('api-external.prod.planetbids.com') && res.status() >= 200 && res.status() < 300;
+}
+
+function createBiddingRowsLocator(page) {
+  return page
+    .locator([
+      'table tbody tr',
+      'table tr',
+      '[role="table"] [role="row"]',
+      '[role="grid"] [role="row"]',
+      '[class*="result" i] [class*="row" i]',
+      '[class*="bid" i][class*="row" i]',
+      '[class*="opportunit" i][class*="row" i]',
+    ].join(', '))
+    .filter({ hasText: /\bBidding\b/i })
+    .filter({ hasText: /(?:Bid|RFI|RFP|RFQ|RFQual|IPWB|Posted|Project|Invitation|Due Date|Remaining)/i });
+}
+
+async function waitForResultsReady(page, sourceName, log, apiReady = null) {
+  apiReady ??= page.waitForResponse(isPlanetBidsApiResponse, { timeout: 25000 }).catch(() => null);
+
+  await page.waitForSelector('body', { timeout: 30000 });
+  const apiResponse = await apiReady;
+  if (apiResponse) {
+    log(`[${sourceName}] PlanetBids API response observed: ${apiResponse.url().substring(0, 180)}`);
+  } else {
+    log(`[${sourceName}] No PlanetBids API response observed before readiness timeout`);
+  }
+
+  await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+  await page.waitForTimeout(apiResponse ? 1500 : 6000);
+  return Boolean(apiResponse);
+}
+
+async function gotoListingAndWait(page, listingUrl, sourceName, log) {
+  const apiReady = page.waitForResponse(isPlanetBidsApiResponse, { timeout: 25000 }).catch(() => null);
+
+  await page.goto(listingUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  return waitForResultsReady(page, sourceName, log, apiReady);
+}
+
+async function clickSearchIfAvailable(page, sourceName, log) {
+  const searchButton = page.getByRole('button', { name: /^search$/i }).first();
+  if (!(await searchButton.isVisible({ timeout: 2000 }).catch(() => false))) {
+    return false;
+  }
+
+  log(`[${sourceName}] No Bidding rows after initial load — clicking Search`);
+  const apiReady = page.waitForResponse(isPlanetBidsApiResponse, { timeout: 20000 }).catch(() => null);
+  await searchButton.click();
+  await page.waitForSelector('body', { timeout: 30000 });
+  const apiResponse = await apiReady;
+  if (apiResponse) {
+    log(`[${sourceName}] PlanetBids API response observed after Search`);
+  }
+  await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+  await page.waitForTimeout(apiResponse ? 1500 : 4000);
+  return true;
+}
+
+async function captureZeroRowDiagnostics(page) {
+  return page.evaluate(() => {
+    const clean = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
+    const bodyText = clean(document.body?.innerText ?? '');
+    const foundBids = bodyText.match(/Found\s+([\d,]+)\s+bids?/i)?.[1] ?? null;
+    const resultContainer = [
+      ...document.querySelectorAll(
+        'table, [role="table"], [role="grid"], [class*="result" i], [class*="bid" i], [class*="opportunit" i]'
+      ),
+    ].find((el) => /Posted|Project Title|Invitation|Due Date|Remaining|Stage|Bidding/i.test(el.textContent ?? ''));
+
+    return {
+      final_url: location.href,
+      tr_count: document.querySelectorAll('tr').length,
+      role_row_count: document.querySelectorAll('[role="row"]').length,
+      found_bids_text: foundBids,
+      body_preview: bodyText.substring(0, 700),
+      result_html_preview: resultContainer ? clean(resultContainer.innerHTML).substring(0, 1200) : null,
+    };
+  }).catch((e) => ({
+    final_url: page.url(),
+    tr_count: null,
+    role_row_count: null,
+    found_bids_text: null,
+    body_preview: `diagnostic capture failed: ${e.message}`,
+    result_html_preview: null,
+  }));
+}
+
 async function scrapePlanetBids(payload, log) {
   const { source_name, listing_url } = payload;
   const candidates = [];
@@ -148,24 +238,31 @@ async function scrapePlanetBids(payload, log) {
 
         const bContext = browser.contexts()[0] ?? (await browser.newContext());
         const page = await bContext.newPage();
-        const biddingRows = () =>
-          page.locator('tr, [role="row"]').filter({ has: page.getByText(/^Bidding$/) });
+        const biddingRows = () => createBiddingRowsLocator(page);
 
         let bearerToken = null;
+        let apiResponsesObserved = 0;
         page.on('request', (req) => {
           if (req.url().includes('api-external.prod.planetbids.com')) {
             const auth = req.headers()['authorization'] ?? '';
             if (auth.startsWith('Bearer ')) bearerToken = auth.slice(7);
           }
         });
+        page.on('response', (res) => {
+          if (isPlanetBidsApiResponse(res)) {
+            apiResponsesObserved++;
+          }
+        });
 
         log(`[${source_name}] Loading listing: ${listing_url}`);
-        await page.goto(listing_url, { waitUntil: 'domcontentloaded', timeout: 60000 });
-        await page.waitForSelector('body', { timeout: 30000 });
-        await page.waitForTimeout(3000);
+        await gotoListingAndWait(page, listing_url, source_name, log);
 
-        const rowLocator = biddingRows();
-        const rowCount = await rowLocator.count();
+        let rowLocator = biddingRows();
+        let rowCount = await rowLocator.count();
+        if (rowCount === 0 && await clickSearchIfAvailable(page, source_name, log)) {
+          rowLocator = biddingRows();
+          rowCount = await rowLocator.count();
+        }
         log(`[${source_name}] ${rowCount} Bidding row(s) found`);
 
         if (rowCount === 0) {
@@ -174,7 +271,16 @@ async function scrapePlanetBids(payload, log) {
             log(`[${source_name}] No active bidding rows found`);
             return;
           }
-          recordError(`No Bidding rows rendered. Body preview: ${pageText.replace(/\s+/g, ' ').substring(0, 500)}`);
+          const diagnostics = await captureZeroRowDiagnostics(page);
+          recordError(
+            `No Bidding rows rendered. final_url=${diagnostics.final_url}; ` +
+            `api_responses=${apiResponsesObserved}; tr_count=${diagnostics.tr_count}; ` +
+            `role_row_count=${diagnostics.role_row_count}; found_bids=${diagnostics.found_bids_text ?? 'n/a'}; ` +
+            `Body preview: ${diagnostics.body_preview}`
+          );
+          if (diagnostics.result_html_preview) {
+            log(`[${source_name}] Results HTML preview: ${diagnostics.result_html_preview}`);
+          }
           errors++;
           return;
         }
@@ -182,9 +288,8 @@ async function scrapePlanetBids(payload, log) {
         for (let i = 0; i < rowCount; i++) {
           try {
             if (i > 0) {
-              await page.goto(listing_url, { waitUntil: 'domcontentloaded', timeout: 60000 });
-              await page.waitForSelector('body', { timeout: 45000 });
-              await page.waitForTimeout(4000 + Math.floor(Math.random() * 1000)); // FIX 4: jitter
+              await gotoListingAndWait(page, listing_url, source_name, log);
+              await page.waitForTimeout(Math.floor(Math.random() * 1000)); // FIX 4: jitter
             }
 
             const rows = biddingRows();

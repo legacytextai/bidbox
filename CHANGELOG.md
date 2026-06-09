@@ -78,6 +78,11 @@ Expand Southern California PlanetBids coverage, fix qualification/scanning corre
 - Fixed PlanetBids false positives caused by matching `"Bidding"` anywhere in a row.
   - The bug allowed closed projects with titles containing the word "Bidding" to be imported.
   - Driver logic was tightened to match the actual status cell instead of any row text.
+- Fixed PlanetBids zero-candidate scrape failures caused by brittle row detection.
+  - Driver now waits for PlanetBids API/network readiness instead of relying on a fixed 3-second delay.
+  - Broadened result-row detection across table, grid, and result-row markup variants.
+  - Driver clicks Search when the portal renders controls but no rows appear initially.
+  - Zero-row failures now log final URL, API response count, row counts, found-bids text, body preview, and results-container HTML preview.
 - Added qualifier hard rule for expired bids:
   - Candidates with `bid_due_at < now()` are auto-red.
   - Prevents old/closed bids from remaining visible as yellow/maybe.
