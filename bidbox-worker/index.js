@@ -7,8 +7,42 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+const IDLE_POLL_INTERVAL_MS = 30000;
+const QUALIFY_MIN_INTERVAL_MS = 2 * 60 * 1000;
+const CLAIM_RETRY = Symbol('claim-retry');
+let lastQualifyAt = 0;
+
 function ts() {
   return new Date().toISOString();
+}
+
+async function maybeQualifyCandidates() {
+  const qualifyUrl = process.env.QUALIFY_CANDIDATES_URL;
+  if (!qualifyUrl) return;
+
+  const now = Date.now();
+  if (now - lastQualifyAt < QUALIFY_MIN_INTERVAL_MS) {
+    return;
+  }
+
+  lastQualifyAt = now;
+  try {
+    const qualifyRes = await fetch(qualifyUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ profile_id: '324e7848-6c4d-4fe5-a826-91427265a76e' }),
+    });
+    if (qualifyRes.ok) {
+      const q = await qualifyRes.json();
+      console.log(`[${ts()}] qualify-candidates: evaluated=${q.evaluated} green=${q.auto_green} yellow=${q.auto_yellow} red=${q.auto_red}`);
+    } else {
+      console.warn(`[${ts()}] qualify-candidates returned ${qualifyRes.status}`);
+    }
+  } catch (e) {
+    console.warn(`[${ts()}] qualify-candidates error: ${e.message}`);
+  }
 }
 
 async function runPlanetBidsScan(task, supabase) {
@@ -112,7 +146,7 @@ async function runPlanetBidsScan(task, supabase) {
   return { found, new: newCount, errors, errorSummary, logs };
 }
 
-async function pollOnce() {
+async function claimNextTask() {
   const { data: task, error: pollError } = await supabase
     .from('agent_tasks')
     .select('*')
@@ -125,10 +159,10 @@ async function pollOnce() {
 
   if (pollError) {
     console.error(`[${ts()}] Poll error: ${pollError.message}`);
-    return;
+    return null;
   }
 
-  if (!task) return;
+  if (!task) return null;
 
   // Atomic claim — guard against concurrent workers
   const { data: claimed, error: claimError } = await supabase
@@ -141,11 +175,14 @@ async function pollOnce() {
 
   if (claimError || !claimed) {
     console.log(`[${ts()}] Task ${task.id} already claimed — skipping`);
-    return;
+    return CLAIM_RETRY;
   }
 
   console.log(`[${ts()}] Claimed task ${task.id} (${task.task_type}) source=${task.payload?.source_name}`);
+  return task;
+}
 
+async function processTask(task) {
   try {
     const result = await runPlanetBidsScan(task, supabase);
 
@@ -165,27 +202,7 @@ async function pollOnce() {
       .eq('id', task.id);
 
     console.log(`[${ts()}] Task ${task.id} complete: found=${result.found} new=${result.new} errors=${result.errors}`);
-
-    const qualifyUrl = process.env.QUALIFY_CANDIDATES_URL;
-    if (qualifyUrl) {
-      try {
-        const qualifyRes = await fetch(qualifyUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ profile_id: '324e7848-6c4d-4fe5-a826-91427265a76e' }),
-        });
-        if (qualifyRes.ok) {
-          const q = await qualifyRes.json();
-          console.log(`[${ts()}] qualify-candidates: evaluated=${q.evaluated} green=${q.auto_green} yellow=${q.auto_yellow} red=${q.auto_red}`);
-        } else {
-          console.warn(`[${ts()}] qualify-candidates returned ${qualifyRes.status}`);
-        }
-      } catch (e) {
-        console.warn(`[${ts()}] qualify-candidates error: ${e.message}`);
-      }
-    }
+    await maybeQualifyCandidates();
   } catch (e) {
     console.error(`[${ts()}] Task ${task.id} failed: ${e.message}`);
     await supabase
@@ -200,10 +217,19 @@ async function pollOnce() {
 }
 
 async function main() {
-  console.log(`[${ts()}] BidBox worker started — polling every 30s`);
+  console.log(`[${ts()}] BidBox worker started — polling every ${IDLE_POLL_INTERVAL_MS / 1000}s when idle`);
   while (true) {
-    await pollOnce();
-    await new Promise((resolve) => setTimeout(resolve, 30000));
+    const task = await claimNextTask();
+    if (task === CLAIM_RETRY) {
+      continue;
+    }
+
+    if (task) {
+      await processTask(task);
+      continue;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, IDLE_POLL_INTERVAL_MS));
   }
 }
 

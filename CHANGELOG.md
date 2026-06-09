@@ -66,6 +66,10 @@ Expand Southern California PlanetBids coverage, fix qualification/scanning corre
   - `agent_tasks` is the shared scan queue.
   - Each worker replica claims one pending task using `UPDATE ... WHERE status = 'pending'`.
   - Multiple replicas can scan different agencies in parallel without duplicate task execution.
+- Improved worker queue throughput:
+  - Worker replicas now immediately try to claim the next pending task after completing one.
+  - The 30-second poll delay is now used only when no pending task is available.
+  - `qualify-candidates` is throttled to at most once every 2 minutes per worker replica to avoid rapid repeated qualification calls during large queue drains.
 
 ---
 
