@@ -2,7 +2,7 @@
 
 **Purpose:** This is the operational proof sheet for agencies BidBox crawls for opportunity intelligence.
 
-**Last updated:** 2026-06-08
+**Last updated:** 2026-06-09
 
 ---
 
@@ -21,7 +21,7 @@ Do not treat a source as “BidBox is successfully grabbing projects from this a
 
 | Metric | Count | Notes |
 | --- | ---: | --- |
-| Configured PlanetBids sources in E1 migration | 54 | First verified batch, not exhaustive |
+| Configured PlanetBids sources in E1 migrations | 76 | 54 first-pass sources + 22 second-pass sources |
 | Production enabled | Pending | Update after migration is applied |
 | Scan verified | Pending | Update after expanded scan cycle completes |
 | Needs review | Pending | Update from worker logs |
@@ -91,6 +91,37 @@ Migration: `supabase/migrations/20260608000001_seed_socal_planetbids_sources.sql
 
 ---
 
+## E1 PlanetBids Sources - Pass 2
+
+Migration: `supabase/migrations/20260609000001_seed_socal_planetbids_sources_pass2.sql`
+
+| # | Agency | Portal ID | Listing URL | Config Status | Scan Status |
+| ---: | --- | ---: | --- | --- | --- |
+| 55 | City of Anaheim | 14424 | https://vendors.planetbids.com/portal/14424/bo/bo-search | Configured in migration | Pending production apply + scan verification |
+| 56 | Brea Olinda Unified School District | 56096 | https://vendors.planetbids.com/portal/56096/bo/bo-search | Configured in migration | Pending production apply + scan verification |
+| 57 | Central Coast Water Authority | 84436 | https://vendors.planetbids.com/portal/84436/bo/bo-search | Configured in migration | Pending production apply + scan verification |
+| 58 | Chaffey College | 43704 | https://vendors.planetbids.com/portal/43704/bo/bo-search | Configured in migration | Pending production apply + scan verification |
+| 59 | City of Eastvale | 43976 | https://vendors.planetbids.com/portal/43976/bo/bo-search | Configured in migration | Pending production apply + scan verification |
+| 60 | Elsinore Valley Municipal Water District | 32069 | https://vendors.planetbids.com/portal/32069/bo/bo-search | Configured in migration | Pending production apply + scan verification |
+| 61 | City of Gardena - GTrans | 39470 | https://vendors.planetbids.com/portal/39470/bo/bo-search | Configured in migration | Pending production apply + scan verification |
+| 62 | City of Huntington Park | 72415 | https://vendors.planetbids.com/portal/72415/bo/bo-search | Configured in migration | Pending production apply + scan verification |
+| 63 | Imperial County Department of Public Works | 64020 | https://vendors.planetbids.com/portal/64020/bo/bo-search | Configured in migration | Pending production apply + scan verification |
+| 64 | City of Indio | 32404 | https://vendors.planetbids.com/portal/32404/bo/bo-search | Configured in migration | Pending production apply + scan verification |
+| 65 | Inland Empire Utilities Agency | 27411 | https://vendors.planetbids.com/portal/27411/bo/bo-search | Configured in migration | Pending production apply + scan verification |
+| 66 | Irvine Ranch Water District | 39499 | https://vendors.planetbids.com/portal/39499/bo/bo-search | Configured in migration | Pending production apply + scan verification |
+| 67 | MiraCosta Community College District | 47167 | https://vendors.planetbids.com/portal/47167/bo/bo-search | Configured in migration | Pending production apply + scan verification |
+| 68 | City of Moreno Valley | 24660 | https://vendors.planetbids.com/portal/24660/bo/bo-search | Configured in migration | Pending production apply + scan verification |
+| 69 | City of Palmdale | 23532 | https://vendors.planetbids.com/portal/23532/bo/bo-search | Configured in migration | Pending production apply + scan verification |
+| 70 | Rim of the World Recreation and Park District | 84052 | https://vendors.planetbids.com/portal/84052/bo/bo-search | Configured in migration | Pending production apply + scan verification |
+| 71 | Rio Hondo Community College District | 65292 | https://vendors.planetbids.com/portal/65292/bo/bo-search | Configured in migration | Pending production apply + scan verification |
+| 72 | San Bernardino County Transportation Authority | 20136 | https://vendors.planetbids.com/portal/20136/bo/bo-search | Configured in migration | Pending production apply + scan verification |
+| 73 | Santa Margarita Water District | 75207 | https://vendors.planetbids.com/portal/75207/bo/bo-search | Configured in migration | Pending production apply + scan verification |
+| 74 | City of Santa Fe Springs | 65093 | https://vendors.planetbids.com/portal/65093/bo/bo-search | Configured in migration | Pending production apply + scan verification |
+| 75 | City of Upland | 66713 | https://vendors.planetbids.com/portal/66713/bo/bo-search | Configured in migration | Pending production apply + scan verification |
+| 76 | Downey Unified School District | 74430 | https://vendors.planetbids.com/portal/74430/bo/bo-search | Configured in migration | Pending production apply + scan verification |
+
+---
+
 ## How To Update This Ledger After A Scan
 
 For each source:
@@ -107,4 +138,8 @@ For each source:
 
 ## Known Coverage Gap
 
-The E1 migration is a first verified batch, not the final SoCal PlanetBids universe. The next expansion pass should continue finding and verifying additional city, school district, community college, water, sanitation, airport, transit, and special district PlanetBids portals.
+The E1 migrations are verified batches, not the final SoCal PlanetBids universe. The next expansion pass should continue finding and verifying additional city, school district, community college, water, sanitation, airport, transit, and special district PlanetBids portals.
+
+## Discovery Notes
+
+- Portal `48397` is currently labeled `Los Angeles World Airports` in the first-pass migration, but public search results also reference that portal ID as `Santa Clara Valley Water District`. This needs a production scan/log review before renaming or removing anything.

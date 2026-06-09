@@ -4,6 +4,136 @@ All notable changes to the BidBox project are documented in this file.
 
 ---
 
+## [Phase 1 Opportunity Intelligence Push] - 2026-06-09
+
+### Phase Objective
+Expand Southern California PlanetBids coverage, fix qualification/scanning correctness issues found in production, and prepare the Scan Now UX for live queued-worker progress.
+
+---
+
+### Production Deployments And Coordination
+
+- Confirmed `qualify-candidates` was redeployed on Supabase project `ztuyjlyuzasbceepezua`.
+- Confirmed Railway worker deploys from GitHub branch `phase1-opportunity-intelligence`.
+- Confirmed Railway does not launch a new deployment for every Scan Now click; Scan Now queues `agent_tasks`, and the already-running worker service drains that queue.
+- Confirmed Railway worker scaling is replica-based: each replica runs one polling worker process.
+- Found current Railway plan/service limits cap the worker at **2 replicas** through the UI, despite an attempted change to 3 via Railway agent.
+- Recommended operating at 2 replicas for now, with future options to upgrade Railway or add in-process worker concurrency.
+
+---
+
+### Source Expansion - Phase E1
+
+- Added the first verified SoCal PlanetBids expansion batch:
+  - Migration: `20260608000001_seed_socal_planetbids_sources.sql`
+  - Count: 54 configured PlanetBids sources
+  - Scope: cities, ports, school districts, water/sanitation agencies, airports, transit, and special districts.
+- Added source ledger:
+  - File: `docs/opportunity-source-ledger.md`
+  - Purpose: operational proof sheet for agencies BidBox is configured to crawl.
+  - Important rule: a source is not considered successfully crawling until marked **Scan verified**.
+- Ran a second discovery pass and added 22 more candidate sources:
+  - Migration: `20260609000001_seed_socal_planetbids_sources_pass2.sql`
+  - Ledger total increased from 54 to 76 configured PlanetBids sources.
+  - New additions include Anaheim, Huntington Park, Indio, Moreno Valley, Palmdale, Santa Fe Springs, Upland, Eastvale, Downey USD, Brea Olinda USD, Rio Hondo CCD, Chaffey College, MiraCosta CCD, EVMWD, IEUA, Santa Margarita Water District, SBCTA, Imperial County DPW, and others.
+- Noted a source-verification issue:
+  - Portal `48397` is labeled `Los Angeles World Airports` in the first-pass migration, but public search results also reference that portal ID as `Santa Clara Valley Water District`.
+  - No rename/removal was made; this requires production scan/log verification first.
+
+---
+
+### Estimated Value Extraction
+
+- Updated backend value handling so `qualify-candidates` reads `crawl_data.estimated_value`.
+- Confirmed the frontend should only display estimated value when the backend actually populates it.
+- Confirmed a missing estimated value on opportunity cards was not a frontend rendering bug; records had `estimated_value: null` in `crawl_data`.
+- Added PlanetBids estimate extraction work so detail-page values can be stored when available.
+- Verified Browserbase quota exhaustion temporarily blocked all new extraction work until the Browserbase plan was upgraded.
+
+---
+
+### Worker Diagnostics And Browserbase
+
+- Added worker-side diagnostic persistence:
+  - Worker writes `agent_run_logs`.
+  - Worker persists soft driver errors into `agent_tasks.error` and `result.error_summary`.
+  - This removed the debugging blind spot where tasks completed with `{ found: 0, new: 0, errors: 1 }` and no stored error message.
+- Diagnosed Browserbase failures:
+  - Root cause was `HTTP 402 Payment Required`.
+  - Browserbase free plan minutes were exhausted.
+  - After upgrading Browserbase, sessions began creating successfully again.
+- Confirmed worker behavior:
+  - `agent_tasks` is the shared scan queue.
+  - Each worker replica claims one pending task using `UPDATE ... WHERE status = 'pending'`.
+  - Multiple replicas can scan different agencies in parallel without duplicate task execution.
+
+---
+
+### Candidate Correctness Fixes
+
+- Fixed PlanetBids false positives caused by matching `"Bidding"` anywhere in a row.
+  - The bug allowed closed projects with titles containing the word "Bidding" to be imported.
+  - Driver logic was tightened to match the actual status cell instead of any row text.
+- Added qualifier hard rule for expired bids:
+  - Candidates with `bid_due_at < now()` are auto-red.
+  - Prevents old/closed bids from remaining visible as yellow/maybe.
+- Added cleanup migration for expired candidates:
+  - Migration: `20260608000002_mark_expired_opportunity_candidates_red.sql`.
+
+---
+
+### Scan Now UX Backend Support
+
+- Added backend support for Lovable's new live Scan Now progress UI.
+- Updated `scan-opportunities` response payload to include:
+  - `total_queued`
+  - `total_newly_queued`
+  - `total_already_queued`
+  - `queued_task_ids`
+  - `queued_tasks`
+- Added de-duping for active PlanetBids tasks:
+  - Existing `pending`, `running`, or `retrying` task for a source is returned instead of queueing a duplicate.
+- Added `agent_tasks.updated_at` migration:
+  - Migration: `20260608000003_agent_tasks_updated_at.sql`.
+  - Enables live progress panels to sort/filter by latest task updates.
+- Documented task lifecycle:
+  - `pending`: queued
+  - `running`: claimed by worker
+  - `complete`: terminal success state used by current schema/worker
+  - `failed`: terminal failure state
+  - `retrying`: active retry state
+- Decided not to update `opportunity_sources.last_scanned_at` at queue time.
+  - Reason: queueing is not scanning; updating early would make failed or pending work look complete.
+  - Duplicate Scan Now clicks are handled by active-task de-duping instead.
+- Fixed Scan Now `504 IDLE_TIMEOUT` root cause after source expansion.
+  - Removed the old 2-second per-source throttle from the PlanetBids queue path.
+  - Split `scan-opportunities` into a fast bulk PlanetBids enqueue lane and a slower non-PlanetBids driver lane.
+  - Moved `qualify-candidates` invocation out of the per-source loop for non-PlanetBids scans.
+  - Added a `partial` response safety flag when non-PlanetBids work would be too large for the Edge Function request window.
+
+---
+
+### Lovable / Frontend Coordination
+
+- Provided Lovable deployment prompts to:
+  - Pull latest from `phase1-opportunity-intelligence`.
+  - Apply pending Supabase migrations.
+  - Redeploy `scan-opportunities`.
+- Confirmed Lovable's new `ActiveScansPanel` expects task status value `complete`, not `completed`.
+- Left Lovable frontend changes intact while committing backend support.
+- Confirmed future frontend can use returned `queued_task_ids` / `queued_tasks` instead of relying on timestamp-based lookup.
+
+---
+
+### Commits Referenced Today
+
+- `96060c4` - expand socal sources and improve estimate extraction
+- `a0e616f` - persist worker scan diagnostics
+- `b1ffff7` - filter closed bids and mark expired candidates
+- `7dd2c16` - support scan now task progress
+
+---
+
 ## [Phase 1 Session 1] – 2026-05-26
 
 ### 🎯 Phase Objective

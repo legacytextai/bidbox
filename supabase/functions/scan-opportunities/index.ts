@@ -21,12 +21,162 @@ interface SourceRunResult {
   queue_state: "queued" | "already_queued" | "not_queued";
 }
 
+async function qualifyCandidates(authHeader: string) {
+  if (!authHeader) return;
+
+  try {
+    const qualifyUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/qualify-candidates`;
+    const qualifyRes = await fetch(qualifyUrl, {
+      method: "POST",
+      headers: { Authorization: authHeader, "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    if (qualifyRes.ok) {
+      const q = await qualifyRes.json();
+      console.log(`qualify-candidates: evaluated=${q.evaluated} green=${q.auto_green} yellow=${q.auto_yellow} red=${q.auto_red}`);
+    } else {
+      console.warn(`qualify-candidates returned ${qualifyRes.status}`);
+    }
+  } catch (e) {
+    console.warn(`qualify-candidates error: ${e}`);
+  }
+}
+
+async function queuePlanetBidsSources(
+  sources: OpportunitySource[],
+  supabase: ReturnType<typeof createClient>,
+): Promise<SourceRunResult[]> {
+  if (sources.length === 0) return [];
+
+  const sourceIds = new Set(sources.map((source) => source.id));
+
+  const { data: activeTasks, error: activeTaskError } = await supabase
+    .from("agent_tasks")
+    .select("id, status, created_at, payload")
+    .eq("task_type", "planetbids_scan")
+    .in("status", ["pending", "running", "retrying"])
+    .order("created_at", { ascending: false });
+
+  if (activeTaskError) {
+    console.error(`Failed to check active PlanetBids tasks: ${activeTaskError.message}`);
+    return sources.map((source): SourceRunResult => ({
+      source_id: source.id,
+      source_name: source.name,
+      found: 0,
+      new: 0,
+      errors: 1,
+      queued: 0,
+      task_id: null,
+      task_status: null,
+      task_created_at: null,
+      queue_state: "not_queued",
+    }));
+  }
+
+  const activeBySourceId = new Map<string, { id: string; status: string; created_at: string }>();
+  for (const task of activeTasks ?? []) {
+    const sourceId = task.payload?.source_id;
+    if (sourceIds.has(sourceId) && !activeBySourceId.has(sourceId)) {
+      activeBySourceId.set(sourceId, {
+        id: task.id,
+        status: task.status,
+        created_at: task.created_at,
+      });
+    }
+  }
+
+  const sourcesToQueue = sources.filter((source) => !activeBySourceId.has(source.id));
+  const insertedBySourceId = new Map<string, { id: string; status: string; created_at: string }>();
+  let insertErrorMessage: string | null = null;
+
+  if (sourcesToQueue.length > 0) {
+    const rows = sourcesToQueue.map((source) => ({
+      task_type: "planetbids_scan",
+      status: "pending",
+      priority: 0,
+      payload: {
+        source_id: source.id,
+        source_name: source.name,
+        listing_url: source.listing_url,
+        portal_type: source.portal_type,
+      },
+    }));
+
+    const { data: queuedTasks, error: queueError } = await supabase
+      .from("agent_tasks")
+      .insert(rows)
+      .select("id, status, created_at, payload");
+
+    if (queueError) {
+      insertErrorMessage = queueError.message;
+      console.error(`Failed to bulk queue PlanetBids tasks: ${queueError.message}`);
+    } else {
+      for (const task of queuedTasks ?? []) {
+        const sourceId = task.payload?.source_id;
+        if (sourceIds.has(sourceId)) {
+          insertedBySourceId.set(sourceId, {
+            id: task.id,
+            status: task.status,
+            created_at: task.created_at,
+          });
+        }
+      }
+    }
+  }
+
+  return sources.map((source): SourceRunResult => {
+    const activeTask = activeBySourceId.get(source.id);
+    if (activeTask) {
+      return {
+        source_id: source.id,
+        source_name: source.name,
+        found: 0,
+        new: 0,
+        errors: 0,
+        queued: 1,
+        task_id: activeTask.id,
+        task_status: activeTask.status,
+        task_created_at: activeTask.created_at,
+        queue_state: "already_queued",
+      };
+    }
+
+    const insertedTask = insertedBySourceId.get(source.id);
+    if (insertedTask) {
+      return {
+        source_id: source.id,
+        source_name: source.name,
+        found: 0,
+        new: 0,
+        errors: 0,
+        queued: 1,
+        task_id: insertedTask.id,
+        task_status: insertedTask.status,
+        task_created_at: insertedTask.created_at,
+        queue_state: "queued",
+      };
+    }
+
+    return {
+      source_id: source.id,
+      source_name: source.name,
+      found: 0,
+      new: 0,
+      errors: insertErrorMessage ? 1 : 0,
+      queued: 0,
+      task_id: null,
+      task_status: null,
+      task_created_at: null,
+      queue_state: "not_queued",
+    };
+  });
+}
+
 async function scanSource(
   source: OpportunitySource,
   supabase: ReturnType<typeof createClient>,
   firecrawlApiKey: string,
   lovableApiKey: string,
-  authHeader: string,
 ): Promise<SourceRunResult> {
   const logLines: string[] = [];
   const log = (msg: string) => {
@@ -65,79 +215,6 @@ async function scanSource(
       })
       .eq("id", runId);
   };
-
-  // PlanetBids sources are handled by the Railway worker via agent_tasks queue
-  if (source.portal_type === 'planetbids') {
-    const { data: existingTask, error: existingTaskError } = await supabase
-      .from('agent_tasks')
-      .select('id, status, created_at')
-      .eq('task_type', 'planetbids_scan')
-      .in('status', ['pending', 'running', 'retrying'])
-      .contains('payload', { source_id: source.id })
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (existingTaskError) {
-      log(`[${source.name}] Failed to check active PlanetBids task: ${existingTaskError.message}`);
-      await finishRun();
-      return { source_id: source.id, source_name: source.name, found: 0, new: 0, errors: 1, queued: 0, task_id: null, task_status: null, task_created_at: null, queue_state: "not_queued" };
-    }
-
-    if (existingTask) {
-      log(`[${source.name}] PlanetBids task already active → agent_tasks ${existingTask.id}`);
-      await finishRun();
-      return {
-        source_id: source.id,
-        source_name: source.name,
-        found: 0,
-        new: 0,
-        errors: 0,
-        queued: 1,
-        task_id: existingTask.id,
-        task_status: existingTask.status,
-        task_created_at: existingTask.created_at,
-        queue_state: "already_queued",
-      };
-    }
-
-    const { data: queuedTask, error: queueError } = await supabase
-      .from('agent_tasks')
-      .insert({
-        task_type: 'planetbids_scan',
-        status: 'pending',
-        priority: 0,
-        payload: {
-          source_id: source.id,
-          source_name: source.name,
-          listing_url: source.listing_url,
-          portal_type: source.portal_type,
-        },
-      })
-      .select('id, status, created_at')
-      .single();
-
-    if (queueError || !queuedTask) {
-      log(`[${source.name}] Failed to queue PlanetBids task: ${queueError?.message ?? "insert returned no task"}`);
-      await finishRun();
-      return { source_id: source.id, source_name: source.name, found: 0, new: 0, errors: 1, queued: 0, task_id: null, task_status: null, task_created_at: null, queue_state: "not_queued" };
-    }
-
-    log(`[${source.name}] PlanetBids task queued → agent_tasks ${queuedTask.id}`);
-    await finishRun();
-    return {
-      source_id: source.id,
-      source_name: source.name,
-      found: 0,
-      new: 0,
-      errors: 0,
-      queued: 1,
-      task_id: queuedTask.id,
-      task_status: queuedTask.status,
-      task_created_at: queuedTask.created_at,
-      queue_state: "queued",
-    };
-  }
 
   // Dispatch to the appropriate driver based on portal_type
   const { candidates, errors: driverErrors } = await runDriver(source, {
@@ -192,25 +269,6 @@ async function scanSource(
   log(`[${source.name}] Done. found=${candidatesFound} new=${candidatesNew} errors=${errors}`);
   await finishRun();
 
-  if (authHeader) {
-    try {
-      const qualifyUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/qualify-candidates`;
-      const qualifyRes = await fetch(qualifyUrl, {
-        method: "POST",
-        headers: { Authorization: authHeader, "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
-      if (qualifyRes.ok) {
-        const q = await qualifyRes.json();
-        console.log(`[${source.name}] qualify-candidates: evaluated=${q.evaluated} green=${q.auto_green} yellow=${q.auto_yellow} red=${q.auto_red}`);
-      } else {
-        console.warn(`[${source.name}] qualify-candidates returned ${qualifyRes.status}`);
-      }
-    } catch (e) {
-      console.warn(`[${source.name}] qualify-candidates error: ${e}`);
-    }
-  }
-
   return { source_id: source.id, source_name: source.name, found: candidatesFound, new: candidatesNew, errors, queued: 0, task_id: null, task_status: null, task_created_at: null, queue_state: "not_queued" };
 }
 
@@ -225,19 +283,6 @@ serve(async (req) => {
     const firecrawlApiKey = Deno.env.get("FIRECRAWL_API_KEY");
     const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
     const authHeader = req.headers.get("Authorization") ?? "";
-
-    if (!firecrawlApiKey) {
-      return new Response(
-        JSON.stringify({ success: false, error: "FIRECRAWL_API_KEY not configured" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
-    if (!lovableApiKey) {
-      return new Response(
-        JSON.stringify({ success: false, error: "LOVABLE_API_KEY not configured" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -294,13 +339,42 @@ serve(async (req) => {
 
     console.log(`Scanning ${sources.length} source(s)`);
 
+    const allSources = sources as OpportunitySource[];
+    const planetbidsSources = allSources.filter((source) => source.portal_type === "planetbids");
+    const otherSources = allSources.filter((source) => source.portal_type !== "planetbids");
+
     const runs: SourceRunResult[] = [];
-    for (const source of sources as OpportunitySource[]) {
-      const result = await scanSource(source, supabase, firecrawlApiKey, lovableApiKey, authHeader);
+    if (planetbidsSources.length > 0) {
+      const queuedRuns = await queuePlanetBidsSources(planetbidsSources, supabase);
+      runs.push(...queuedRuns);
+    }
+
+    if (otherSources.length > 0 && !firecrawlApiKey) {
+      return new Response(
+        JSON.stringify({ success: false, error: "FIRECRAWL_API_KEY not configured" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+    if (otherSources.length > 0 && !lovableApiKey) {
+      return new Response(
+        JSON.stringify({ success: false, error: "LOVABLE_API_KEY not configured" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    const skippedNonPlanetBids = otherSources.length > 30;
+    const sourcesToScan = skippedNonPlanetBids ? [] : otherSources;
+
+    for (const [index, source] of sourcesToScan.entries()) {
+      const result = await scanSource(source, supabase, firecrawlApiKey!, lovableApiKey!);
       runs.push(result);
-      if (sources.indexOf(source) < sources.length - 1) {
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+      if (index < sourcesToScan.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 250));
       }
+    }
+
+    if (sourcesToScan.length > 0) {
+      await qualifyCandidates(authHeader);
     }
 
     const totalFound = runs.reduce((s, r) => s + r.found, 0);
@@ -330,6 +404,8 @@ serve(async (req) => {
         total_already_queued: runs.filter((r) => r.queue_state === "already_queued").length,
         queued_task_ids: queuedTasks.map((t) => t.task_id),
         queued_tasks: queuedTasks,
+        partial: skippedNonPlanetBids,
+        skipped_non_planetbids_sources: skippedNonPlanetBids ? otherSources.length : 0,
         runs,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
