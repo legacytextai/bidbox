@@ -1,6 +1,7 @@
 require('dotenv').config();
 const { createClient } = require('@supabase/supabase-js');
 const { scrapePlanetBids } = require('./drivers/planetbids');
+const { acquirePlanetBidsDocuments } = require('./drivers/planetbids_documents');
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -146,12 +147,144 @@ async function runPlanetBidsScan(task, supabase) {
   return { found, new: newCount, errors, errorSummary, logs };
 }
 
+async function runProjectAnalysisAcquisition(task, supabase) {
+  const { candidate_id } = task.payload;
+  const logs = [];
+  const log = (msg) => {
+    const line = `[${ts()}] ${msg}`;
+    logs.push(line);
+    console.log(line);
+  };
+
+  let runLogId = null;
+  try {
+    const { data: runLog, error: runLogError } = await supabase
+      .from('agent_run_logs')
+      .insert({
+        task_id: task.id,
+        status: 'running',
+        logs: logs.join('\n'),
+      })
+      .select('id')
+      .single();
+    if (runLogError) {
+      console.warn(`[${ts()}] agent_run_logs insert failed: ${runLogError.message}`);
+    } else {
+      runLogId = runLog.id;
+    }
+  } catch (e) {
+    console.warn(`[${ts()}] agent_run_logs insert threw: ${e.message}`);
+  }
+
+  if (!candidate_id) {
+    throw new Error('project_analysis task missing candidate_id');
+  }
+
+  const { data: candidate, error: candidateError } = await supabase
+    .from('opportunity_candidates')
+    .select('id, source_id, source_url, portal_type, raw_title, agency, bid_due_at, crawl_data, document_acquisition_status')
+    .eq('id', candidate_id)
+    .maybeSingle();
+
+  if (candidateError) throw new Error(`Candidate lookup failed: ${candidateError.message}`);
+  if (!candidate) throw new Error(`Candidate not found: ${candidate_id}`);
+
+  if (candidate.portal_type !== 'planetbids') {
+    throw new Error(`Document acquisition is only implemented for planetbids candidates; got ${candidate.portal_type ?? 'unknown'}`);
+  }
+
+  const startedAt = new Date().toISOString();
+  await supabase
+    .from('opportunity_candidates')
+    .update({
+      analysis_error: null,
+      document_acquisition_status: 'acquiring',
+      document_acquisition_started_at: startedAt,
+      document_acquisition_completed_at: null,
+      document_acquisition_error: null,
+    })
+    .eq('id', candidate.id);
+
+  log(`[${candidate.agency ?? 'Unknown agency'}] Starting document acquisition for candidate ${candidate.id}`);
+
+  let result;
+  try {
+    result = await acquirePlanetBidsDocuments({ supabase, task, candidate, log });
+  } catch (e) {
+    const completedAt = new Date().toISOString();
+    await supabase
+      .from('opportunity_candidates')
+      .update({
+        document_acquisition_status: 'failed',
+        document_acquisition_completed_at: completedAt,
+        document_acquisition_error: e.message,
+      })
+      .eq('id', candidate.id);
+
+    if (runLogId) {
+      await supabase
+        .from('agent_run_logs')
+        .update({
+          status: 'failed',
+          logs: logs.join('\n'),
+          completed_at: completedAt,
+        })
+        .eq('id', runLogId);
+    }
+
+    throw e;
+  }
+
+  const completedAt = new Date().toISOString();
+  const acquisitionStatus = result.found === 0 || (result.found > 0 && result.acquired === 0 && result.skipped === 0)
+    ? 'failed'
+    : 'acquired';
+  const errorSummary = acquisitionStatus === 'failed'
+    ? result.errorSummary ?? (result.found === 0 ? 'No documents found' : 'No documents were acquired')
+    : result.errorSummary;
+
+  await supabase
+    .from('opportunity_candidates')
+    .update({
+      analysis_completed_at: null,
+      analysis_error: null,
+      document_acquisition_status: acquisitionStatus,
+      document_acquisition_completed_at: completedAt,
+      document_acquisition_error: errorSummary,
+    })
+    .eq('id', candidate.id);
+
+  if (runLogId) {
+    try {
+      await supabase
+        .from('agent_run_logs')
+        .update({
+          status: errorSummary ? 'complete_with_errors' : 'complete',
+          logs: logs.join('\n'),
+          completed_at: completedAt,
+        })
+        .eq('id', runLogId);
+    } catch (e) {
+      console.warn(`[${ts()}] agent_run_logs update threw: ${e.message}`);
+    }
+  }
+
+  return {
+    candidate_id: candidate.id,
+    documents_found: result.found,
+    documents_acquired: result.acquired,
+    documents_skipped: result.skipped,
+    documents_failed: result.failed,
+    errorSummary,
+  };
+}
+
 async function claimNextTask() {
   const { data: task, error: pollError } = await supabase
     .from('agent_tasks')
     .select('*')
     .eq('status', 'pending')
-    .eq('task_type', 'planetbids_scan')
+    .in('task_type', ['planetbids_scan', 'project_analysis'])
     .order('priority', { ascending: false })
     .order('created_at', { ascending: true })
     .limit(1)
@@ -184,27 +317,61 @@ async function claimNextTask() {
 
 async function processTask(task) {
   try {
-    const result = await runPlanetBidsScan(task, supabase);
+    let result;
+    if (task.task_type === 'planetbids_scan') {
+      result = await runPlanetBidsScan(task, supabase);
+    } else if (task.task_type === 'project_analysis') {
+      result = await runProjectAnalysisAcquisition(task, supabase);
+    } else {
+      throw new Error(`Unsupported task type: ${task.task_type}`);
+    }
+
+    const taskResult = task.task_type === 'planetbids_scan'
+      ? {
+          found: result.found,
+          new: result.new,
+          errors: result.errors,
+          error_summary: result.errorSummary,
+        }
+      : {
+          candidate_id: result.candidate_id,
+          documents_found: result.documents_found,
+          documents_acquired: result.documents_acquired,
+          documents_skipped: result.documents_skipped,
+          documents_failed: result.documents_failed,
+          error_summary: result.errorSummary,
+          phase: 'f2_document_acquisition',
+          intelligence_status: 'not_generated',
+        };
 
     await supabase
       .from('agent_tasks')
       .update({
         status: 'complete',
-        result: {
-          found: result.found,
-          new: result.new,
-          errors: result.errors,
-          error_summary: result.errorSummary,
-        },
+        result: taskResult,
         error: result.errorSummary,
         completed_at: new Date().toISOString(),
       })
       .eq('id', task.id);
 
-    console.log(`[${ts()}] Task ${task.id} complete: found=${result.found} new=${result.new} errors=${result.errors}`);
-    await maybeQualifyCandidates();
+    if (task.task_type === 'planetbids_scan') {
+      console.log(`[${ts()}] Task ${task.id} complete: found=${result.found} new=${result.new} errors=${result.errors}`);
+      await maybeQualifyCandidates();
+    } else {
+      console.log(`[${ts()}] Task ${task.id} complete: documents_acquired=${result.documents_acquired} documents_failed=${result.documents_failed}`);
+    }
   } catch (e) {
     console.error(`[${ts()}] Task ${task.id} failed: ${e.message}`);
+    if (task.task_type === 'project_analysis' && task.payload?.candidate_id) {
+      await supabase
+        .from('opportunity_candidates')
+        .update({
+          document_acquisition_status: 'failed',
+          document_acquisition_completed_at: new Date().toISOString(),
+          document_acquisition_error: e.message,
+        })
+        .eq('id', task.payload.candidate_id);
+    }
     await supabase
       .from('agent_tasks')
       .update({

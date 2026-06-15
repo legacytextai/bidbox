@@ -21,6 +21,7 @@ import { ActiveScansPanel } from "@/components/ActiveScansPanel";
 type CandidateStatus = "pending" | "red" | "yellow" | "green" | "converted";
 type AutoStatus = "green" | "yellow" | "red" | null;
 type AnalysisStatus = "not_requested" | "queued" | "analyzing" | "ready" | "failed";
+type DocumentAcquisitionStatus = "not_requested" | "queued" | "acquiring" | "acquired" | "failed";
 
 interface Candidate {
   id: string;
@@ -32,7 +33,6 @@ interface Candidate {
   scope_text: string | null;
   status: CandidateStatus;
   review_notes: string | null;
-  reviewed_at: string | null;
   converted_project_id: string | null;
   created_at: string;
   source_name: string | null;
@@ -47,24 +47,17 @@ interface Candidate {
   analysis_started_at: string | null;
   analysis_completed_at: string | null;
   analysis_error: string | null;
+  document_acquisition_status: DocumentAcquisitionStatus;
+  document_acquisition_started_at: string | null;
+  document_acquisition_completed_at: string | null;
+  document_acquisition_error: string | null;
 }
 
 const FILTERS: { label: string; value: string }[] = [
   { label: "All", value: "all" },
   { label: "Pending", value: "pending" },
-  { label: "Yes", value: "green" },
-  { label: "Maybe", value: "yellow" },
-  { label: "No", value: "red" },
   { label: "Converted", value: "converted" },
 ];
-
-const STATUS_STYLES: Record<CandidateStatus, string> = {
-  pending: "bg-gray-500/10 text-gray-600",
-  red: "bg-red-500/10 text-red-600",
-  yellow: "bg-yellow-500/10 text-yellow-700",
-  green: "bg-green-500/10 text-green-600",
-  converted: "bg-blue-500/10 text-blue-600",
-};
 
 const PORTAL_STYLES: Record<string, string> = {
   caltrans: "bg-blue-500/10 text-blue-700",
@@ -95,6 +88,22 @@ const ANALYSIS_LABELS: Record<AnalysisStatus, string> = {
   analyzing: "Analysis queued",
   ready: "Ready for document processing",
   failed: "Analysis failed",
+};
+
+const DOCUMENT_ACQUISITION_STYLES: Record<DocumentAcquisitionStatus, string> = {
+  not_requested: "bg-gray-500/10 text-gray-600",
+  queued: "bg-blue-500/10 text-blue-700",
+  acquiring: "bg-indigo-500/10 text-indigo-700",
+  acquired: "bg-green-500/10 text-green-700",
+  failed: "bg-red-500/10 text-red-700",
+};
+
+const DOCUMENT_ACQUISITION_LABELS: Record<DocumentAcquisitionStatus, string> = {
+  not_requested: "Documents not requested",
+  queued: "Document acquisition queued",
+  acquiring: "Acquiring documents",
+  acquired: "Documents acquired",
+  failed: "Document acquisition failed",
 };
 
 const AUTO_RANK: Record<string, number> = {
@@ -162,7 +171,6 @@ const Opportunities = () => {
     scope_text: row.scope_text,
     status: row.status as CandidateStatus,
     review_notes: row.review_notes,
-    reviewed_at: row.reviewed_at,
     converted_project_id: row.converted_project_id,
     created_at: row.created_at,
     source_name: row.opportunity_sources?.name ?? null,
@@ -177,6 +185,10 @@ const Opportunities = () => {
     analysis_started_at: row.analysis_started_at ?? null,
     analysis_completed_at: row.analysis_completed_at ?? null,
     analysis_error: row.analysis_error ?? null,
+    document_acquisition_status: (row.document_acquisition_status ?? "not_requested") as DocumentAcquisitionStatus,
+    document_acquisition_started_at: row.document_acquisition_started_at ?? null,
+    document_acquisition_completed_at: row.document_acquisition_completed_at ?? null,
+    document_acquisition_error: row.document_acquisition_error ?? null,
   }), []);
 
   const loadCandidates = useCallback(async () => {
@@ -335,31 +347,6 @@ const Opportunities = () => {
       setScanLoading(false);
     }
   };
-
-
-
-
-
-  const handleStatusChange = async (id: string, newStatus: CandidateStatus) => {
-    const { data: { session } } = await supabase.auth.getSession();
-    const { error } = await supabase
-      .from("opportunity_candidates")
-      .update({
-        status: newStatus,
-        reviewed_by: session?.user.id ?? null,
-        reviewed_at: new Date().toISOString(),
-      })
-      .eq("id", id);
-
-    if (error) {
-      toast({ title: "Error", description: "Failed to update status", variant: "destructive" });
-      return;
-    }
-    setCandidates((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, status: newStatus } : c))
-    );
-  };
-
   const handleNotesSave = async (id: string) => {
     const note = notes[id] ?? "";
     const { error } = await supabase
@@ -393,14 +380,22 @@ const Opportunities = () => {
                 analysis_task_id: data?.task_id ?? c.analysis_task_id,
                 analysis_error: null,
                 analysis_requested_at: new Date().toISOString(),
+                document_acquisition_status: (data?.document_acquisition_status ?? "queued") as DocumentAcquisitionStatus,
+                document_acquisition_error: null,
               }
             : c,
         ),
       );
 
       toast({
-        title: data?.duplicate ? "Analysis already queued" : "Analysis queued",
-        description: "Ready for document processing. Project Intelligence has not been generated yet.",
+        title: data?.duplicate
+          ? data?.document_acquisition_status === "acquired"
+            ? "Documents already acquired"
+            : "Analysis already queued"
+          : "Analysis queued",
+        description: data?.document_acquisition_status === "acquired"
+          ? "Documents are ready for processing. Project Intelligence has not been generated yet."
+          : "Document acquisition queued. Project Intelligence has not been generated yet.",
       });
     } catch (e: any) {
       toast({ title: "Analysis request failed", description: e?.message ?? "Unknown error", variant: "destructive" });
@@ -434,17 +429,18 @@ const Opportunities = () => {
   }, [filtered, activeFilter]);
 
   const renderCard = (candidate: Candidate) => {
-    const analysisActive = candidate.analysis_status === "queued" || candidate.analysis_status === "analyzing";
+    const acquisitionActive = candidate.document_acquisition_status === "queued" || candidate.document_acquisition_status === "acquiring";
+    const acquisitionComplete = candidate.document_acquisition_status === "acquired";
     const bidClosed = isBidClosed(candidate.bid_due_at);
-    const analyzeDisabled = analyzingId === candidate.id || analysisActive || bidClosed;
+    const analyzeDisabled = analyzingId === candidate.id || acquisitionActive || acquisitionComplete || bidClosed;
     const analyzeLabel = analyzingId === candidate.id
       ? "Queueing..."
-      : candidate.analysis_status === "failed"
+      : candidate.document_acquisition_status === "failed"
       ? "Retry Analysis"
-      : analysisActive
-      ? "Analysis Queued"
-      : candidate.analysis_status === "ready"
-      ? "Ready for Document Processing"
+      : candidate.document_acquisition_status === "acquired"
+      ? "Documents Acquired"
+      : acquisitionActive
+      ? candidate.document_acquisition_status === "acquiring" ? "Acquiring Documents" : "Document Acquisition Queued"
       : "Analyze Project";
 
     return (
@@ -480,11 +476,11 @@ const Opportunities = () => {
             {candidate.portal_type}
           </span>
         )}
-        <span
-          className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${STATUS_STYLES[candidate.status]}`}
-        >
-          {candidate.status}
-        </span>
+        {candidate.status === "converted" && (
+          <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600">
+            Converted
+          </span>
+        )}
         {candidate.auto_status && (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -528,6 +524,31 @@ const Opportunities = () => {
             </TooltipContent>
           </Tooltip>
         )}
+        {candidate.document_acquisition_status !== "not_requested" && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className={`inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded cursor-help ${DOCUMENT_ACQUISITION_STYLES[candidate.document_acquisition_status]}`}>
+                {candidate.document_acquisition_status === "failed" ? (
+                  <RotateCcw className="h-3 w-3" />
+                ) : candidate.document_acquisition_status === "acquiring" ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Clock className="h-3 w-3" />
+                )}
+                {DOCUMENT_ACQUISITION_LABELS[candidate.document_acquisition_status]}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs">
+              <p className="text-xs">
+                {candidate.document_acquisition_status === "failed"
+                  ? candidate.document_acquisition_error ?? "Document acquisition failed. Retry when ready."
+                  : candidate.document_acquisition_status === "acquired"
+                  ? "Source documents are stored. Project Intelligence has not been generated yet."
+                  : "The worker is preparing source documents. Project Intelligence has not been generated yet."}
+              </p>
+            </TooltipContent>
+          </Tooltip>
+        )}
       </div>
 
       {/* Meta */}
@@ -542,33 +563,6 @@ const Opportunities = () => {
           <p className="text-xs">Source: {candidate.source_name}</p>
         )}
       </div>
-
-      {/* Status selector */}
-      {candidate.status !== "converted" && (
-        <div className="flex gap-1">
-          {(["red", "yellow", "green"] as CandidateStatus[]).map((s) => {
-            const label = s === "red" ? "No" : s === "yellow" ? "Maybe" : "Yes";
-            return (
-            <button
-              key={s}
-              onClick={() => handleStatusChange(candidate.id, s)}
-              className={`flex-1 py-1 rounded text-xs font-semibold transition-colors border ${
-                candidate.status === s
-                  ? s === "red"
-                    ? "bg-red-500 text-white border-red-500"
-                    : s === "yellow"
-                    ? "bg-yellow-400 text-yellow-900 border-yellow-400"
-                    : "bg-green-500 text-white border-green-500"
-                  : "bg-transparent text-muted-foreground border-border hover:bg-accent"
-              }`}
-            >
-              {label}
-            </button>
-            );
-          })}
-
-        </div>
-      )}
 
       {/* Notes */}
       {candidate.status !== "converted" && (
@@ -603,7 +597,7 @@ const Opportunities = () => {
           >
             {analyzingId === candidate.id ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : candidate.analysis_status === "failed" ? (
+            ) : candidate.document_acquisition_status === "failed" ? (
               <RotateCcw className="h-4 w-4 mr-2" />
             ) : (
               <Sparkles className="h-4 w-4 mr-2" />
@@ -612,9 +606,11 @@ const Opportunities = () => {
           </Button>
           {candidate.analysis_status !== "not_requested" && (
             <p className="text-xs text-muted-foreground">
-              {candidate.analysis_status === "failed"
-                ? "Project Intelligence was not generated. You can retry analysis."
-                : "Ready for document processing. Project Intelligence not generated yet."}
+              {candidate.document_acquisition_status === "failed"
+                ? "Documents were not acquired. You can retry analysis."
+                : candidate.document_acquisition_status === "acquired"
+                ? "Documents acquired. Ready for document processing. Project Intelligence not generated yet."
+                : "Document acquisition queued. Project Intelligence not generated yet."}
             </p>
           )}
         </div>
@@ -695,7 +691,7 @@ const Opportunities = () => {
                 <p className="text-sm text-muted-foreground mb-6">
                   {activeFilter === "all"
                     ? "Click Scan Now to discover new bids from Caltrans and PlanetBids."
-                    : `No candidates with status "${activeFilter}".`}
+                    : "No opportunities in this view."}
                 </p>
                 {activeFilter === "all" && (
                   <Button

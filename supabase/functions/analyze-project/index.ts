@@ -65,6 +65,7 @@ serve(async (req) => {
         bid_due_at,
         analysis_status,
         analysis_task_id,
+        document_acquisition_status,
         opportunity_sources(name)
       `)
       .eq("id", candidateId)
@@ -103,11 +104,13 @@ serve(async (req) => {
 
     const existingTask = activeTasks?.[0] ?? null;
     if (existingTask) {
+      const documentStatus = existingTask.status === "running" ? "acquiring" : "queued";
       await adminClient
         .from("opportunity_candidates")
         .update({
-          analysis_status: existingTask.status === "running" ? "analyzing" : "queued",
+          analysis_status: "queued",
           analysis_task_id: existingTask.id,
+          document_acquisition_status: documentStatus,
           analysis_error: null,
         })
         .eq("id", candidateId);
@@ -118,9 +121,26 @@ serve(async (req) => {
         duplicate: true,
         task_id: existingTask.id,
         task_status: existingTask.status,
-        analysis_status: existingTask.status === "running" ? "analyzing" : "queued",
+        analysis_status: "queued",
+        document_acquisition_status: documentStatus,
         intelligence_status: "not_generated",
         message: "Analysis is already queued for this opportunity.",
+      });
+    }
+
+    if (["queued", "acquiring", "acquired"].includes(candidate.document_acquisition_status ?? "")) {
+      return jsonResponse({
+        success: true,
+        queued: false,
+        duplicate: true,
+        task_id: candidate.analysis_task_id,
+        task_status: null,
+        analysis_status: candidate.analysis_status,
+        document_acquisition_status: candidate.document_acquisition_status,
+        intelligence_status: "not_generated",
+        message: candidate.document_acquisition_status === "acquired"
+          ? "Documents are already acquired and ready for processing."
+          : "Document acquisition is already queued for this opportunity.",
       });
     }
 
@@ -146,9 +166,10 @@ serve(async (req) => {
           bid_due_at: candidate.bid_due_at,
           requested_by: user.id,
           requested_at: requestedAt,
-          phase: "f1_analyze_project",
-          intelligence_status: "not_generated",
-        },
+        phase: "f1_analyze_project",
+        next_phase: "f2_document_acquisition",
+        intelligence_status: "not_generated",
+      },
       })
       .select("id, status, created_at")
       .single();
@@ -168,6 +189,10 @@ serve(async (req) => {
         analysis_completed_at: null,
         analysis_error: null,
         analysis_requested_by: user.id,
+        document_acquisition_status: "queued",
+        document_acquisition_started_at: null,
+        document_acquisition_completed_at: null,
+        document_acquisition_error: null,
       })
       .eq("id", candidateId);
 
@@ -183,6 +208,7 @@ serve(async (req) => {
       task_id: task.id,
       task_status: task.status,
       analysis_status: "queued",
+      document_acquisition_status: "queued",
       intelligence_status: "not_generated",
       message: "Analysis queued. Project Intelligence has not been generated yet.",
     });

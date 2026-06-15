@@ -304,7 +304,7 @@ MVP boundary:
 - It does not download documents, parse documents, generate an AI report, run post-analysis qualification, add to calendar, or create a project.
 - `project_analysis` tasks are queued for the future Project Intelligence worker path; F1 does not mark analysis complete.
 
-### 7.2. F2 — Document Acquisition ❌ NOT STARTED
+### 7.2. F2 — Document Acquisition 🔄 IMPLEMENTED, PENDING LIVE VALIDATION
 
 Purpose: retrieve source bid package documents for analyzed opportunities.
 
@@ -314,17 +314,23 @@ Current repo support:
 - PlanetBids driver can capture document manifest metadata in `crawl_data.documents` when available.
 - Supabase Storage exists for manually uploaded project files.
 
-Needed:
-- Add authenticated PlanetBids document access when required.
-- Use available file manifest APIs where possible.
-- Download source documents through the worker, not Supabase Edge Functions.
-- Store source files in a durable storage path.
-- Add an `opportunity_documents` table or equivalent document-ingestion table.
-- Track acquisition status, source URL, file name, file type, storage path, size, and errors.
+Implemented:
+- [x] Added explicit PlanetBids login support in the Railway worker using `PLANETBIDS_EMAIL` and `PLANETBIDS_PASSWORD`.
+- [x] Reused the C1-proven bearer token and `papi/bid-downloadable-files` manifest approach.
+- [x] Added worker handling for `project_analysis` tasks.
+- [x] Downloads source documents through the worker, not the frontend or Edge Functions.
+- [x] Added private Supabase Storage bucket `opportunity-documents`.
+- [x] Added `opportunity_documents` for file-level acquisition metadata.
+- [x] Added separate `document_acquisition_status` fields on `opportunity_candidates`.
+- [x] Kept `analysis_status` reserved for the broader Project Intelligence pipeline; F2 does not mark Project Intelligence ready.
+- [x] Updated `/opportunities` to show document acquisition progress separately from analysis status.
+- [ ] Prove at least one live PlanetBids source document travels through the full path:
+  `PlanetBids -> worker download -> Supabase Storage -> opportunity_documents`.
 
 MVP boundary:
 - Start with PlanetBids documents where access is technically proven.
 - Do not build every portal's document acquisition flow before validating with beta contractors.
+- This phase does not parse documents, generate AI reports, run post-analysis qualification, create projects, or add opportunities to the calendar.
 
 ### 7.3. F3 — Document Processing ❌ NOT STARTED
 
