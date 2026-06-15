@@ -274,6 +274,7 @@ const Opportunities = () => {
         { event: "INSERT", schema: "public", table: "opportunity_candidates" },
         async (payload) => {
           const newRow: any = payload.new;
+          console.info("[opps] realtime INSERT", { id: newRow?.id });
           // Fetch joined source name
           const { data: src } = await supabase
             .from("opportunity_sources")
@@ -292,6 +293,11 @@ const Opportunities = () => {
         { event: "UPDATE", schema: "public", table: "opportunity_candidates" },
         (payload) => {
           const updated: any = payload.new;
+          console.info("[opps] realtime UPDATE", {
+            id: updated?.id,
+            doc_status: updated?.document_acquisition_status,
+            analysis_status: updated?.analysis_status,
+          });
           setCandidates((prev) =>
             prev.map((c) =>
               c.id === updated.id
@@ -306,6 +312,40 @@ const Opportunities = () => {
       supabase.removeChannel(channel);
     };
   }, [mapRow]);
+
+  // Realtime safety-net: poll when at least one candidate is in an active
+  // (non-terminal) workflow state. Stops automatically when everything is
+  // terminal. Keeps Realtime as the primary update mechanism.
+  const { hasActiveCandidates, activeCount } = useMemo(() => {
+    let count = 0;
+    for (const c of candidates) {
+      const docActive = ACTIVE_DOCUMENT_STATUSES.includes(c.document_acquisition_status);
+      const analysisActive = ACTIVE_ANALYSIS_STATUSES.includes(c.analysis_status);
+      if (docActive || analysisActive) count += 1;
+    }
+    return { hasActiveCandidates: count > 0, activeCount: count };
+  }, [candidates]);
+
+  const pollInFlightRef = useRef(false);
+
+  useEffect(() => {
+    if (!hasActiveCandidates) return;
+    const tick = async () => {
+      if (document.hidden) return;
+      if (pollInFlightRef.current) return;
+      pollInFlightRef.current = true;
+      console.info("[opps] polling refresh", { activeCount });
+      try {
+        await loadCandidates({ silent: true });
+      } finally {
+        pollInFlightRef.current = false;
+      }
+    };
+    const intervalId = window.setInterval(tick, POLLING_INTERVAL_MS);
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [hasActiveCandidates, activeCount, loadCandidates]);
 
   // Realtime: stream agent_tasks INSERTs into the panel as soon as scan-opportunities queues them
   useEffect(() => {
