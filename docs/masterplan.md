@@ -560,6 +560,97 @@ See `docs/agent-architecture-task-list.md` for implementation tasks.
 
 ---
 
+### 🔐 Contractor Portal Integrations — Phase 2+ Architecture
+
+> **Future Architecture Note — Contractor-Owned Portal Credentials**
+>
+> **Status**: Future consideration, out of scope for Phase 1
+
+#### Context
+
+Current Phase 1 document acquisition uses a shared BidBox PlanetBids account.
+
+This account exists solely to validate opportunity discovery, document acquisition, and intelligence workflows.
+
+Because BidBox is not an actual bidder, the preferred registration behavior for the shared automation account is:
+
+- Classification = Other
+- Status = Non-Bidder, receive communications
+
+This minimizes visibility while preserving access to documents and agency communications.
+
+#### Future State
+
+In production, document acquisition should not operate through a shared BidBox account.
+
+Instead, each contractor should be able to connect and manage their own procurement portal credentials.
+
+Examples:
+
+- PlanetBids
+- Cal eProcure
+- Periscope
+- Bonfire
+- Vendor Registry
+- Other agency/vendor portals
+
+Proposed model:
+
+```text
+Contractor
+→ Portal Credentials
+→ Opportunity Analysis
+→ Document Acquisition
+→ Bid Intelligence
+```
+
+Document acquisition workers should authenticate using the contractor's stored portal credentials rather than a shared BidBox account.
+
+#### Strategic Benefit
+
+When operating under contractor-owned credentials, BidBox can automatically register the contractor as a plan holder or prospective bidder where appropriate.
+
+Benefits may include:
+
+- Appearing on prospective bidder lists
+- Receiving addenda notifications
+- Receiving agency communications
+- Receiving subcontractor outreach
+- Improving bid coverage and visibility
+
+For many public works GCs, appearing on the bidder list is desirable because subcontractors frequently scrape prospective bidder and plan holder lists to identify bidding contractors.
+
+#### Product Requirement (Future)
+
+Portal credential records should support configurable registration behavior.
+
+Examples:
+
+- Register as Bidder
+- Register as Non-Bidder
+- Receive Communications
+- Do Not Receive Communications
+- Prime Contractor
+- Subcontractor
+- Supplier
+- Other
+
+Settings should be contractor-specific rather than globally defined by BidBox.
+
+#### Security Considerations
+
+Because BidBox may ultimately store contractor portal credentials:
+
+- Credentials must be encrypted at rest.
+- Access should be restricted to acquisition workers.
+- Credentials must never be exposed to the frontend.
+- Credential usage should be audited and logged.
+- Future evaluation should determine whether OAuth, delegated access, vault storage, or other credential-management approaches are available per portal.
+
+This architecture is explicitly out of scope for Phase 1 but should be considered during Phase 2+ contractor onboarding and portal integration design.
+
+---
+
 ### 🗺️ Regional Filtering for California Projects
 
 BidBox uses county-based regional filtering to provide GCs with geographically relevant Network Subs:
