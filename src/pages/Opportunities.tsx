@@ -198,21 +198,48 @@ const Opportunities = () => {
     document_acquisition_error: row.document_acquisition_error ?? null,
   }), []);
 
-  const loadCandidates = useCallback(async () => {
+  const loadCandidates = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent === true;
     const { data, error } = await supabase
       .from("opportunity_candidates")
       .select("*, opportunity_sources(name, last_scanned_at)")
       .order("created_at", { ascending: false });
 
     if (error) {
-      toast({ title: "Error", description: "Failed to load opportunities", variant: "destructive" });
-      setLoading(false);
+      if (!silent) {
+        toast({ title: "Error", description: "Failed to load opportunities", variant: "destructive" });
+        setLoading(false);
+      }
       return;
     }
 
     const rows: Candidate[] = (data || []).map(mapRow);
 
-    setCandidates(rows);
+    if (silent) {
+      // Diff against previous state for instrumentation; only log when polling
+      // actually fixed something Realtime would normally have handled.
+      setCandidates((prev) => {
+        const prevById = new Map(prev.map((c) => [c.id, c]));
+        const changedIds: string[] = [];
+        for (const r of rows) {
+          const p = prevById.get(r.id);
+          if (
+            !p ||
+            p.document_acquisition_status !== r.document_acquisition_status ||
+            p.analysis_status !== r.analysis_status ||
+            p.status !== r.status
+          ) {
+            changedIds.push(r.id);
+          }
+        }
+        if (changedIds.length > 0) {
+          console.info("[opps] polling applied diff", { changedIds });
+        }
+        return rows;
+      });
+    } else {
+      setCandidates(rows);
+    }
 
     const scannedDates: string[] = (data || [])
       .map((r: any) => r.opportunity_sources?.last_scanned_at)
@@ -221,10 +248,12 @@ const Opportunities = () => {
       setLastScannedAt(scannedDates.sort().reverse()[0]);
     }
 
-    const initialNotes: Record<string, string> = {};
-    rows.forEach((r) => { initialNotes[r.id] = r.review_notes ?? ""; });
-    setNotes(initialNotes);
-    setLoading(false);
+    if (!silent) {
+      const initialNotes: Record<string, string> = {};
+      rows.forEach((r) => { initialNotes[r.id] = r.review_notes ?? ""; });
+      setNotes(initialNotes);
+      setLoading(false);
+    }
   }, [toast, mapRow]);
 
   useEffect(() => {
