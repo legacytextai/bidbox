@@ -2,6 +2,8 @@ const { chromium } = require('playwright');
 
 const DOCUMENT_BUCKET = 'opportunity-documents';
 const API_HOST = 'api-external.prod.planetbids.com';
+const PLANETBIDS_ORIGIN = 'https://vendors.planetbids.com';
+const BROWSER_USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
 class ManifestHttpError extends Error {
   constructor(status, body) {
@@ -65,6 +67,24 @@ function normalizeManifestItem(item) {
   };
 }
 
+function normalizeManifestJson(json, bearerToken, log) {
+  const docs = (json?.data ?? [])
+    .map(normalizeManifestItem)
+    .filter((doc) => doc.source_url)
+    .map((doc) => ({ ...doc, bearer_token: bearerToken }));
+  log(`Manifest returned ${docs.length} downloadable document(s)`);
+  return docs;
+}
+
+function planetBidsAuthHeaders(bearerToken) {
+  return {
+    Authorization: `Bearer ${bearerToken}`,
+    'User-Agent': BROWSER_USER_AGENT,
+    Referer: `${PLANETBIDS_ORIGIN}/`,
+    Origin: PLANETBIDS_ORIGIN,
+  };
+}
+
 function sanitizedApiPath(rawUrl) {
   try {
     const url = new URL(rawUrl);
@@ -103,7 +123,7 @@ async function createBrowserbasePage(log) {
   const context = browser.contexts()[0] ?? (await browser.newContext());
   const page = await context.newPage();
   await page.setExtraHTTPHeaders({
-    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    'User-Agent': BROWSER_USER_AGENT,
   });
 
   return { browser, page };
@@ -140,11 +160,7 @@ async function fetchManifest(bidId, bearerToken, log) {
   const manifestRes = await fetch(
     `https://${API_HOST}/papi/bid-downloadable-files?bid_id=${bidId}`,
     {
-      headers: {
-        Authorization: `Bearer ${bearerToken}`,
-        Referer: 'https://vendors.planetbids.com/',
-        Origin: 'https://vendors.planetbids.com',
-      },
+      headers: planetBidsAuthHeaders(bearerToken),
     }
   );
 
@@ -153,13 +169,7 @@ async function fetchManifest(bidId, bearerToken, log) {
     throw new ManifestHttpError(manifestRes.status, body);
   }
 
-  const json = await manifestRes.json();
-  const docs = (json.data ?? [])
-    .map(normalizeManifestItem)
-    .filter((doc) => doc.source_url)
-    .map((doc) => ({ ...doc, bearer_token: bearerToken }));
-  log(`Manifest returned ${docs.length} downloadable document(s)`);
-  return docs;
+  return normalizeManifestJson(await manifestRes.json(), bearerToken, log);
 }
 
 async function pageShowsProspectiveBidderRequirement(page) {
@@ -532,14 +542,28 @@ async function openDocumentsTab(page, log) {
   const docsTab = page.locator('text=Documents').first();
   if (await docsTab.isVisible({ timeout: 8000 }).catch(() => false)) {
     log('Opening PlanetBids Documents tab');
+    const manifestResponse = page
+      .waitForResponse((res) => res.url().includes('bid-downloadable-files'), { timeout: 20000 })
+      .catch(() => null);
     await docsTab.click();
-    await page.waitForResponse((res) => res.url().includes('bid-downloadable-files'), { timeout: 20000 }).catch(() => null);
+    const res = await manifestResponse;
     await page.waitForTimeout(1500);
-    return true;
+    if (!res) return null;
+    if (!res.ok()) {
+      log(`Documents tab manifest response: HTTP ${res.status()}`);
+      return null;
+    }
+    try {
+      log('Documents tab manifest response captured');
+      return await res.json();
+    } catch (e) {
+      log(`Documents tab manifest JSON parse failed: ${e.message}`);
+      return null;
+    }
   }
 
   log('Documents tab not visible; attempting manifest with captured token');
-  return false;
+  return null;
 }
 
 async function getAuthenticatedManifest(candidate, log) {
@@ -573,10 +597,14 @@ async function getAuthenticatedManifest(candidate, log) {
     await page.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => {});
     await page.waitForTimeout(2500);
 
-    await openDocumentsTab(page, log);
+    const capturedManifestJson = await openDocumentsTab(page, log);
 
     if (!bearerToken) {
       throw new Error('No PlanetBids bearer token captured after login');
+    }
+
+    if (capturedManifestJson) {
+      return normalizeManifestJson(capturedManifestJson, bearerToken, log);
     }
 
     try {
@@ -594,10 +622,15 @@ async function getAuthenticatedManifest(candidate, log) {
       await page.goto(candidate.source_url, { waitUntil: 'domcontentloaded', timeout: 60000 });
       await page.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => {});
       await page.waitForTimeout(2000);
-      await openDocumentsTab(page, log);
+      const retryCapturedManifestJson = await openDocumentsTab(page, log);
 
       if (!bearerToken) {
         throw new Error('No PlanetBids bearer token captured after prospective bidder registration');
+      }
+
+      if (retryCapturedManifestJson) {
+        log('Manifest retry succeeded from Documents tab response');
+        return normalizeManifestJson(retryCapturedManifestJson, bearerToken, log);
       }
 
       log('Retrying manifest after prospective bidder registration');
@@ -676,11 +709,7 @@ async function downloadAndStoreDocument(supabase, taskId, candidateId, doc, log)
   try {
     log(`Downloading document: ${doc.file_name}`);
     const res = await fetch(doc.source_url, {
-      headers: {
-        Authorization: `Bearer ${doc.bearer_token}`,
-        Referer: 'https://vendors.planetbids.com/',
-        Origin: 'https://vendors.planetbids.com',
-      },
+      headers: planetBidsAuthHeaders(doc.bearer_token),
     });
 
     if (!res.ok) {
@@ -689,6 +718,10 @@ async function downloadAndStoreDocument(supabase, taskId, candidateId, doc, log)
     }
 
     const bytes = Buffer.from(await res.arrayBuffer());
+    if (bytes.byteLength === 0) {
+      throw new Error('Download returned an empty file');
+    }
+
     const { error: uploadError } = await supabase.storage
       .from(DOCUMENT_BUCKET)
       .upload(storagePath, bytes, {
