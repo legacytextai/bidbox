@@ -213,6 +213,175 @@ async function inspectRequiredProspectiveBidderFields(page) {
   }));
 }
 
+async function collectProspectiveBidderFormDiagnostics(page) {
+  return page.evaluate(() => {
+    const clean = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
+    const visible = (el) => {
+      const style = window.getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0 && rect.height > 0;
+    };
+
+    const describeControl = (el) => {
+      const tag = el.tagName.toLowerCase();
+      const container = el.closest('mat-form-field, .mat-form-field, pb-dropdown, [role="combobox"], div');
+      const label = clean(
+        container?.querySelector('label, mat-label, .mat-form-field-label')?.textContent ??
+        el.getAttribute('aria-label') ??
+        el.getAttribute('placeholder') ??
+        container?.textContent ??
+        ''
+      );
+      const selected = tag === 'select'
+        ? clean(el.options?.[el.selectedIndex]?.textContent ?? el.value)
+        : clean(el.value ?? el.getAttribute('aria-valuetext') ?? el.textContent ?? '');
+      const classes = clean(el.className);
+      return {
+        label: label.substring(0, 120),
+        selected: selected.substring(0, 120),
+        angular_invalid: /\bng-invalid\b/.test(classes) || el.getAttribute('aria-invalid') === 'true',
+        disabled: Boolean(el.disabled || el.getAttribute('aria-disabled') === 'true'),
+      };
+    };
+
+    const controls = [...document.querySelectorAll('input, textarea, select, [role="combobox"], mat-select, button')]
+      .filter(visible)
+      .map(describeControl);
+    const labels = [...document.querySelectorAll('label, mat-label, .mat-form-field-label')]
+      .filter(visible)
+      .map((el) => clean(el.textContent))
+      .filter(Boolean)
+      .slice(0, 50);
+    const invalid_controls = controls.filter((control) => control.angular_invalid);
+    const disabled_controls = controls.filter((control) => control.disabled);
+
+    return {
+      labels,
+      controls,
+      invalid_controls,
+      disabled_controls,
+    };
+  }).catch((e) => ({
+    error: e.message,
+    labels: [],
+    controls: [],
+    invalid_controls: [],
+    disabled_controls: [],
+  }));
+}
+
+function summarizeFormDiagnostics(diagnostics) {
+  return JSON.stringify({
+    labels: diagnostics.labels?.slice(0, 20) ?? [],
+    invalid_controls: diagnostics.invalid_controls?.slice(0, 10) ?? [],
+    disabled_controls: diagnostics.disabled_controls?.slice(0, 10) ?? [],
+  }).substring(0, 2000);
+}
+
+async function getClassificationValue(page) {
+  return page.evaluate(() => {
+    const clean = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
+    const visible = (el) => {
+      const style = window.getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0 && rect.height > 0;
+    };
+    const fields = [...document.querySelectorAll('mat-form-field, .mat-form-field, pb-dropdown, div')]
+      .filter((el) => {
+        const text = clean(el.textContent);
+        return visible(el) && /Classification\s*\*/i.test(text) && text.length < 300;
+      })
+      .sort((a, b) => clean(a.textContent).length - clean(b.textContent).length);
+
+    for (const field of fields) {
+      const select = field.querySelector('select');
+      if (select) {
+        return clean(select.options?.[select.selectedIndex]?.textContent ?? select.value);
+      }
+
+      const combobox = field.querySelector('[role="combobox"], mat-select');
+      if (combobox) {
+        const aria = clean(combobox.getAttribute('aria-valuetext') ?? combobox.getAttribute('aria-label') ?? '');
+        const valueText = clean(
+          combobox.querySelector('.mat-select-value-text, .mat-mdc-select-value-text, .mat-select-min-line')?.textContent ??
+          combobox.textContent
+        );
+        const fieldText = clean(field.textContent).replace(/Classification\s*\*/i, '').trim();
+        return valueText || aria || fieldText;
+      }
+
+      const fieldText = clean(field.textContent).replace(/Classification\s*\*/i, '').trim();
+      if (fieldText) return fieldText;
+    }
+
+    return '';
+  }).catch(() => '');
+}
+
+async function clickClassificationControl(page) {
+  const clicked = await page.evaluate(() => {
+    const clean = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
+    const visible = (el) => {
+      const style = window.getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0 && rect.height > 0;
+    };
+    const fields = [...document.querySelectorAll('mat-form-field, .mat-form-field, pb-dropdown, div')]
+      .filter((el) => {
+        const text = clean(el.textContent);
+        return visible(el) && /Classification\s*\*/i.test(text) && text.length < 300;
+      })
+      .sort((a, b) => clean(a.textContent).length - clean(b.textContent).length);
+
+    for (const field of fields) {
+      const control = field.querySelector('select, [role="combobox"], mat-select, input') ?? field;
+      control.scrollIntoView({ block: 'center', inline: 'nearest' });
+      control.click();
+      return true;
+    }
+
+    return false;
+  }).catch(() => false);
+
+  if (!clicked) throw new Error('Classification dropdown was not found');
+}
+
+async function ensureClassificationSelected(page, log) {
+  const current = await getClassificationValue(page);
+  if (current && !/^Classification\s*\*?$/i.test(current)) {
+    log(`Classification already selected: ${current}`);
+    return;
+  }
+
+  log('Classification is empty; selecting Other');
+  await clickClassificationControl(page);
+  const otherOption = page.getByRole('option', { name: /^Other$/i }).first();
+  if (await otherOption.isVisible({ timeout: 5000 }).catch(() => false)) {
+    await otherOption.click();
+  } else {
+    await page.getByText(/^Other$/).last().click({ timeout: 5000 });
+  }
+  await page.waitForTimeout(500);
+
+  const selected = await getClassificationValue(page);
+  if (!/^Other$/i.test(selected)) {
+    const diagnostics = await collectProspectiveBidderFormDiagnostics(page);
+    throw new Error(
+      `Classification selection did not persist; selected="${selected || '(empty)'}"; ` +
+      `diagnostics=${summarizeFormDiagnostics(diagnostics)}`
+    );
+  }
+
+  log('Classification selected: Other');
+}
+
+async function ensureDoneEnabled(page, doneButton) {
+  if (await doneButton.isEnabled({ timeout: 3000 }).catch(() => false)) return;
+
+  const diagnostics = await collectProspectiveBidderFormDiagnostics(page);
+  throw new Error(`Prospective bidder Done button is disabled; diagnostics=${summarizeFormDiagnostics(diagnostics)}`);
+}
+
 async function ensureProspectiveBidder(page, log) {
   log('Prospective bidder registration required');
 
@@ -258,9 +427,17 @@ async function ensureProspectiveBidder(page, log) {
       `Required fields validated: required=${requiredSummary.required_count ?? 'unknown'} ` +
       `empty_required=${requiredSummary.empty_required_count ?? 'unknown'}`
     );
-    if (requiredSummary.empty_required_count && requiredSummary.empty_required_count > 0) {
+
+    await ensureClassificationSelected(page, log);
+
+    const refreshedRequiredSummary = await inspectRequiredProspectiveBidderFields(page);
+    log(
+      `Required fields revalidated: required=${refreshedRequiredSummary.required_count ?? 'unknown'} ` +
+      `empty_required=${refreshedRequiredSummary.empty_required_count ?? 'unknown'}`
+    );
+    if (refreshedRequiredSummary.empty_required_count && refreshedRequiredSummary.empty_required_count > 0) {
       throw new Error(
-        `Prospective bidder form has ${requiredSummary.empty_required_count} empty required field(s); ` +
+        `Prospective bidder form has ${refreshedRequiredSummary.empty_required_count} empty required field(s); ` +
         'driver will not hardcode vendor profile values'
       );
     }
@@ -269,23 +446,34 @@ async function ensureProspectiveBidder(page, log) {
     if (!(await doneButton.isVisible({ timeout: 10000 }).catch(() => false))) {
       throw new Error('Prospective bidder Done button was not visible');
     }
+    await ensureDoneEnabled(page, doneButton);
 
     log('Prospective bidder registration submitted');
-    const completion = page.waitForFunction(() => {
-      const text = document.body?.innerText ?? '';
-      return !/Prospective Bidder Detail/i.test(text);
-    }, { timeout: 30000 }).catch(() => null);
+    const registrationPost = page.waitForResponse((res) => {
+      const req = res.request();
+      return res.url().includes(API_HOST) && req.method() === 'POST';
+    }, { timeout: 30000 });
     await doneButton.click();
-    await page.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => {});
-    await completion;
-    await page.waitForTimeout(2500);
 
-    const stillOnForm = await page.locator('text=/Prospective Bidder Detail/i').isVisible({ timeout: 2000 }).catch(() => false);
-    if (stillOnForm) {
-      throw new Error('Prospective bidder registration did not complete; form is still visible');
+    const registrationRes = await registrationPost.catch(() => null);
+    if (!registrationRes) {
+      throw new Error('Prospective bidder registration did not issue a POST request');
     }
 
+    const registrationPath = sanitizedApiPath(registrationRes.url());
+    log(`Prospective bidder registration response: POST ${registrationPath} ${registrationRes.status()}`);
+    if (!registrationRes.ok()) {
+      throw new Error(`Prospective bidder registration POST failed: ${registrationRes.status()}`);
+    }
+
+    await page.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => {});
+    await page.waitForTimeout(2500);
     log('Prospective bidder registration succeeded');
+  } catch (e) {
+    if (typeof log.screenshot === 'function') {
+      await log.screenshot('planetbids-prospective-bidder-failure', page);
+    }
+    throw e;
   } finally {
     page.off('response', onResponse);
     if (diagnostics.length > 0) {

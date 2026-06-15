@@ -150,10 +150,25 @@ async function runPlanetBidsScan(task, supabase) {
 async function runProjectAnalysisAcquisition(task, supabase) {
   const { candidate_id } = task.payload;
   const logs = [];
+  const screenshots = [];
   const log = (msg) => {
     const line = `[${ts()}] ${msg}`;
     logs.push(line);
     console.log(line);
+  };
+  log.screenshot = async (label, page) => {
+    try {
+      const image = await page.screenshot({ type: 'png' });
+      screenshots.push({
+        label,
+        captured_at: new Date().toISOString(),
+        mime_type: 'image/png',
+        data_url: `data:image/png;base64,${image.toString('base64')}`,
+      });
+      log(`Screenshot captured: ${label}`);
+    } catch (e) {
+      log(`Screenshot capture failed: ${e.message}`);
+    }
   };
 
   let runLogId = null;
@@ -164,6 +179,7 @@ async function runProjectAnalysisAcquisition(task, supabase) {
         task_id: task.id,
         status: 'running',
         logs: logs.join('\n'),
+        screenshots,
       })
       .select('id')
       .single();
@@ -227,6 +243,7 @@ async function runProjectAnalysisAcquisition(task, supabase) {
         .update({
           status: 'failed',
           logs: logs.join('\n'),
+          screenshots,
           completed_at: completedAt,
         })
         .eq('id', runLogId);
@@ -261,6 +278,7 @@ async function runProjectAnalysisAcquisition(task, supabase) {
         .update({
           status: errorSummary ? 'complete_with_errors' : 'complete',
           logs: logs.join('\n'),
+          screenshots,
           completed_at: completedAt,
         })
         .eq('id', runLogId);
