@@ -3,6 +3,14 @@ const { chromium } = require('playwright');
 const DOCUMENT_BUCKET = 'opportunity-documents';
 const API_HOST = 'api-external.prod.planetbids.com';
 
+class ManifestHttpError extends Error {
+  constructor(status, body) {
+    super(`Manifest HTTP ${status}: ${String(body ?? '').substring(0, 200)}`);
+    this.name = 'ManifestHttpError';
+    this.status = status;
+  }
+}
+
 function extractBidId(url) {
   const m = String(url ?? '').match(/\/bo-detail\/(\d+)/);
   return m ? m[1] : null;
@@ -55,6 +63,15 @@ function normalizeManifestItem(item) {
     source_url: sourceUrl,
     manifest_data: a,
   };
+}
+
+function sanitizedApiPath(rawUrl) {
+  try {
+    const url = new URL(rawUrl);
+    return url.pathname;
+  } catch {
+    return String(rawUrl ?? '').split('?')[0].substring(0, 200);
+  }
 }
 
 async function createBrowserbasePage(log) {
@@ -133,7 +150,7 @@ async function fetchManifest(bidId, bearerToken, log) {
 
   if (!manifestRes.ok) {
     const body = await manifestRes.text();
-    throw new Error(`Manifest HTTP ${manifestRes.status}: ${body.substring(0, 200)}`);
+    throw new ManifestHttpError(manifestRes.status, body);
   }
 
   const json = await manifestRes.json();
@@ -143,6 +160,154 @@ async function fetchManifest(bidId, bearerToken, log) {
     .map((doc) => ({ ...doc, bearer_token: bearerToken }));
   log(`Manifest returned ${docs.length} downloadable document(s)`);
   return docs;
+}
+
+async function pageShowsProspectiveBidderRequirement(page) {
+  const body = await page.locator('body').innerText({ timeout: 5000 }).catch(() => '');
+  return /must\s+become\s+a\s+Prospective\s+Bidder/i.test(body) ||
+    /Become\s+a\s+Prospective\s+Bidder/i.test(body) ||
+    /Become\s+a\s+PB/i.test(body);
+}
+
+async function inspectRequiredProspectiveBidderFields(page) {
+  return page.evaluate(() => {
+    const visible = (el) => {
+      const style = window.getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0 && rect.height > 0;
+    };
+
+    const clean = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
+    const controls = [...document.querySelectorAll('input, textarea, select')]
+      .filter((el) => !el.disabled && visible(el));
+
+    const details = controls.map((el) => {
+      const id = el.getAttribute('id');
+      const aria = el.getAttribute('aria-label');
+      const placeholder = el.getAttribute('placeholder');
+      const surrounding = clean(el.closest('label, mat-form-field, .mat-form-field, div')?.textContent ?? '');
+      const label = id
+        ? clean(document.querySelector(`label[for="${CSS.escape(id)}"]`)?.textContent ?? surrounding)
+        : surrounding;
+      const text = clean([label, aria, placeholder].filter(Boolean).join(' '));
+      const required = el.required ||
+        el.getAttribute('aria-required') === 'true' ||
+        /\*/.test(text) ||
+        /required/i.test(text);
+      const value = el.tagName.toLowerCase() === 'select'
+        ? clean(el.options?.[el.selectedIndex]?.textContent ?? el.value)
+        : clean(el.value);
+      return {
+        required,
+        empty: !value || /^select\b|^choose\b/i.test(value),
+      };
+    });
+
+    return {
+      required_count: details.filter((d) => d.required).length,
+      empty_required_count: details.filter((d) => d.required && d.empty).length,
+    };
+  }).catch(() => ({
+    required_count: null,
+    empty_required_count: null,
+  }));
+}
+
+async function ensureProspectiveBidder(page, log) {
+  log('Prospective bidder registration required');
+
+  let becomeButton = page
+    .getByRole('button', { name: /Become a PB|Become a Prospective Bidder/i })
+    .first();
+  if (!(await becomeButton.isVisible({ timeout: 3000 }).catch(() => false))) {
+    const downloadButton = page
+      .getByRole('button', { name: /^(Download|Download All)$/i })
+      .first();
+    if (await downloadButton.isVisible({ timeout: 5000 }).catch(() => false)) {
+      await downloadButton.click();
+      await page.waitForTimeout(1000);
+    }
+  }
+
+  becomeButton = page
+    .getByRole('button', { name: /Become a PB|Become a Prospective Bidder/i })
+    .first();
+  if (!(await becomeButton.isVisible({ timeout: 10000 }).catch(() => false))) {
+    throw new Error('Prospective bidder registration required, but Become a PB button was not visible');
+  }
+
+  const diagnostics = [];
+  const onResponse = (res) => {
+    try {
+      const url = res.url();
+      if (!url.includes(API_HOST)) return;
+      const req = res.request();
+      diagnostics.push(`${req.method()} ${sanitizedApiPath(url)} ${res.status()}`);
+    } catch (_) {}
+  };
+
+  page.on('response', onResponse);
+  try {
+    await becomeButton.click();
+    await page.waitForTimeout(1500);
+    await page.waitForSelector('text=/Prospective Bidder Detail/i', { timeout: 20000 });
+    log('Prospective bidder form opened');
+
+    const requiredSummary = await inspectRequiredProspectiveBidderFields(page);
+    log(
+      `Required fields validated: required=${requiredSummary.required_count ?? 'unknown'} ` +
+      `empty_required=${requiredSummary.empty_required_count ?? 'unknown'}`
+    );
+    if (requiredSummary.empty_required_count && requiredSummary.empty_required_count > 0) {
+      throw new Error(
+        `Prospective bidder form has ${requiredSummary.empty_required_count} empty required field(s); ` +
+        'driver will not hardcode vendor profile values'
+      );
+    }
+
+    const doneButton = page.getByRole('button', { name: /^Done$/i }).first();
+    if (!(await doneButton.isVisible({ timeout: 10000 }).catch(() => false))) {
+      throw new Error('Prospective bidder Done button was not visible');
+    }
+
+    log('Prospective bidder registration submitted');
+    const completion = page.waitForFunction(() => {
+      const text = document.body?.innerText ?? '';
+      return !/Prospective Bidder Detail/i.test(text);
+    }, { timeout: 30000 }).catch(() => null);
+    await doneButton.click();
+    await page.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => {});
+    await completion;
+    await page.waitForTimeout(2500);
+
+    const stillOnForm = await page.locator('text=/Prospective Bidder Detail/i').isVisible({ timeout: 2000 }).catch(() => false);
+    if (stillOnForm) {
+      throw new Error('Prospective bidder registration did not complete; form is still visible');
+    }
+
+    log('Prospective bidder registration succeeded');
+  } finally {
+    page.off('response', onResponse);
+    if (diagnostics.length > 0) {
+      [...new Set(diagnostics)].slice(0, 8).forEach((line) => {
+        log(`Prospective bidder API: ${line}`);
+      });
+    }
+  }
+}
+
+async function openDocumentsTab(page, log) {
+  const docsTab = page.locator('text=Documents').first();
+  if (await docsTab.isVisible({ timeout: 8000 }).catch(() => false)) {
+    log('Opening PlanetBids Documents tab');
+    await docsTab.click();
+    await page.waitForResponse((res) => res.url().includes('bid-downloadable-files'), { timeout: 20000 }).catch(() => null);
+    await page.waitForTimeout(1500);
+    return true;
+  }
+
+  log('Documents tab not visible; attempting manifest with captured token');
+  return false;
 }
 
 async function getAuthenticatedManifest(candidate, log) {
@@ -176,21 +341,38 @@ async function getAuthenticatedManifest(candidate, log) {
     await page.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => {});
     await page.waitForTimeout(2500);
 
-    const docsTab = page.locator('text=Documents').first();
-    if (await docsTab.isVisible({ timeout: 8000 }).catch(() => false)) {
-      log('Opening PlanetBids Documents tab');
-      await docsTab.click();
-      await page.waitForResponse((res) => res.url().includes('bid-downloadable-files'), { timeout: 20000 }).catch(() => null);
-      await page.waitForTimeout(1500);
-    } else {
-      log('Documents tab not visible; attempting manifest with captured token');
-    }
+    await openDocumentsTab(page, log);
 
     if (!bearerToken) {
       throw new Error('No PlanetBids bearer token captured after login');
     }
 
-    return fetchManifest(bidId, bearerToken, log);
+    try {
+      return await fetchManifest(bidId, bearerToken, log);
+    } catch (e) {
+      const needsProspectiveBidder = e instanceof ManifestHttpError && e.status === 403;
+      const uiRequiresProspectiveBidder = await pageShowsProspectiveBidderRequirement(page);
+      if (!needsProspectiveBidder && !uiRequiresProspectiveBidder) {
+        throw e;
+      }
+
+      await ensureProspectiveBidder(page, log);
+
+      log(`Returning to PlanetBids detail after prospective bidder registration: ${candidate.source_url}`);
+      await page.goto(candidate.source_url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      await page.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => {});
+      await page.waitForTimeout(2000);
+      await openDocumentsTab(page, log);
+
+      if (!bearerToken) {
+        throw new Error('No PlanetBids bearer token captured after prospective bidder registration');
+      }
+
+      log('Retrying manifest after prospective bidder registration');
+      const docs = await fetchManifest(bidId, bearerToken, log);
+      log('Manifest retry succeeded');
+      return docs;
+    }
   } finally {
     if (browser) {
       try { await browser.close(); } catch (_) {}
