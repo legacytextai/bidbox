@@ -113,6 +113,13 @@ const AUTO_RANK: Record<string, number> = {
   red: 3,
 };
 
+// Active-state definitions for the realtime safety-net polling fallback.
+// Extend these lists as new long-running agent statuses (e.g. F3/F4: processing,
+// extracting, chunking, generating) are introduced.
+const ACTIVE_DOCUMENT_STATUSES: DocumentAcquisitionStatus[] = ["queued", "acquiring"];
+const ACTIVE_ANALYSIS_STATUSES: AnalysisStatus[] = ["queued", "analyzing"];
+const POLLING_INTERVAL_MS = 7000;
+
 function formatBidDate(iso: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
