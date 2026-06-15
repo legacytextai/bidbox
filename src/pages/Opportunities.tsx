@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -113,6 +113,13 @@ const AUTO_RANK: Record<string, number> = {
   red: 3,
 };
 
+// Active-state definitions for the realtime safety-net polling fallback.
+// Extend these lists as new long-running agent statuses (e.g. F3/F4: processing,
+// extracting, chunking, generating) are introduced.
+const ACTIVE_DOCUMENT_STATUSES: DocumentAcquisitionStatus[] = ["queued", "acquiring"];
+const ACTIVE_ANALYSIS_STATUSES: AnalysisStatus[] = ["queued", "analyzing"];
+const POLLING_INTERVAL_MS = 7000;
+
 function formatBidDate(iso: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -191,21 +198,48 @@ const Opportunities = () => {
     document_acquisition_error: row.document_acquisition_error ?? null,
   }), []);
 
-  const loadCandidates = useCallback(async () => {
+  const loadCandidates = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent === true;
     const { data, error } = await supabase
       .from("opportunity_candidates")
       .select("*, opportunity_sources(name, last_scanned_at)")
       .order("created_at", { ascending: false });
 
     if (error) {
-      toast({ title: "Error", description: "Failed to load opportunities", variant: "destructive" });
-      setLoading(false);
+      if (!silent) {
+        toast({ title: "Error", description: "Failed to load opportunities", variant: "destructive" });
+        setLoading(false);
+      }
       return;
     }
 
     const rows: Candidate[] = (data || []).map(mapRow);
 
-    setCandidates(rows);
+    if (silent) {
+      // Diff against previous state for instrumentation; only log when polling
+      // actually fixed something Realtime would normally have handled.
+      setCandidates((prev) => {
+        const prevById = new Map(prev.map((c) => [c.id, c]));
+        const changedIds: string[] = [];
+        for (const r of rows) {
+          const p = prevById.get(r.id);
+          if (
+            !p ||
+            p.document_acquisition_status !== r.document_acquisition_status ||
+            p.analysis_status !== r.analysis_status ||
+            p.status !== r.status
+          ) {
+            changedIds.push(r.id);
+          }
+        }
+        if (changedIds.length > 0) {
+          console.info("[opps] polling applied diff", { changedIds });
+        }
+        return rows;
+      });
+    } else {
+      setCandidates(rows);
+    }
 
     const scannedDates: string[] = (data || [])
       .map((r: any) => r.opportunity_sources?.last_scanned_at)
@@ -214,10 +248,12 @@ const Opportunities = () => {
       setLastScannedAt(scannedDates.sort().reverse()[0]);
     }
 
-    const initialNotes: Record<string, string> = {};
-    rows.forEach((r) => { initialNotes[r.id] = r.review_notes ?? ""; });
-    setNotes(initialNotes);
-    setLoading(false);
+    if (!silent) {
+      const initialNotes: Record<string, string> = {};
+      rows.forEach((r) => { initialNotes[r.id] = r.review_notes ?? ""; });
+      setNotes(initialNotes);
+      setLoading(false);
+    }
   }, [toast, mapRow]);
 
   useEffect(() => {
@@ -238,6 +274,7 @@ const Opportunities = () => {
         { event: "INSERT", schema: "public", table: "opportunity_candidates" },
         async (payload) => {
           const newRow: any = payload.new;
+          console.info("[opps] realtime INSERT", { id: newRow?.id });
           // Fetch joined source name
           const { data: src } = await supabase
             .from("opportunity_sources")
@@ -256,6 +293,11 @@ const Opportunities = () => {
         { event: "UPDATE", schema: "public", table: "opportunity_candidates" },
         (payload) => {
           const updated: any = payload.new;
+          console.info("[opps] realtime UPDATE", {
+            id: updated?.id,
+            doc_status: updated?.document_acquisition_status,
+            analysis_status: updated?.analysis_status,
+          });
           setCandidates((prev) =>
             prev.map((c) =>
               c.id === updated.id
@@ -270,6 +312,40 @@ const Opportunities = () => {
       supabase.removeChannel(channel);
     };
   }, [mapRow]);
+
+  // Realtime safety-net: poll when at least one candidate is in an active
+  // (non-terminal) workflow state. Stops automatically when everything is
+  // terminal. Keeps Realtime as the primary update mechanism.
+  const { hasActiveCandidates, activeCount } = useMemo(() => {
+    let count = 0;
+    for (const c of candidates) {
+      const docActive = ACTIVE_DOCUMENT_STATUSES.includes(c.document_acquisition_status);
+      const analysisActive = ACTIVE_ANALYSIS_STATUSES.includes(c.analysis_status);
+      if (docActive || analysisActive) count += 1;
+    }
+    return { hasActiveCandidates: count > 0, activeCount: count };
+  }, [candidates]);
+
+  const pollInFlightRef = useRef(false);
+
+  useEffect(() => {
+    if (!hasActiveCandidates) return;
+    const tick = async () => {
+      if (document.hidden) return;
+      if (pollInFlightRef.current) return;
+      pollInFlightRef.current = true;
+      console.info("[opps] polling refresh", { activeCount });
+      try {
+        await loadCandidates({ silent: true });
+      } finally {
+        pollInFlightRef.current = false;
+      }
+    };
+    const intervalId = window.setInterval(tick, POLLING_INTERVAL_MS);
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [hasActiveCandidates, activeCount, loadCandidates]);
 
   // Realtime: stream agent_tasks INSERTs into the panel as soon as scan-opportunities queues them
   useEffect(() => {
