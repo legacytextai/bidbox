@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { ExternalLink, RefreshCw, ChevronDown } from "lucide-react";
+import { ExternalLink, RefreshCw, ChevronDown, Clock, Loader2, RotateCcw, Sparkles } from "lucide-react";
 import { Layout } from "@/components/Layout";
 import {
   Tooltip,
@@ -20,6 +20,7 @@ import { ActiveScansPanel } from "@/components/ActiveScansPanel";
 
 type CandidateStatus = "pending" | "red" | "yellow" | "green" | "converted";
 type AutoStatus = "green" | "yellow" | "red" | null;
+type AnalysisStatus = "not_requested" | "queued" | "analyzing" | "ready" | "failed";
 
 interface Candidate {
   id: string;
@@ -40,6 +41,12 @@ interface Candidate {
   qualification_score: number | null;
   qualified_at: string | null;
   crawl_data: any | null;
+  analysis_status: AnalysisStatus;
+  analysis_task_id: string | null;
+  analysis_requested_at: string | null;
+  analysis_started_at: string | null;
+  analysis_completed_at: string | null;
+  analysis_error: string | null;
 }
 
 const FILTERS: { label: string; value: string }[] = [
@@ -72,6 +79,22 @@ const AUTO_STATUS_DOT: Record<NonNullable<AutoStatus>, string> = {
   green: "bg-green-500",
   yellow: "bg-yellow-400",
   red: "bg-red-500",
+};
+
+const ANALYSIS_STYLES: Record<AnalysisStatus, string> = {
+  not_requested: "bg-gray-500/10 text-gray-600",
+  queued: "bg-blue-500/10 text-blue-700",
+  analyzing: "bg-indigo-500/10 text-indigo-700",
+  ready: "bg-green-500/10 text-green-700",
+  failed: "bg-red-500/10 text-red-700",
+};
+
+const ANALYSIS_LABELS: Record<AnalysisStatus, string> = {
+  not_requested: "Not analyzed",
+  queued: "Analysis queued",
+  analyzing: "Analysis queued",
+  ready: "Ready for document processing",
+  failed: "Analysis failed",
 };
 
 const AUTO_RANK: Record<string, number> = {
@@ -107,6 +130,12 @@ function timeAgo(iso: string | null): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
+function isBidClosed(iso: string | null): boolean {
+  if (!iso) return false;
+  const d = new Date(iso);
+  return !isNaN(d.getTime()) && d.getTime() < Date.now();
+}
+
 const Opportunities = () => {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [loading, setLoading] = useState(true);
@@ -115,7 +144,7 @@ const Opportunities = () => {
   
   const [lastScannedAt, setLastScannedAt] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
-  const [convertingId, setConvertingId] = useState<string | null>(null);
+  const [analyzingId, setAnalyzingId] = useState<string | null>(null);
   const [filteredOutOpen, setFilteredOutOpen] = useState(false);
   const [activeScanTaskIds, setActiveScanTaskIds] = useState<string[]>([]);
   const [scanStartedAt, setScanStartedAt] = useState<string | null>(null);
@@ -142,6 +171,12 @@ const Opportunities = () => {
     qualification_score: row.qualification_score ?? null,
     qualified_at: row.qualified_at ?? null,
     crawl_data: row.crawl_data ?? null,
+    analysis_status: (row.analysis_status ?? "not_requested") as AnalysisStatus,
+    analysis_task_id: row.analysis_task_id ?? null,
+    analysis_requested_at: row.analysis_requested_at ?? null,
+    analysis_started_at: row.analysis_started_at ?? null,
+    analysis_completed_at: row.analysis_completed_at ?? null,
+    analysis_error: row.analysis_error ?? null,
   }), []);
 
   const loadCandidates = useCallback(async () => {
@@ -336,66 +371,41 @@ const Opportunities = () => {
     }
   };
 
-  const handleConvert = async (candidate: Candidate) => {
-    setConvertingId(candidate.id);
+  const handleAnalyzeProject = async (candidate: Candidate) => {
+    setAnalyzingId(candidate.id);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { navigate("/auth"); return; }
 
-      const bidDueAt = candidate.bid_due_at
-        ?? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-
-      const { data: newProject, error: insertError } = await supabase
-        .from("projects")
-        .insert({
-          gc_id: session.user.id,
-          name: candidate.raw_title ?? `Project from ${candidate.source_url}`,
-          source_url: candidate.source_url,
-          bid_due_at: bidDueAt,
-          status: "LIVE",
-          portal_type: candidate.portal_type ?? undefined,
-          agency: candidate.agency ?? undefined,
-          scope_text: candidate.scope_text ?? undefined,
-        })
-        .select("id")
-        .single();
-
-      if (insertError || !newProject) throw insertError ?? new Error("Insert returned no data");
-
-      supabase.functions.invoke("crawl-project", {
-        body: { project_id: newProject.id, source_url: candidate.source_url },
+      const { data, error } = await supabase.functions.invoke("analyze-project", {
+        body: { candidate_id: candidate.id },
       });
 
-      await supabase
-        .from("opportunity_candidates")
-        .update({ status: "converted", converted_project_id: newProject.id })
-        .eq("id", candidate.id);
+      if (error) throw error;
+      if (data?.success === false) throw new Error(data.error ?? "Failed to queue analysis");
 
       setCandidates((prev) =>
         prev.map((c) =>
           c.id === candidate.id
-            ? { ...c, status: "converted", converted_project_id: newProject.id }
-            : c
-        )
+            ? {
+                ...c,
+                analysis_status: (data?.analysis_status ?? "queued") as AnalysisStatus,
+                analysis_task_id: data?.task_id ?? c.analysis_task_id,
+                analysis_error: null,
+                analysis_requested_at: new Date().toISOString(),
+              }
+            : c,
+        ),
       );
 
       toast({
-        title: "Project created",
-        description: "Crawling details in the background — check the project shortly.",
-        action: (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => navigate(`/projects/${newProject.id}`)}
-          >
-            View Project
-          </Button>
-        ) as any,
+        title: data?.duplicate ? "Analysis already queued" : "Analysis queued",
+        description: "Ready for document processing. Project Intelligence has not been generated yet.",
       });
     } catch (e: any) {
-      toast({ title: "Conversion failed", description: e?.message ?? "Unknown error", variant: "destructive" });
+      toast({ title: "Analysis request failed", description: e?.message ?? "Unknown error", variant: "destructive" });
     } finally {
-      setConvertingId(null);
+      setAnalyzingId(null);
     }
   };
 
@@ -423,7 +433,21 @@ const Opportunities = () => {
     };
   }, [filtered, activeFilter]);
 
-  const renderCard = (candidate: Candidate) => (
+  const renderCard = (candidate: Candidate) => {
+    const analysisActive = candidate.analysis_status === "queued" || candidate.analysis_status === "analyzing";
+    const bidClosed = isBidClosed(candidate.bid_due_at);
+    const analyzeDisabled = analyzingId === candidate.id || analysisActive || bidClosed;
+    const analyzeLabel = analyzingId === candidate.id
+      ? "Queueing..."
+      : candidate.analysis_status === "failed"
+      ? "Retry Analysis"
+      : analysisActive
+      ? "Analysis Queued"
+      : candidate.analysis_status === "ready"
+      ? "Ready for Document Processing"
+      : "Analyze Project";
+
+    return (
     <div
       key={candidate.id}
       className="bg-card border border-border rounded-lg p-6 flex flex-col gap-3"
@@ -478,6 +502,29 @@ const Opportunities = () => {
                   Score: {candidate.qualification_score}
                 </p>
               )}
+            </TooltipContent>
+          </Tooltip>
+        )}
+        {candidate.analysis_status !== "not_requested" && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className={`inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded cursor-help ${ANALYSIS_STYLES[candidate.analysis_status]}`}>
+                {candidate.analysis_status === "failed" ? (
+                  <RotateCcw className="h-3 w-3" />
+                ) : candidate.analysis_status === "analyzing" ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Clock className="h-3 w-3" />
+                )}
+                {ANALYSIS_LABELS[candidate.analysis_status]}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs">
+              <p className="text-xs">
+                {candidate.analysis_status === "failed"
+                  ? candidate.analysis_error ?? "Analysis failed. Retry when ready."
+                  : "Project Intelligence has not been generated yet."}
+              </p>
             </TooltipContent>
           </Tooltip>
         )}
@@ -537,7 +584,7 @@ const Opportunities = () => {
         />
       )}
 
-      {/* Convert to Project */}
+      {/* Analyze Project */}
       {candidate.status === "converted" ? (
         <Button
           variant="outline"
@@ -547,17 +594,34 @@ const Opportunities = () => {
           View Project
         </Button>
       ) : (
-        <Button
-          size="sm"
-          disabled={convertingId === candidate.id}
-          onClick={() => handleConvert(candidate)}
-          className="bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90 disabled:opacity-40"
-        >
-          {convertingId === candidate.id ? "Converting..." : "Convert to Project"}
-        </Button>
+        <div className="space-y-1.5">
+          <Button
+            size="sm"
+            disabled={analyzeDisabled}
+            onClick={() => handleAnalyzeProject(candidate)}
+            className="w-full bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90 disabled:opacity-40"
+          >
+            {analyzingId === candidate.id ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : candidate.analysis_status === "failed" ? (
+              <RotateCcw className="h-4 w-4 mr-2" />
+            ) : (
+              <Sparkles className="h-4 w-4 mr-2" />
+            )}
+            {bidClosed ? "Bid Closed" : analyzeLabel}
+          </Button>
+          {candidate.analysis_status !== "not_requested" && (
+            <p className="text-xs text-muted-foreground">
+              {candidate.analysis_status === "failed"
+                ? "Project Intelligence was not generated. You can retry analysis."
+                : "Ready for document processing. Project Intelligence not generated yet."}
+            </p>
+          )}
+        </div>
       )}
     </div>
-  );
+    );
+  };
 
   return (
     <Layout showSidebar={true}>
