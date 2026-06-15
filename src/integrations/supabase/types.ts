@@ -371,10 +371,6 @@ export type Database = {
           converted_project_id: string | null
           crawl_data: Json | null
           created_at: string
-          document_acquisition_completed_at: string | null
-          document_acquisition_error: string | null
-          document_acquisition_started_at: string | null
-          document_acquisition_status: string
           id: string
           last_crawled_at: string | null
           portal_type: string | null
@@ -405,10 +401,6 @@ export type Database = {
           converted_project_id?: string | null
           crawl_data?: Json | null
           created_at?: string
-          document_acquisition_completed_at?: string | null
-          document_acquisition_error?: string | null
-          document_acquisition_started_at?: string | null
-          document_acquisition_status?: string
           id?: string
           last_crawled_at?: string | null
           portal_type?: string | null
@@ -439,10 +431,6 @@ export type Database = {
           converted_project_id?: string | null
           crawl_data?: Json | null
           created_at?: string
-          document_acquisition_completed_at?: string | null
-          document_acquisition_error?: string | null
-          document_acquisition_started_at?: string | null
-          document_acquisition_status?: string
           id?: string
           last_crawled_at?: string | null
           portal_type?: string | null
@@ -492,72 +480,6 @@ export type Database = {
             columns: ["source_id"]
             isOneToOne: false
             referencedRelation: "opportunity_sources"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      opportunity_documents: {
-        Row: {
-          acquisition_error: string | null
-          acquisition_status: string
-          agent_task_id: string | null
-          created_at: string
-          file_name: string
-          file_size: number | null
-          file_type: string | null
-          id: string
-          manifest_data: Json | null
-          opportunity_candidate_id: string
-          source_url: string | null
-          storage_bucket: string
-          storage_path: string | null
-          updated_at: string
-        }
-        Insert: {
-          acquisition_error?: string | null
-          acquisition_status?: string
-          agent_task_id?: string | null
-          created_at?: string
-          file_name: string
-          file_size?: number | null
-          file_type?: string | null
-          id?: string
-          manifest_data?: Json | null
-          opportunity_candidate_id: string
-          source_url?: string | null
-          storage_bucket?: string
-          storage_path?: string | null
-          updated_at?: string
-        }
-        Update: {
-          acquisition_error?: string | null
-          acquisition_status?: string
-          agent_task_id?: string | null
-          created_at?: string
-          file_name?: string
-          file_size?: number | null
-          file_type?: string | null
-          id?: string
-          manifest_data?: Json | null
-          opportunity_candidate_id?: string
-          source_url?: string | null
-          storage_bucket?: string
-          storage_path?: string | null
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "opportunity_documents_agent_task_id_fkey"
-            columns: ["agent_task_id"]
-            isOneToOne: false
-            referencedRelation: "agent_tasks"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "opportunity_documents_opportunity_candidate_id_fkey"
-            columns: ["opportunity_candidate_id"]
-            isOneToOne: false
-            referencedRelation: "opportunity_candidates"
             referencedColumns: ["id"]
           },
         ]
