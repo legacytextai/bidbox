@@ -358,13 +358,6 @@ export type Database = {
       opportunity_candidates: {
         Row: {
           agency: string | null
-          analysis_completed_at: string | null
-          analysis_error: string | null
-          analysis_requested_at: string | null
-          analysis_requested_by: string | null
-          analysis_started_at: string | null
-          analysis_status: string
-          analysis_task_id: string | null
           auto_status: string | null
           auto_status_reason: string | null
           bid_due_at: string | null
@@ -388,13 +381,6 @@ export type Database = {
         }
         Insert: {
           agency?: string | null
-          analysis_completed_at?: string | null
-          analysis_error?: string | null
-          analysis_requested_at?: string | null
-          analysis_requested_by?: string | null
-          analysis_started_at?: string | null
-          analysis_status?: string
-          analysis_task_id?: string | null
           auto_status?: string | null
           auto_status_reason?: string | null
           bid_due_at?: string | null
@@ -418,13 +404,6 @@ export type Database = {
         }
         Update: {
           agency?: string | null
-          analysis_completed_at?: string | null
-          analysis_error?: string | null
-          analysis_requested_at?: string | null
-          analysis_requested_by?: string | null
-          analysis_started_at?: string | null
-          analysis_status?: string
-          analysis_task_id?: string | null
           auto_status?: string | null
           auto_status_reason?: string | null
           bid_due_at?: string | null
@@ -447,20 +426,6 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
-          {
-            foreignKeyName: "opportunity_candidates_analysis_requested_by_fkey"
-            columns: ["analysis_requested_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "opportunity_candidates_analysis_task_id_fkey"
-            columns: ["analysis_task_id"]
-            isOneToOne: false
-            referencedRelation: "agent_tasks"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "opportunity_candidates_converted_project_id_fkey"
             columns: ["converted_project_id"]
