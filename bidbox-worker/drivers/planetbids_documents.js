@@ -238,7 +238,7 @@ async function collectProspectiveBidderFormDiagnostics(page) {
       const classes = clean(el.className);
       return {
         label: label.substring(0, 120),
-        selected: selected.substring(0, 120),
+        has_value: Boolean(selected),
         angular_invalid: /\bng-invalid\b/.test(classes) || el.getAttribute('aria-invalid') === 'true',
         disabled: Boolean(el.disabled || el.getAttribute('aria-disabled') === 'true'),
       };
@@ -278,18 +278,33 @@ function summarizeFormDiagnostics(diagnostics) {
   }).substring(0, 2000);
 }
 
-async function getClassificationValue(page) {
-  return page.evaluate(() => {
+function isBlankDropdownValue(value, label) {
+  const cleanValue = String(value ?? '').replace(/\s+/g, ' ').trim();
+  if (!cleanValue) return true;
+  return new RegExp(`^${label}\\s*\\*?$`, 'i').test(cleanValue) ||
+    /^select\b|^choose\b/i.test(cleanValue);
+}
+
+function endpointLooksLikeProspectiveBidderWrite(rawUrl, method) {
+  if (!['POST', 'PUT', 'PATCH'].includes(method)) return false;
+
+  const path = sanitizedApiPath(rawUrl);
+  return /prospective-bidder|bid-prospective-bidders/i.test(path);
+}
+
+async function getAngularDropdownValue(page, labelText) {
+  return page.evaluate((label) => {
     const clean = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
     const visible = (el) => {
       const style = window.getComputedStyle(el);
       const rect = el.getBoundingClientRect();
       return style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0 && rect.height > 0;
     };
+    const labelPattern = new RegExp(`${label}\\s*\\*?`, 'i');
     const fields = [...document.querySelectorAll('mat-form-field, .mat-form-field, pb-dropdown, div')]
       .filter((el) => {
         const text = clean(el.textContent);
-        return visible(el) && /Classification\s*\*/i.test(text) && text.length < 300;
+        return visible(el) && labelPattern.test(text) && text.length < 300;
       })
       .sort((a, b) => clean(a.textContent).length - clean(b.textContent).length);
 
@@ -306,30 +321,31 @@ async function getClassificationValue(page) {
           combobox.querySelector('.mat-select-value-text, .mat-mdc-select-value-text, .mat-select-min-line')?.textContent ??
           combobox.textContent
         );
-        const fieldText = clean(field.textContent).replace(/Classification\s*\*/i, '').trim();
+        const fieldText = clean(field.textContent).replace(labelPattern, '').trim();
         return valueText || aria || fieldText;
       }
 
-      const fieldText = clean(field.textContent).replace(/Classification\s*\*/i, '').trim();
+      const fieldText = clean(field.textContent).replace(labelPattern, '').trim();
       if (fieldText) return fieldText;
     }
 
     return '';
-  }).catch(() => '');
+  }, labelText).catch(() => '');
 }
 
-async function clickClassificationControl(page) {
-  const clicked = await page.evaluate(() => {
+async function clickAngularDropdownControl(page, labelText) {
+  const clicked = await page.evaluate((label) => {
     const clean = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
     const visible = (el) => {
       const style = window.getComputedStyle(el);
       const rect = el.getBoundingClientRect();
       return style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0 && rect.height > 0;
     };
+    const labelPattern = new RegExp(`${label}\\s*\\*?`, 'i');
     const fields = [...document.querySelectorAll('mat-form-field, .mat-form-field, pb-dropdown, div')]
       .filter((el) => {
         const text = clean(el.textContent);
-        return visible(el) && /Classification\s*\*/i.test(text) && text.length < 300;
+        return visible(el) && labelPattern.test(text) && text.length < 300;
       })
       .sort((a, b) => clean(a.textContent).length - clean(b.textContent).length);
 
@@ -341,38 +357,54 @@ async function clickClassificationControl(page) {
     }
 
     return false;
-  }).catch(() => false);
+  }, labelText).catch(() => false);
 
-  if (!clicked) throw new Error('Classification dropdown was not found');
+  if (!clicked) throw new Error(`${labelText} dropdown was not found`);
 }
 
-async function ensureClassificationSelected(page, log) {
-  const current = await getClassificationValue(page);
-  if (current && !/^Classification\s*\*?$/i.test(current)) {
-    log(`Classification already selected: ${current}`);
-    return;
-  }
-
-  log('Classification is empty; selecting Other');
-  await clickClassificationControl(page);
-  const otherOption = page.getByRole('option', { name: /^Other$/i }).first();
-  if (await otherOption.isVisible({ timeout: 5000 }).catch(() => false)) {
-    await otherOption.click();
+async function selectAngularDropdownOption(page, labelText, optionText, log) {
+  await clickAngularDropdownControl(page, labelText);
+  const option = page.getByRole('option', { name: new RegExp(`^${optionText}$`, 'i') }).first();
+  if (await option.isVisible({ timeout: 5000 }).catch(() => false)) {
+    await option.click();
   } else {
-    await page.getByText(/^Other$/).last().click({ timeout: 5000 });
+    await page.getByText(new RegExp(`^${optionText}$`, 'i')).last().click({ timeout: 5000 });
   }
   await page.waitForTimeout(500);
 
-  const selected = await getClassificationValue(page);
-  if (!/^Other$/i.test(selected)) {
+  const selected = await getAngularDropdownValue(page, labelText);
+  if (!new RegExp(`^${optionText}$`, 'i').test(selected)) {
     const diagnostics = await collectProspectiveBidderFormDiagnostics(page);
     throw new Error(
-      `Classification selection did not persist; selected="${selected || '(empty)'}"; ` +
+      `${labelText} selection did not persist; ` +
       `diagnostics=${summarizeFormDiagnostics(diagnostics)}`
     );
   }
 
-  log('Classification selected: Other');
+  log(`${labelText} selected`);
+}
+
+async function ensureClassificationSelected(page, log) {
+  const current = await getAngularDropdownValue(page, 'Classification');
+  if (!isBlankDropdownValue(current, 'Classification')) {
+    log('Classification already selected');
+    return;
+  }
+
+  log('Setting classification: Other');
+  await selectAngularDropdownOption(page, 'Classification', 'Other', log);
+}
+
+async function ensureStatusSelected(page, log) {
+  const desired = 'Non-Bidder, receive communications';
+  const current = await getAngularDropdownValue(page, 'Status');
+  if (new RegExp(`^${desired}$`, 'i').test(current)) {
+    log('Status already selected');
+    return;
+  }
+
+  log('Setting status: Non-Bidder, receive communications');
+  await selectAngularDropdownOption(page, 'Status', desired, log);
 }
 
 async function ensureDoneEnabled(page, doneButton) {
@@ -429,6 +461,7 @@ async function ensureProspectiveBidder(page, log) {
     );
 
     await ensureClassificationSelected(page, log);
+    await ensureStatusSelected(page, log);
 
     const refreshedRequiredSummary = await inspectRequiredProspectiveBidderFields(page);
     log(
@@ -448,22 +481,33 @@ async function ensureProspectiveBidder(page, log) {
     }
     await ensureDoneEnabled(page, doneButton);
 
-    log('Prospective bidder registration submitted');
+    const classification = await getAngularDropdownValue(page, 'Classification');
+    const status = await getAngularDropdownValue(page, 'Status');
+    if (isBlankDropdownValue(classification, 'Classification')) {
+      throw new Error('Prospective bidder form invalid: Classification has no value');
+    }
+    if (isBlankDropdownValue(status, 'Status')) {
+      throw new Error('Prospective bidder form invalid: Status has no value');
+    }
+
+    log('Prospective bidder form valid');
+    log('Submitting prospective bidder registration');
     const registrationPost = page.waitForResponse((res) => {
       const req = res.request();
-      return res.url().includes(API_HOST) && req.method() === 'POST';
+      return res.url().includes(API_HOST) && endpointLooksLikeProspectiveBidderWrite(res.url(), req.method());
     }, { timeout: 30000 });
     await doneButton.click();
 
     const registrationRes = await registrationPost.catch(() => null);
     if (!registrationRes) {
-      throw new Error('Prospective bidder registration did not issue a POST request');
+      throw new Error('Prospective bidder registration did not issue a write request');
     }
 
+    const registrationMethod = registrationRes.request().method();
     const registrationPath = sanitizedApiPath(registrationRes.url());
-    log(`Prospective bidder registration response: POST ${registrationPath} ${registrationRes.status()}`);
+    log(`Prospective bidder registration response: ${registrationMethod} ${registrationPath} ${registrationRes.status()}`);
     if (!registrationRes.ok()) {
-      throw new Error(`Prospective bidder registration POST failed: ${registrationRes.status()}`);
+      throw new Error(`Prospective bidder registration write failed: ${registrationRes.status()}`);
     }
 
     await page.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => {});
