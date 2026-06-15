@@ -304,7 +304,7 @@ MVP boundary:
 - It does not download documents, parse documents, generate an AI report, run post-analysis qualification, add to calendar, or create a project.
 - `project_analysis` tasks are queued for the future Project Intelligence worker path; F1 does not mark analysis complete.
 
-### 7.2. F2 — Document Acquisition 🔄 IMPLEMENTED, PENDING LIVE VALIDATION
+### 7.2. F2 — Document Acquisition ✅ COMPLETE
 
 Purpose: retrieve source bid package documents for analyzed opportunities.
 
@@ -312,9 +312,9 @@ Current repo support:
 - C1 proved Bearer token access and Plans.pdf download feasibility.
 - Worker infrastructure exists.
 - PlanetBids driver can capture document manifest metadata in `crawl_data.documents` when available.
-- Supabase Storage exists for manually uploaded project files.
+- Supabase Storage exists for manually uploaded project files and now stores acquired opportunity source documents.
 
-Implemented:
+What was built:
 - [x] Added explicit PlanetBids login support in the Railway worker using `PLANETBIDS_EMAIL` and `PLANETBIDS_PASSWORD`.
 - [x] Reused the C1-proven bearer token and `papi/bid-downloadable-files` manifest approach.
 - [x] Added worker handling for `project_analysis` tasks.
@@ -324,13 +324,264 @@ Implemented:
 - [x] Added separate `document_acquisition_status` fields on `opportunity_candidates`.
 - [x] Kept `analysis_status` reserved for the broader Project Intelligence pipeline; F2 does not mark Project Intelligence ready.
 - [x] Updated `/opportunities` to show document acquisition progress separately from analysis status.
-- [ ] Prove at least one live PlanetBids source document travels through the full path:
-  `PlanetBids -> worker download -> Supabase Storage -> opportunity_documents`.
+- [x] Re-aligned the worker with the C1 happy path by reusing the browser-captured `bid-downloadable-files` manifest response when available.
+- [x] Added C1-style browser headers to manifest and file download requests.
+- [x] Added a zero-byte guard so empty downloads cannot be marked acquired.
+
+Validated production runs:
+- [x] `Holiday Decor Rental and Installation Services 26-53`
+  - 3 documents acquired
+  - 3 documents stored
+  - 0 failures
+  - Approximately 57 second acquisition run
+- [x] `PAVEMENT RESTORATION PARK AVENUE & S BAY FRONT ALLEY 9451-3`
+  - 9 documents acquired
+  - 9 documents stored
+  - 0 failures
+  - Approximately 71 second acquisition run
+  - Included `Plans.pdf` at approximately 26 MB, addenda, bidder lists, and supporting documents
+
+Validated chain:
+
+```text
+PlanetBids
+-> Authentication
+-> Vendor Access
+-> Prospective Bidder Registration
+-> Manifest Retrieval
+-> Document Download
+-> Supabase Storage
+-> opportunity_documents
+```
+
+Current architecture:
+- `analyze-project` queues a `project_analysis` task in `agent_tasks`.
+- Railway worker claims the task and routes PlanetBids candidates to `bidbox-worker/drivers/planetbids_documents.js`.
+- The PlanetBids document driver logs in, opens the solicitation detail page, opens the Documents tab, captures or fetches the document manifest, downloads files with the authenticated bearer token, uploads files to Supabase Storage, and writes file-level records.
+- Heavy acquisition work stays in the worker. The frontend and Edge Functions do not download bid documents.
+
+Tables created / used:
+- `opportunity_candidates`
+  - `document_acquisition_status`
+  - `document_acquisition_started_at`
+  - `document_acquisition_completed_at`
+  - `document_acquisition_error`
+- `opportunity_documents`
+  - Tracks file name, type, source URL, storage bucket/path, file size, acquisition status/error, manifest data, and related `agent_task_id`.
+- `agent_tasks`
+  - Stores `project_analysis` work items.
+- `agent_run_logs`
+  - Stores acquisition logs and screenshots when available.
+
+Storage structure:
+- Private bucket: `opportunity-documents`
+- Path pattern:
+
+```text
+opportunity-candidates/{opportunity_candidate_id}/{opportunity_document_id}/{file_name}
+```
+
+Status tracking:
+- Candidate-level lifecycle:
+  - `not_requested`
+  - `queued`
+  - `acquiring`
+  - `acquired`
+  - `failed`
+- File-level lifecycle:
+  - `queued`
+  - `acquiring`
+  - `acquired`
+  - `failed`
+- `analysis_status` remains separate. F2 acquired documents do not mean Project Intelligence has been generated.
+
+Known limitations:
+- Production validation is PlanetBids-specific.
+- Document acquisition depends on the shared BidBox PlanetBids automation account and existing Railway secrets.
+- Some agencies may still require agency-level vendor registration, prospective bidder registration, or other portal-specific authorization before documents are available.
+- The worker stores source files and metadata only; it does not parse, OCR, summarize, classify, or qualify documents.
+- Non-PlanetBids portals still need their own acquisition drivers.
+
+Lessons learned from PlanetBids authorization:
+- A PlanetBids login alone is not always sufficient for document access.
+- Some solicitations require vendor access and/or prospective bidder registration before manifest retrieval or file downloads succeed.
+- The original C1 path was correct: capture the authenticated browser bearer token and use PlanetBids' `papi/bid-downloadable-files` manifest.
+- The production path became reliable after reusing the browser-captured manifest response when available and matching the C1 request headers.
+- Generic authorization expansion should not replace first proving the simple manifest-to-storage path.
+
+Acceptance criteria satisfied:
+- [x] Authenticated PlanetBids session established.
+- [x] Document manifest captured/retrieved.
+- [x] Real source files downloaded by the worker.
+- [x] Files uploaded to private Supabase Storage bucket `opportunity-documents`.
+- [x] `opportunity_documents` rows created.
+- [x] Stored files have non-zero file sizes.
+- [x] Candidate document acquisition status updates to `acquired`.
+
+#### F2 Retrospective
+
+Original C1 feasibility proof:
+- C1 proved PlanetBids login, bearer token capture, `papi/bid-downloadable-files` manifest retrieval, and direct `Plans.pdf` download.
+- The proof downloaded a real `Plans.pdf` using an intercepted bearer token plus browser-like request headers.
+
+Challenges encountered:
+- F2 initially expanded into generalized authorization handling before re-proving the core acquisition path end to end.
+- Some production attempts returned `Manifest HTTP 403`, which made failures look like generic manifest problems rather than authorization-state problems.
+
+Vendor registration discovery:
+- Manual testing showed that some PlanetBids agencies require agency-specific vendor registration before document access is granted.
+- This is separate from being logged into PlanetBids globally.
+
+Prospective bidder registration discovery:
+- Manual testing showed that some solicitations require `Become a Prospective Bidder` before private documents can be downloaded.
+- The form can include required fields such as Classification and Status.
+
+Manifest authorization issues:
+- Manifest access depends on the current authenticated and authorized portal state.
+- The worker is most reliable when it captures the same manifest response the browser receives from the Documents tab, then uses the captured bearer token for file download.
+
+Final successful acquisition path:
+- Login to PlanetBids.
+- Reach an authorized solicitation detail page.
+- Open Documents tab.
+- Capture or retrieve manifest.
+- Download files with bearer token.
+- Upload to `opportunity-documents`.
+- Persist `opportunity_documents` metadata.
 
 MVP boundary:
-- Start with PlanetBids documents where access is technically proven.
+- F2 is complete for the validated PlanetBids acquisition path.
 - Do not build every portal's document acquisition flow before validating with beta contractors.
 - This phase does not parse documents, generate AI reports, run post-analysis qualification, create projects, or add opportunities to the calendar.
+
+### 7.2A. F2A — Agency Access Management 📋 PLANNED
+
+Purpose: establish and maintain the agency registration state required for reliable document acquisition.
+
+Strategic placement:
+
+```text
+Opportunity Discovery
+→ Agency Access Management
+→ Analyze Project
+→ Document Acquisition
+→ Project Intelligence
+→ Qualification
+→ Add to Calendar
+```
+
+Rationale:
+- Public agencies often require vendor registration before plans, specifications, addenda, bidder lists, notifications, and procurement communications are available.
+- A PlanetBids login is not always sufficient; access may require agency-level vendor registration before prospective bidder registration and document downloads.
+- Agency registration fields vary by agency, so deterministic automation alone is unlikely to cover all cases.
+- BidBox should manage agency access as a first-class platform capability rather than a scraper exception.
+
+#### 7.2A.1. Registration Agent 📋 PLANNED
+
+Needed:
+- Detect agency/vendor registration gates before attempting prospective bidder registration.
+- Complete known fields from BidBox internal registration data or, later, the contractor's Bid Profile.
+- Select known dropdown values and communication preferences.
+- Submit registration only when confidence is sufficient.
+- Log method, path, and status for registration mutations without logging credentials, tokens, or form values.
+- Keep portal-specific registration logic inside the corresponding driver.
+
+MVP boundary:
+- Start with PlanetBids where F2 validation exposed agency/vendor/prospective-bidder access requirements.
+- Use BidBox's internal automation account first.
+- Do not build customer credential storage before internal registration behavior is proven.
+
+#### 7.2A.2. Registration Memory System 📋 PLANNED
+
+Needed:
+- Store agency registration field metadata:
+  - agency / portal ID
+  - field label
+  - field type
+  - selected answer
+  - confidence score
+  - answer source
+  - timestamp
+- Reuse prior answers for similar future registrations.
+- Track which answers came from deterministic rules, Bid Profile data, or human resolution.
+
+MVP boundary:
+- Store only non-secret registration answers and preferences.
+- Do not store portal passwords or bearer tokens in registration memory.
+
+#### 7.2A.3. Human Escalation Workflow 📋 PLANNED
+
+Needed:
+- Create a registration task when the agent cannot confidently answer a required field.
+- Show:
+  - agency name
+  - portal type
+  - field requiring input
+  - available options
+  - suggested answer, if available
+- Allow a human to provide the answer.
+- Resume registration after resolution.
+- Persist the answer into registration memory for future automation.
+
+MVP boundary:
+- Start with internal BidBox operator escalation.
+- Customer-facing escalation can wait until contractor-owned credentials are introduced.
+
+#### 7.2A.4. Agency Access Coverage Dashboard 📋 PLANNED
+
+Needed:
+- Track agency access status across configured opportunity sources:
+  - registered
+  - registration required
+  - prospective bidder required
+  - blocked
+  - human input required
+  - verified document access
+- Show last checked time and last successful document access.
+- Surface access blockers that prevent Project Intelligence from acquiring documents.
+
+MVP boundary:
+- Start as an internal coverage dashboard for BidBox's agency access network.
+- Customer-facing coverage belongs after internal reliability is proven.
+
+#### 7.2A.5. Bid Profile Agency Registration Management 📋 PLANNED
+
+Needed:
+- Add customer-facing agency access settings inside Bid Profile after internal validation.
+- Allow contractors to manage registration preferences such as:
+  - Register as Bidder
+  - Register as Non-Bidder
+  - Receive Communications
+  - Do Not Receive Communications
+  - Prime Contractor
+  - Subcontractor
+  - Supplier
+  - Other
+- Make settings contractor-specific rather than globally defined by BidBox.
+
+MVP boundary:
+- Phase 2+ customer-facing capability.
+- Requires secure contractor portal credential architecture.
+
+#### 7.2A.6. BidBox Internal Agency Registration Network 📋 PLANNED
+
+Needed:
+- Track BidBox's own agency registrations as an internal access network.
+- Prioritize agencies discovered in Phase E source expansion.
+- Use the network to improve document acquisition success rates.
+- Treat each successful agency registration as durable platform coverage.
+
+Success criteria:
+- BidBox can distinguish login failure, agency vendor registration required, prospective bidder required, and manifest/document failure.
+- At least one gated agency successfully progresses:
+  `Login -> agency vendor registration -> prospective bidder registration -> manifest -> document download`.
+- Agency access state is visible enough that future failures do not collapse into generic `Manifest HTTP 403`.
+
+Dependencies:
+- Existing Railway worker + Browserbase architecture.
+- `agent_tasks` / `agent_run_logs` diagnostics.
+- Opportunity source inventory from Phase E.
+- Future secure credential storage for contractor-owned portal credentials.
 
 ### 7.3. F3 — Document Processing ❌ NOT STARTED
 
@@ -480,12 +731,16 @@ Reason outside MVP:
 - Keep Phase E source verification moving so Discovery coverage is credible
 - Update `docs/opportunity-source-ledger.md` with production scan-verified statuses
 - Add worker stale-task protection so scans cannot hang indefinitely
-- Add or plan the `Analyze Project` workflow
+- Monitor F2 document acquisition across additional gated PlanetBids opportunities
+- Design the Agency Access Management data model for internal BidBox agency access state
+- Add the PlanetBids Registration Agent path for agency vendor registration before prospective bidder registration
 - Define the minimum data model for Project Intelligence reports and source documents
-- Design PlanetBids document acquisition for analyzed opportunities
 
 ### 10.2. Later
 - Begin E2 master agency portal inventory for beta-relevant agencies
+- Add Agency Access Coverage dashboard for internal BidBox operations
+- Add registration memory and human escalation workflows
+- Add customer-facing Bid Profile agency registration management after internal validation
 - Decide first non-PlanetBids driver after E2 shows source counts
 - Add text extraction and Project Intelligence report generation
 - Add evidence-backed qualification after Project Intelligence
@@ -497,6 +752,7 @@ Reason outside MVP:
 - ✅ Playwright for portal automation (not Stagehand)
 - ✅ Bearer token for document download (not browser download)
 - ✅ Single worker, LIMIT 1 per poll cycle initially (can scale horizontally later)
+- ✅ Agency/vendor/prospective-bidder registration is portal-specific driver behavior, not generic task-router behavior
 
 ### 10.4. Roadmap Ownership
 - `docs/agent-architecture-task-list.md` is the source of truth for Opportunity Intelligence execution work

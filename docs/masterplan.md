@@ -72,6 +72,7 @@ See `docs/gc-control-center-prd.md` for full strategic PRD.
 - **Call List Generator**: Excel export grouped by trade, sorted by engagement priority
 - **Engagement Tracking**: Views, downloads, submissions per subcontractor
 - **Coverage Intelligence**: Visual indicators showing which trades have coverage
+- **Agency Access Management**: Manage procurement portal registration, agency access status, document-access blockers, and registration memory for public works opportunity intelligence
 
 ---
 
@@ -81,6 +82,7 @@ See `docs/gc-control-center-prd.md` for full strategic PRD.
 - **Backend:** Supabase (Postgres + Storage + Auth)    
 - **Auth:** Email/password for GCs only    
 - **File Storage:** Supabase Storage    
+- **Agent Workers:** Railway + Browserbase/Playwright for portal scanning, agency registration, and document acquisition
 - **Public Links:** Secure `/bid/[token]` pages for subs    
 - **Export:** Download all bids (ZIP or CSV)    
 - **No sub accounts, no email/SMS invites in v0**
@@ -145,6 +147,42 @@ Fast to scaffold, secure by default, and matches Lovable's strengths.
 - trade_type_id (FK → trade_types)
 - created_at
 
+**agency_access_records** (FUTURE - Agency Access Management)
+- id
+- agency_id / opportunity_source_id
+- portal_type
+- portal_url
+- access_status
+- registration_status
+- last_checked_at
+- last_successful_access_at
+- blocker_reason
+- owner_type (`bidbox_internal` or contractor account)
+
+**agency_registration_memory** (FUTURE - Registration Agent Learning)
+- id
+- agency_id / portal_id
+- field_label
+- field_type
+- selected_answer
+- confidence_score
+- source (`bid_profile`, `human_response`, `agent_inference`)
+- created_at
+- updated_at
+
+**agency_registration_tasks** (FUTURE - Human Escalation)
+- id
+- agency_id / opportunity_source_id
+- portal_type
+- task_status
+- field_label
+- available_options
+- suggested_answer
+- resolved_answer
+- resolved_by
+- resolved_at
+- agent_task_id
+
 > **⚠️ ARCHITECTURAL NOTE**: The licensing system is designed to be **state-agnostic**. California CSLB license types are the initial seed data, but the system supports nationwide expansion without code changes. All trade references use `trade_type_id` foreign keys, never hard-coded license codes.
 
 ---
@@ -171,6 +209,7 @@ Fast to scaffold, secure by default, and matches Lovable's strengths.
 - Row-level security ensures users only access their own projects/bids    
 - Public upload form: rate-limited to prevent spam    
 - File size limit: 25MB (configurable)  
+- Future contractor procurement portal credentials must be encrypted at rest, restricted to acquisition/registration workers, never exposed to the frontend, and audited whenever used.
 
 ---
 
@@ -309,6 +348,9 @@ Fast to scaffold, secure by default, and matches Lovable's strengths.
 - AI bid diff tools    
 - Multi-user GC orgs
 - Compliance tracking (COIs, license expirations)
+- Agency Access Management for procurement portal registration and document-access coverage
+- Registration Agent, registration memory, and human escalation workflow
+- Contractor-owned portal credentials and Bid Profile agency registration management
 
 ---
 
@@ -560,11 +602,137 @@ See `docs/agent-architecture-task-list.md` for implementation tasks.
 
 ---
 
-### 🔐 Contractor Portal Integrations — Phase 2+ Architecture
+### 🔐 Agency Access Management
 
-> **Future Architecture Note — Contractor-Owned Portal Credentials**
+> **Strategic Initiative: Agency Access Layer for Opportunity Intelligence**
 >
-> **Status**: Future consideration, out of scope for Phase 1
+> **Status**: Proposed platform capability
+
+Agency Access Management is BidBox's system for obtaining, monitoring, and maintaining access to public agency procurement portals and bid documents.
+
+Most public agencies require vendors to register before they can access plans, specifications, addenda, bidder lists, notifications, and procurement communications. Even when multiple agencies use the same platform, individual agencies may add custom registration fields, classifications, certifications, referral questions, or communication preferences.
+
+BidBox should treat agency access as a first-class platform capability rather than a one-off scraper exception.
+
+**Strategic Objective:**
+
+Create a unified Agency Access Layer that allows BidBox to:
+
+1. Obtain and maintain access to procurement portals and bid documents.
+2. Monitor agency registrations and access status.
+3. Automate vendor registration whenever possible.
+4. Escalate unknown or ambiguous registration questions to a human.
+5. Learn from previous registrations and continuously improve automation rates.
+6. Provide customers with visibility into their agency coverage and registration status.
+7. Establish BidBox as the system of record for agency access management.
+
+**Opportunity Intelligence Placement:**
+
+```text
+Opportunity Discovery
+→ Agency Access Management
+→ Analyze Project
+→ Document Acquisition
+→ Project Intelligence
+→ Qualification
+→ Add to Calendar
+```
+
+In practice, Agency Access Management supports both Discovery and Document Acquisition:
+
+- Discovery can reveal that a project exists.
+- Agency Access determines whether BidBox can access full bid package information.
+- Document Acquisition depends on the correct agency/vendor/prospective-bidder state.
+
+**Registration Agent Architecture:**
+
+Autonomous phase:
+
+- Opens the agency registration workflow.
+- Detects required inputs.
+- Completes known fields from Bid Profile or internal BidBox registration data.
+- Selects known dropdown values.
+- Applies stored registration preferences.
+- Submits forms when confidence is sufficient.
+
+Human assistance phase:
+
+- Pauses when confidence is low.
+- Creates a Registration Task.
+- Shows agency name, field requiring input, available options, and suggested answer.
+- Resumes once a human supplies the answer.
+
+Learning phase:
+
+- Stores agency, field label, field type, selected answer, confidence score, and timestamp.
+- Reuses prior answers for future registrations.
+- Builds a registration memory system that improves automation rates over time.
+
+**Phase 1 Internal Usage:**
+
+Initial Agency Access Management should focus on BidBox's own internal agency access network.
+
+BidBox must obtain vendor access in order to:
+
+- Download bid documents.
+- Download plans.
+- Download specifications.
+- Download addenda.
+- Monitor project changes.
+- Power Opportunity Intelligence agents.
+
+The Registration Agent should first be used to establish and maintain BidBox's own agency access network.
+
+**Phase 2 Customer Usage:**
+
+After validation, Agency Access Management becomes customer-facing inside Bid Profile.
+
+Customers should be able to see:
+
+- Registered agencies.
+- Unregistered agencies.
+- Registration status.
+- Access blockers.
+- Coverage percentage.
+- Registration history.
+
+Example:
+
+```text
+Agency Access Coverage
+72 / 104 agencies registered
+```
+
+Actions may include:
+
+- Register Missing Agencies.
+- Review Registration Issues.
+- View Agency Access Status.
+- View Registration History.
+
+When a project is discovered from an unregistered agency, BidBox should be able to show:
+
+```text
+Registration required to access full procurement information.
+```
+
+**BidBox Internal Agency Registration Network:**
+
+Each successfully registered agency expands BidBox's procurement access network. This creates a durable platform asset that improves document coverage, opportunity intelligence, addenda monitoring, and customer onboarding speed.
+
+**Coverage Dashboard:**
+
+Agency Access Management should eventually include an internal dashboard showing:
+
+- Total agencies tracked.
+- Registered agencies.
+- Registration required.
+- Blocked registrations.
+- Human input required.
+- Last access verification.
+- Document acquisition success/failure by agency.
+
+**Future Architecture Note — Contractor-Owned Portal Credentials**
 
 #### Context
 
@@ -642,7 +810,7 @@ Settings should be contractor-specific rather than globally defined by BidBox.
 Because BidBox may ultimately store contractor portal credentials:
 
 - Credentials must be encrypted at rest.
-- Access should be restricted to acquisition workers.
+- Access should be restricted to acquisition and registration workers.
 - Credentials must never be exposed to the frontend.
 - Credential usage should be audited and logged.
 - Future evaluation should determine whether OAuth, delegated access, vault storage, or other credential-management approaches are available per portal.

@@ -5,6 +5,19 @@ Last Updated: 2026-01-18
 
 ---
 
+## Opportunity Intelligence Roadmap Ownership
+
+Opportunity Intelligence development is tracked separately from this broad historical backlog.
+
+- Product strategy source of truth: `docs/initiatives/opportunity-intelligence-mvp.md`
+- Practical implementation plan: `docs/initiatives/opportunity-intelligence-implementation-plan.md`
+- Execution roadmap for agent, discovery, Project Intelligence, qualification, and pursuit initiatives: `docs/agent-architecture-task-list.md`
+- Agency Access Management is tracked in the Master Plan and Agent Architecture roadmap as part of the Opportunity Intelligence architecture, not duplicated here.
+
+Keep this `tasks.md` file focused on broad product implementation history and app-wide backlog. Do not duplicate the Opportunity Intelligence roadmap here.
+
+---
+
 ## 📅 Session Changelog
 
 ### 2026-01-18: Bid Readiness Checklist
