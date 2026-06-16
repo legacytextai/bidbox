@@ -583,25 +583,677 @@ Dependencies:
 - Opportunity source inventory from Phase E.
 - Future secure credential storage for contractor-owned portal credentials.
 
-### 7.3. F3 — Document Processing ❌ NOT STARTED
+### 7.3. F3 — Document Processing 🟡 IMPLEMENTED, PENDING PRODUCTION VALIDATION
 
-Purpose: extract usable text from acquired documents.
+Purpose: process acquired bid-package documents into a structured, page-citable evidence layer for future Project Intelligence and qualification.
+
+F3 sits between F2 and F4:
+
+```text
+F2 Acquire Documents
+↓
+F3 Process Documents
+↓
+F4 Project Intelligence
+↓
+F5 Qualification
+```
+
+F3 is an evidence-processing layer. It should classify, extract, organize, chunk, cite, and track processing state. It should not generate intelligence, answer project questions, resolve conflicts, determine final governing requirements, summarize documents, qualify the project, estimate work, or recommend whether to pursue.
 
 Current repo support:
 - Manual project files exist.
 - `crawl-project` can extract page-level metadata from source pages.
-- No full bid-package parsing pipeline exists yet.
+- F2 creates `opportunity_documents` rows and stores acquired source files in the private `opportunity-documents` Supabase Storage bucket.
+- `agent_tasks` now supports a separate `document_processing` task type.
+- Railway worker now processes F3 document-processing work.
+- `pdfjs-dist` is the F3 extraction engine for text-native PDFs.
+- F3 schema support now exists for `opportunity_document_pages` and `opportunity_document_chunks`.
 
-Needed:
-- Detect file types.
-- Extract text from text-native PDFs first.
-- Store extracted text and processing status.
-- Add OCR later for scanned PDFs if beta projects require it.
-- Preserve source references so reports can cite where facts came from.
+Current implementation status:
+- Schema migration exists for candidate/document processing statuses, page rows, chunk rows, classification fields, source order, and inferred precedence metadata.
+- F2 acquisition automatically queues `document_processing` when documents are acquired.
+- Worker processes acquired documents sequentially per candidate.
+- Text-native PDFs are extracted page by page.
+- Non-PDF files are marked `unsupported`.
+- PDFs with insufficient text are marked as needing OCR, but OCR is deferred.
+- F3 does not mark `analysis_status = ready`.
+- F3 does not generate Project Intelligence, summaries, recommendations, qualification, estimating, or Add to Calendar output.
+
+#### 7.3.1. Goals
+
+F3 must turn source files into reliable evidence, not conclusions.
+
+Required outcomes:
+- Detect file type and MIME type.
+- Classify documents deterministically where possible.
+- Assign each document a lightweight package grouping through `document_family`.
+- Preserve source acquisition order with `document_source_order`.
+- Infer document ordering metadata with `inferred_precedence_rank`, without claiming legal precedence.
+- Extract raw page-level text as close to original as practical.
+- Store page records so future answers can cite page numbers.
+- Create analysis-ready chunks that preserve document/page traceability.
+- Track processing status at both candidate and document levels.
+- Surface failures, unsupported files, and OCR needs without blocking useful partial results.
+
+F3 success means the system can retrieve useful extracted text and citations from acquired documents. It does not mean Project Intelligence exists.
+
+#### 7.3.2. Architecture
+
+Approved F3 pipeline:
+
+```text
+Acquire Documents
+↓
+Classify Documents
+↓
+Extract Text
+↓
+Create Page Records
+↓
+Create Chunks
+↓
+Store Citations
+↓
+Track Processing State
+```
+
+Recommended data flow:
+
+```text
+opportunity_documents
+  source file metadata + processing status + classification metadata
+        ↓
+opportunity_document_pages
+  page-level extracted text + page/sheet citation data
+        ↓
+opportunity_document_chunks
+  analysis-ready text chunks + page range citations
+        ↓
+F4 Project Intelligence
+  source-backed report generation
+        ↓
+F5 Qualification
+  evidence-backed fit/risk decision
+```
+
+F3 should process documents inside the Railway worker. The frontend and Supabase Edge Functions should not parse PDFs or perform heavy document processing.
+
+#### 7.3.3. Schema Changes
+
+Extend `opportunity_documents` with processing and classification fields:
+
+- `processing_status`
+  - `not_requested`
+  - `queued`
+  - `processing`
+  - `processed`
+  - `partial`
+  - `failed`
+  - `unsupported`
+- `processing_started_at`
+- `processing_completed_at`
+- `processing_error`
+- `detected_file_type`
+- `detected_mime_type`
+- `document_class`
+- `document_family`
+- `document_subclass`
+- `document_source_order`
+- `document_date`
+- `document_revision`
+- `document_sequence`
+- `is_addendum`
+- `addendum_number`
+- `inferred_precedence_rank`
+- `text_extraction_method`
+- `text_page_count`
+- `text_char_count`
+- `has_text`
+- `needs_ocr`
+- `processing_metadata jsonb`
+
+Add `opportunity_document_pages`:
+
+- `id`
+- `opportunity_document_id`
+- `opportunity_candidate_id`
+- `page_number`
+- `page_label`
+- `sheet_number`
+- `sheet_title`
+- `text`
+- `char_count`
+- `extraction_method`
+- `text_confidence`
+- `created_at`
+
+Add `opportunity_document_chunks`:
+
+- `id`
+- `opportunity_document_id`
+- `opportunity_candidate_id`
+- `page_start`
+- `page_end`
+- `chunk_index`
+- `text`
+- `char_count`
+- `token_estimate`
+- `document_class`
+- `document_family`
+- `citation_label`
+- `created_at`
+
+Extend `opportunity_candidates` with candidate-level processing status:
+
+- `document_processing_status`
+  - `not_requested`
+  - `queued`
+  - `processing`
+  - `processed`
+  - `partial`
+  - `failed`
+- `document_processing_started_at`
+- `document_processing_completed_at`
+- `document_processing_error`
+
+Do not add `opportunity_document_sections` in F3 MVP. Section extraction can be introduced later if beta workflows prove it is necessary.
+
+Recommended indexes:
+- `opportunity_documents(processing_status)`
+- `opportunity_documents(opportunity_candidate_id, processing_status)`
+- `opportunity_documents(opportunity_candidate_id, document_family)`
+- `opportunity_document_pages(opportunity_candidate_id)`
+- `opportunity_document_pages(opportunity_document_id, page_number)`
+- `opportunity_document_chunks(opportunity_candidate_id)`
+- `opportunity_document_chunks(opportunity_document_id, chunk_index)`
+- `opportunity_document_chunks(opportunity_candidate_id, document_family)`
+
+Recommended uniqueness:
+- One page row per document/page number.
+- One chunk row per document/chunk index.
+- Reprocessing should replace prior page/chunk rows for the document being reprocessed.
+
+#### 7.3.4. Task Breakdown
+
+##### 7.3.4.1. Schema Migration
+- Add processing fields to `opportunity_documents`.
+- Add document-processing fields to `opportunity_candidates`.
+- Create `opportunity_document_pages`.
+- Create `opportunity_document_chunks`.
+- Add indexes and RLS policies.
+- Ensure service role can manage processing rows.
+- Allow authenticated users to read processing evidence where appropriate.
+
+##### 7.3.4.2. Queue `document_processing`
+- Add a new `agent_tasks.task_type` value by convention: `document_processing`.
+- Do not overload `project_analysis`.
+- Queue `document_processing` automatically after F2 acquisition finishes with at least one acquired document.
+- Prevent duplicate active processing tasks per candidate.
+
+Task payload:
+
+```json
+{
+  "candidate_id": "...",
+  "document_ids": ["optional"],
+  "source": "f3_document_processing",
+  "retry_failed": false
+}
+```
+
+MVP default: one `document_processing` task per candidate. Process documents sequentially inside that task. Later, split into one task per document only if large bid packages require it.
+
+##### 7.3.4.3. Worker Route
+- Add `document_processing` handling to the Railway worker dispatcher.
+- Load candidate.
+- Load acquired `opportunity_documents`.
+- Mark candidate/document processing statuses.
+- Download files from Supabase Storage.
+- Run file detection, classification, extraction, page storage, chunking, and final status updates.
+- Write logs to `agent_run_logs`.
+
+##### 7.3.4.4. PDF Text Extraction
+- Start with text-native PDFs.
+- Extract text page by page.
+- Store page text with page number and citation metadata.
+- Mark `needs_ocr = true` when a PDF has pages but insufficient extracted text.
+- Defer OCR until beta projects prove it is needed.
+
+##### 7.3.4.5. Chunk Creation
+- Create chunks from page text.
+- Preserve page ranges.
+- Preserve document class and family.
+- Generate citation labels.
+- Store chunks in `opportunity_document_chunks`.
+- Keep raw page text as the source of truth; chunks are derived retrieval units.
+
+##### 7.3.4.6. Minimal UI Status
+- Show document processing status on opportunity cards or analysis status area.
+- Suggested labels:
+  - `Document processing queued`
+  - `Processing documents`
+  - `Documents processed`
+  - `Documents partially processed`
+  - `Document processing failed`
+- Do not display Project Intelligence output in F3.
+
+#### 7.3.5. Worker Flow
+
+Detailed worker flow:
+
+1. Claim `document_processing` task from `agent_tasks`.
+2. Read `candidate_id` from task payload.
+3. Fetch candidate and all acquired `opportunity_documents`.
+4. If no acquired documents exist:
+   - mark candidate `document_processing_status = failed`
+   - fail task with clear error.
+5. Mark candidate `document_processing_status = processing`.
+6. For each acquired document:
+   - skip already `processed` documents unless `retry_failed` or forced.
+   - mark document `processing`.
+   - download source file from `opportunity-documents` storage.
+   - detect file type and MIME type.
+   - assign `document_source_order`.
+   - classify document.
+   - assign `document_family`.
+   - assign `inferred_precedence_rank`.
+   - extract text if supported.
+   - create/replace page records.
+   - create/replace chunk records.
+   - update document processing status and metadata.
+7. Continue processing remaining documents if one document fails.
+8. Set candidate final status:
+   - `processed` if all processable documents succeeded.
+   - `partial` if at least one document produced useful text but some failed, were unsupported, or need OCR.
+   - `failed` if no useful text was extracted from any acquired document.
+9. Update `agent_tasks.result` with:
+   - `documents_total`
+   - `documents_processed`
+   - `documents_partial`
+   - `documents_failed`
+   - `documents_unsupported`
+   - `pages_extracted`
+   - `chunks_created`
+   - `needs_ocr_count`
+   - `phase = f3_document_processing`
+   - `intelligence_status = not_generated`
+
+Important: F3 must not set `analysis_status = ready`. That should wait for F4 Project Intelligence.
+
+#### 7.3.6. Status Lifecycle
+
+Candidate-level lifecycle:
+
+```text
+not_requested
+→ queued
+→ processing
+→ processed | partial | failed
+```
+
+Document-level lifecycle:
+
+```text
+not_requested
+→ queued
+→ processing
+→ processed | partial | failed | unsupported
+```
+
+Status meanings:
+- `processed`: useful text/pages/chunks were created.
+- `partial`: some useful text exists, but some pages failed or extraction was incomplete.
+- `failed`: no useful text was extracted from that document or candidate.
+- `unsupported`: file type is intentionally skipped in F3.
+- `needs_ocr`: boolean flag, not a terminal status. A document can be `partial` or `failed` and `needs_ocr = true`.
+
+Candidate status should summarize useful package-level readiness for F4, not hide document-level failures.
+
+#### 7.3.7. Classification Logic
+
+F3 classification should be deterministic first.
+
+Inputs, in priority order:
+1. File name.
+2. PlanetBids manifest metadata / file title in `manifest_data`.
+3. First-page text.
+4. Text patterns across early pages.
+5. Fallback to `unknown`.
+
+Recommended `document_class` values:
+- `plans`
+- `specifications`
+- `addendum`
+- `bid_form`
+- `notice_inviting_bids`
+- `instructions_to_bidders`
+- `agreement`
+- `general_conditions`
+- `special_provisions`
+- `insurance`
+- `bond`
+- `prevailing_wage`
+- `bidder_list`
+- `qa`
+- `supporting_document`
+- `unknown`
+
+Examples:
+- `Plans.pdf` -> `plans`
+- `Drawings.pdf` -> `plans`
+- `Project Manual.pdf` -> `specifications`
+- `Specifications.pdf` -> `specifications`
+- `Addendum No. 2.pdf` -> `addendum`
+- `Bid Proposal.pdf` -> `bid_form`
+- `Notice Inviting Bids.pdf` -> `notice_inviting_bids`
+- `Instructions to Bidders.pdf` -> `instructions_to_bidders`
+- `Special Provisions.pdf` -> `special_provisions`
+- `Insurance Requirements.pdf` -> `insurance`
+- `Bid Bond.pdf` -> `bond`
+- `Prevailing Wage.pdf` -> `prevailing_wage`
+- `Prospective Bidders List.pdf` -> `bidder_list`
+
+F3 should classify but not interpret. Classification supports organization, retrieval, and later F4/F5 reasoning.
+
+#### 7.3.8. Document Family Model
+
+Add `document_family` to `opportunity_documents` and copy it to chunks.
+
+Recommended values:
+- `plans`
+- `specifications`
+- `addenda`
+- `contract_documents`
+- `bid_forms`
+- `insurance`
+- `bonds`
+- `labor_compliance`
+- `bidder_communications`
+- `supporting_documents`
+- `unknown`
+
+Purpose:
+- Keep package organization lightweight.
+- Enable future UI grouping without adding a separate table.
+- Support future displays such as:
+
+```text
+Project Package
+Plans (3)
+Specifications (1)
+Addenda (2)
+Bid Forms (4)
+Insurance (1)
+Supporting Documents (5)
+```
+
+Example mapping:
+- `plans` -> `plans`
+- `specifications` -> `specifications`
+- `addendum` -> `addenda`
+- `bid_form` -> `bid_forms`
+- `agreement` -> `contract_documents`
+- `general_conditions` -> `contract_documents`
+- `special_provisions` -> `contract_documents`
+- `insurance` -> `insurance`
+- `bond` -> `bonds`
+- `prevailing_wage` -> `labor_compliance`
+- `bidder_list` -> `bidder_communications`
+- `qa` -> `bidder_communications`
+- `supporting_document` -> `supporting_documents`
+- `unknown` -> `unknown`
+
+#### 7.3.9. Source Order
+
+Add `document_source_order` on `opportunity_documents`.
+
+Purpose:
+- Preserve acquisition order from the portal.
+- Support future UI display that mirrors the public agency package order.
+- Provide a stable fallback ordering when classification is uncertain.
+
+How to assign:
+- Prefer manifest/list order from F2 when available.
+- If manifest order is unavailable, use acquisition order by `created_at`.
+- Store as integer starting at 1.
+
+Do not use source order as legal precedence. It is display/order metadata only.
+
+#### 7.3.10. Precedence Metadata
+
+Use `inferred_precedence_rank`.
+
+Do not use `precedence_rank`.
+
+Reason:
+- Many public works packages define their own explicit order of precedence.
+- F3 should not claim legal precedence.
+- F3 should only infer a default ordering based on document type.
+- F4 can later discover actual order-of-precedence clauses from the package itself.
+
+Recommended inferred default:
+
+```text
+10  addendum
+20  bid_form
+30  notice_inviting_bids
+35  instructions_to_bidders
+40  special_provisions
+50  agreement
+55  general_conditions
+60  specifications
+70  plans
+80  insurance
+85  bond
+90  prevailing_wage
+95  bidder_list
+100 supporting_document
+110 unknown
+```
+
+Addenda ordering:
+- Later addenda should rank ahead of earlier addenda when addendum number/date is known.
+- Example:
+  - Addendum 3 -> `10`
+  - Addendum 2 -> `11`
+  - Addendum 1 -> `12`
+
+F3 does not resolve conflicts. F3 preserves metadata that allows F4/F5 to identify and reason about conflicts later.
+
+#### 7.3.11. Citation Model
+
+Citation traceability must preserve:
+
+```text
+document
+page
+chunk
+```
+
+Page-level citations are the core requirement. Future users will ask where a fact came from, and "Page 43" is more useful than "Chunk 27".
+
+Page citation fields:
+- `opportunity_document_id`
+- `file_name` via join
+- `page_number`
+- `page_label`
+- `sheet_number`
+- `sheet_title`
+
+Chunk citation fields:
+- `opportunity_document_id`
+- `page_start`
+- `page_end`
+- `citation_label`
+- `document_class`
+- `document_family`
+
+Example citation labels:
+- `Plans.pdf, p. 43`
+- `Plans.pdf, Sheet C-3, p. 18`
+- `Addendum No. 2, p. 1`
+- `Insurance Requirements, p. 2`
+- `Bid Form, pp. 1-3`
+
+Rules:
+- Every chunk must map back to a document and page range.
+- F4/F5 should cite chunks/pages, not raw files only.
+- If sheet number cannot be detected, page number is still valid.
+- F3 should not create factual claims. It only preserves source location.
+
+#### 7.3.12. Raw Evidence Preservation
+
+Store extracted page text as close to original as practical.
+
+Guidelines:
+- Do not aggressively clean, summarize, rewrite, or normalize page text.
+- Preserve line breaks when reasonable.
+- Preserve extracted headings and repeated labels where possible.
+- Store raw page text in `opportunity_document_pages.text`.
+- Use chunks as derived retrieval units, not the only evidence store.
+- If cleanup is needed for chunking, keep the original page text unchanged and clean only the derived chunk text.
+
+Reason:
+- F4/F5 need trustworthy evidence.
+- Debugging extraction quality requires raw page text.
+- Future citation and legal-risk workflows depend on preserving source context.
+
+#### 7.3.13. Retry Strategy
+
+Retry defaults:
+- Retrying a candidate processes only documents with:
+  - `not_requested`
+  - `queued`
+  - `partial`
+  - `failed`
+  - `unsupported`, only if support was added
+- Already `processed` documents should be skipped unless forced.
+
+Before reprocessing a document:
+- Delete or replace existing `opportunity_document_pages` rows for that document.
+- Delete or replace existing `opportunity_document_chunks` rows for that document.
+- Keep the original `opportunity_documents` source metadata and storage path.
+
+Failure behavior:
+- A single failed document should not fail the entire package.
+- Continue processing remaining documents.
+- Store document-level errors.
+- Store candidate-level summary error if final status is `partial` or `failed`.
+- Store task-level summary in `agent_tasks.result`.
+
+Error categories:
+- `unsupported_file_type`
+- `storage_download_failed`
+- `pdf_parse_failed`
+- `empty_text_extracted`
+- `ocr_required`
+- `chunking_failed`
+- `db_write_failed`
+
+#### 7.3.14. Validation Plan
+
+Validate F3 against real F2 packages already proven in production:
+
+1. `Holiday Decor Rental and Installation Services 26-53`
+   - 3 acquired documents.
+2. `PAVEMENT RESTORATION PARK AVENUE & S BAY FRONT ALLEY 9451-3`
+   - 9 acquired documents.
+   - Includes `Plans.pdf`, addenda, bidder lists, and supporting documents.
+
+Validation checks:
+- `document_processing` task is created automatically after F2 acquisition.
+- Worker claims task and marks candidate `processing`.
+- Each acquired document receives a processing status.
+- Text-native PDFs produce `opportunity_document_pages` rows.
+- Documents with useful extracted text produce `opportunity_document_chunks` rows.
+- Page rows include page numbers and non-empty text where text exists.
+- Chunk rows include document/page traceability and citation labels.
+- `document_family` and `document_class` are populated for obvious files.
+- `document_source_order` preserves portal/acquisition order.
+- `inferred_precedence_rank` is populated without claiming legal precedence.
+- `needs_ocr` is set for PDFs with insufficient extracted text.
+- Candidate ends as `processed`, `partial`, or `failed` according to actual evidence.
+- `analysis_status` is not marked ready.
+- No F4 report is generated.
+
+Manual spot checks:
+- Open a stored `Plans.pdf` and confirm page count aligns with extracted page rows when possible.
+- Confirm a known addendum file is classified as `addendum` and family `addenda`.
+- Confirm bidder list/supporting documents are not incorrectly treated as specifications.
+- Confirm citation labels are human-readable.
+
+#### 7.3.15. Acceptance Criteria
+
+F3 is complete when:
+- Schema exists for page and chunk storage.
+- Acquired documents can be queued for `document_processing`.
+- Worker processes at least one real acquired PlanetBids package.
+- Text-native PDFs produce page-level extracted text.
+- Extracted pages are stored in `opportunity_document_pages`.
+- Chunks are stored in `opportunity_document_chunks`.
+- Chunks preserve document/page traceability.
+- Document classification and family are populated for obvious documents.
+- `inferred_precedence_rank` is populated.
+- `document_source_order` is populated.
+- Candidate and document processing statuses update correctly.
+- Partial success is supported.
+- Failed/unsupported/needs-OCR documents are visible through status/error fields.
+- No summaries, reports, recommendations, qualification, estimating, or conflict resolution are generated.
+
+#### 7.3.16. Risks
+
+Risk: PDF extraction produces messy text.
+- Mitigation: preserve raw page text and keep chunks simple. Do not require perfect formatting for F3.
+
+Risk: scanned PDFs produce no text.
+- Mitigation: mark `needs_ocr = true` and defer OCR until beta evidence justifies it.
+
+Risk: plan sheets have sparse text.
+- Mitigation: still preserve page/sheet boundaries. Do not claim plan intelligence in F3.
+
+Risk: deterministic classification mislabels edge-case files.
+- Mitigation: use conservative fallback `unknown`; F4 should handle unknown documents safely.
+
+Risk: inferred precedence is mistaken for legal precedence.
+- Mitigation: use only `inferred_precedence_rank` and document that F4 must extract actual order-of-precedence clauses later.
+
+Risk: reprocessing duplicates pages/chunks.
+- Mitigation: replace page/chunk rows per document before reprocessing.
+
+Risk: large PDFs stress worker memory/time.
+- Mitigation: process documents sequentially, track partial results, and consider file-size/page-count caps if needed.
+
+Risk: F3 scope expands into intelligence.
+- Mitigation: enforce boundary: classify, extract, organize, chunk, cite, track. Nothing else.
+
+#### 7.3.17. Future Handoff to F4
+
+F4 Project Intelligence should consume F3 evidence, not raw PDFs directly.
+
+F4 inputs:
+- `opportunity_documents` classification and family metadata.
+- `opportunity_document_pages` raw extracted text.
+- `opportunity_document_chunks` citation-ready text.
+- `inferred_precedence_rank` as a hint only.
+- `document_source_order` for package display.
+
+F4 responsibilities:
+- Generate estimator-facing Project Intelligence report.
+- Extract scope, requirements, bid events, risks, and trade signals.
+- Cite source chunks/pages.
+- Mark unknowns explicitly.
+- Identify possible conflicts without hiding source evidence.
+- Discover actual order-of-precedence language if present.
+
+F5 Qualification should consume F4 outputs and citations. It should not rely on metadata-only qualification once F4 evidence exists.
 
 MVP boundary:
 - Do not attempt complete plan takeoff or automated estimating.
 - Prefer useful text extraction for specs/addenda before advanced drawing intelligence.
+- Do not generate Project Intelligence reports in F3.
+- Do not resolve conflicting requirements in F3.
+- Do not mark final qualification statuses in F3.
 
 ### 7.4. F4 — Project Intelligence Report ❌ NOT STARTED
 

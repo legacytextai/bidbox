@@ -22,6 +22,7 @@ type CandidateStatus = "pending" | "red" | "yellow" | "green" | "converted";
 type AutoStatus = "green" | "yellow" | "red" | null;
 type AnalysisStatus = "not_requested" | "queued" | "analyzing" | "ready" | "failed";
 type DocumentAcquisitionStatus = "not_requested" | "queued" | "acquiring" | "acquired" | "failed";
+type DocumentProcessingStatus = "not_requested" | "queued" | "processing" | "processed" | "partial" | "failed";
 
 interface Candidate {
   id: string;
@@ -51,6 +52,10 @@ interface Candidate {
   document_acquisition_started_at: string | null;
   document_acquisition_completed_at: string | null;
   document_acquisition_error: string | null;
+  document_processing_status: DocumentProcessingStatus;
+  document_processing_started_at: string | null;
+  document_processing_completed_at: string | null;
+  document_processing_error: string | null;
 }
 
 const FILTERS: { label: string; value: string }[] = [
@@ -106,6 +111,24 @@ const DOCUMENT_ACQUISITION_LABELS: Record<DocumentAcquisitionStatus, string> = {
   failed: "Document acquisition failed",
 };
 
+const DOCUMENT_PROCESSING_STYLES: Record<DocumentProcessingStatus, string> = {
+  not_requested: "bg-gray-500/10 text-gray-600",
+  queued: "bg-blue-500/10 text-blue-700",
+  processing: "bg-indigo-500/10 text-indigo-700",
+  processed: "bg-green-500/10 text-green-700",
+  partial: "bg-yellow-500/10 text-yellow-700",
+  failed: "bg-red-500/10 text-red-700",
+};
+
+const DOCUMENT_PROCESSING_LABELS: Record<DocumentProcessingStatus, string> = {
+  not_requested: "Documents not processed",
+  queued: "Document processing queued",
+  processing: "Processing documents",
+  processed: "Documents processed",
+  partial: "Documents partially processed",
+  failed: "Document processing failed",
+};
+
 const AUTO_RANK: Record<string, number> = {
   green: 0,
   yellow: 1,
@@ -117,6 +140,7 @@ const AUTO_RANK: Record<string, number> = {
 // Extend these lists as new long-running agent statuses (e.g. F3/F4: processing,
 // extracting, chunking, generating) are introduced.
 const ACTIVE_DOCUMENT_STATUSES: DocumentAcquisitionStatus[] = ["queued", "acquiring"];
+const ACTIVE_DOCUMENT_PROCESSING_STATUSES: DocumentProcessingStatus[] = ["queued", "processing"];
 const ACTIVE_ANALYSIS_STATUSES: AnalysisStatus[] = ["queued", "analyzing"];
 const POLLING_INTERVAL_MS = 7000;
 
@@ -196,6 +220,10 @@ const Opportunities = () => {
     document_acquisition_started_at: row.document_acquisition_started_at ?? null,
     document_acquisition_completed_at: row.document_acquisition_completed_at ?? null,
     document_acquisition_error: row.document_acquisition_error ?? null,
+    document_processing_status: (row.document_processing_status ?? "not_requested") as DocumentProcessingStatus,
+    document_processing_started_at: row.document_processing_started_at ?? null,
+    document_processing_completed_at: row.document_processing_completed_at ?? null,
+    document_processing_error: row.document_processing_error ?? null,
   }), []);
 
   const loadCandidates = useCallback(async (opts?: { silent?: boolean }) => {
@@ -226,6 +254,7 @@ const Opportunities = () => {
           if (
             !p ||
             p.document_acquisition_status !== r.document_acquisition_status ||
+            p.document_processing_status !== r.document_processing_status ||
             p.analysis_status !== r.analysis_status ||
             p.status !== r.status
           ) {
@@ -296,6 +325,7 @@ const Opportunities = () => {
           console.info("[opps] realtime UPDATE", {
             id: updated?.id,
             doc_status: updated?.document_acquisition_status,
+            processing_status: updated?.document_processing_status,
             analysis_status: updated?.analysis_status,
           });
           setCandidates((prev) =>
@@ -320,8 +350,9 @@ const Opportunities = () => {
     let count = 0;
     for (const c of candidates) {
       const docActive = ACTIVE_DOCUMENT_STATUSES.includes(c.document_acquisition_status);
+      const processingActive = ACTIVE_DOCUMENT_PROCESSING_STATUSES.includes(c.document_processing_status);
       const analysisActive = ACTIVE_ANALYSIS_STATUSES.includes(c.analysis_status);
-      if (docActive || analysisActive) count += 1;
+      if (docActive || processingActive || analysisActive) count += 1;
     }
     return { hasActiveCandidates: count > 0, activeCount: count };
   }, [candidates]);
@@ -625,6 +656,33 @@ const Opportunities = () => {
             </TooltipContent>
           </Tooltip>
         )}
+        {candidate.document_processing_status !== "not_requested" && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className={`inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded cursor-help ${DOCUMENT_PROCESSING_STYLES[candidate.document_processing_status]}`}>
+                {candidate.document_processing_status === "failed" ? (
+                  <RotateCcw className="h-3 w-3" />
+                ) : candidate.document_processing_status === "processing" ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Clock className="h-3 w-3" />
+                )}
+                {DOCUMENT_PROCESSING_LABELS[candidate.document_processing_status]}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs">
+              <p className="text-xs">
+                {candidate.document_processing_status === "failed"
+                  ? candidate.document_processing_error ?? "Document processing failed."
+                  : candidate.document_processing_status === "processed"
+                  ? "Evidence extracted. Project Intelligence has not been generated yet."
+                  : candidate.document_processing_status === "partial"
+                  ? "Some evidence was extracted. Project Intelligence has not been generated yet."
+                  : "The worker is extracting document evidence. Project Intelligence has not been generated yet."}
+              </p>
+            </TooltipContent>
+          </Tooltip>
+        )}
       </div>
 
       {/* Meta */}
@@ -682,7 +740,15 @@ const Opportunities = () => {
           </Button>
           {candidate.analysis_status !== "not_requested" && (
             <p className="text-xs text-muted-foreground">
-              {candidate.document_acquisition_status === "failed"
+              {candidate.document_processing_status === "processed"
+                ? "Document evidence extracted. Project Intelligence not generated yet."
+                : candidate.document_processing_status === "partial"
+                ? "Some document evidence extracted. Project Intelligence not generated yet."
+                : candidate.document_processing_status === "processing"
+                ? "Processing source documents. Project Intelligence not generated yet."
+                : candidate.document_processing_status === "queued"
+                ? "Document processing queued. Project Intelligence not generated yet."
+                : candidate.document_acquisition_status === "failed"
                 ? "Documents were not acquired. You can retry analysis."
                 : candidate.document_acquisition_status === "acquired"
                 ? "Documents acquired. Ready for document processing. Project Intelligence not generated yet."

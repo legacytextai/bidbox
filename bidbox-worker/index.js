@@ -2,6 +2,10 @@ require('dotenv').config();
 const { createClient } = require('@supabase/supabase-js');
 const { scrapePlanetBids } = require('./drivers/planetbids');
 const { acquirePlanetBidsDocuments } = require('./drivers/planetbids_documents');
+const {
+  queueDocumentProcessingForCandidate,
+  runDocumentProcessing,
+} = require('./drivers/document_processing');
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -271,6 +275,22 @@ async function runProjectAnalysisAcquisition(task, supabase) {
     })
     .eq('id', candidate.id);
 
+  let documentProcessingTaskId = null;
+  let documentProcessingDuplicate = false;
+  if (acquisitionStatus === 'acquired' && (result.acquired + result.skipped) > 0) {
+    try {
+      const queued = await queueDocumentProcessingForCandidate({
+        supabase,
+        candidateId: candidate.id,
+      });
+      documentProcessingTaskId = queued.taskId;
+      documentProcessingDuplicate = queued.duplicate;
+      log(`Document processing ${queued.duplicate ? 'already queued' : 'queued'}: ${queued.taskId}`);
+    } catch (e) {
+      log(`Document processing queue failed: ${e.message}`);
+    }
+  }
+
   if (runLogId) {
     try {
       await supabase
@@ -293,8 +313,66 @@ async function runProjectAnalysisAcquisition(task, supabase) {
     documents_acquired: result.acquired,
     documents_skipped: result.skipped,
     documents_failed: result.failed,
+    document_processing_task_id: documentProcessingTaskId,
+    document_processing_duplicate: documentProcessingDuplicate,
     errorSummary,
   };
+}
+
+async function runDocumentProcessingTask(task, supabase) {
+  const logs = [];
+  const log = (msg) => {
+    const line = `[${ts()}] ${msg}`;
+    logs.push(line);
+    console.log(line);
+  };
+
+  let runLogId = null;
+  try {
+    const { data: runLog, error: runLogError } = await supabase
+      .from('agent_run_logs')
+      .insert({
+        task_id: task.id,
+        status: 'running',
+        logs: logs.join('\n'),
+      })
+      .select('id')
+      .single();
+    if (runLogError) {
+      console.warn(`[${ts()}] agent_run_logs insert failed: ${runLogError.message}`);
+    } else {
+      runLogId = runLog.id;
+    }
+  } catch (e) {
+    console.warn(`[${ts()}] agent_run_logs insert threw: ${e.message}`);
+  }
+
+  try {
+    const result = await runDocumentProcessing(task, supabase, log);
+    if (runLogId) {
+      await supabase
+        .from('agent_run_logs')
+        .update({
+          status: result.errorSummary ? 'complete_with_errors' : 'complete',
+          logs: logs.join('\n'),
+          completed_at: new Date().toISOString(),
+        })
+        .eq('id', runLogId);
+    }
+    return result;
+  } catch (e) {
+    if (runLogId) {
+      await supabase
+        .from('agent_run_logs')
+        .update({
+          status: 'failed',
+          logs: logs.join('\n'),
+          completed_at: new Date().toISOString(),
+        })
+        .eq('id', runLogId);
+    }
+    throw e;
+  }
 }
 
 async function claimNextTask() {
@@ -302,7 +380,7 @@ async function claimNextTask() {
     .from('agent_tasks')
     .select('*')
     .eq('status', 'pending')
-    .in('task_type', ['planetbids_scan', 'project_analysis'])
+    .in('task_type', ['planetbids_scan', 'project_analysis', 'document_processing'])
     .order('priority', { ascending: false })
     .order('created_at', { ascending: true })
     .limit(1)
@@ -340,6 +418,8 @@ async function processTask(task) {
       result = await runPlanetBidsScan(task, supabase);
     } else if (task.task_type === 'project_analysis') {
       result = await runProjectAnalysisAcquisition(task, supabase);
+    } else if (task.task_type === 'document_processing') {
+      result = await runDocumentProcessingTask(task, supabase);
     } else {
       throw new Error(`Unsupported task type: ${task.task_type}`);
     }
@@ -351,12 +431,30 @@ async function processTask(task) {
           errors: result.errors,
           error_summary: result.errorSummary,
         }
+      : task.task_type === 'document_processing'
+      ? {
+          candidate_id: result.candidate_id,
+          documents_total: result.documents_total,
+          documents_processed: result.documents_processed,
+          documents_partial: result.documents_partial,
+          documents_failed: result.documents_failed,
+          documents_unsupported: result.documents_unsupported,
+          documents_skipped: result.documents_skipped,
+          pages_extracted: result.pages_extracted,
+          chunks_created: result.chunks_created,
+          needs_ocr_count: result.needs_ocr_count,
+          error_summary: result.errorSummary,
+          phase: 'f3_document_processing',
+          intelligence_status: 'not_generated',
+        }
       : {
           candidate_id: result.candidate_id,
           documents_found: result.documents_found,
           documents_acquired: result.documents_acquired,
           documents_skipped: result.documents_skipped,
           documents_failed: result.documents_failed,
+          document_processing_task_id: result.document_processing_task_id,
+          document_processing_duplicate: result.document_processing_duplicate,
           error_summary: result.errorSummary,
           phase: 'f2_document_acquisition',
           intelligence_status: 'not_generated',
@@ -375,6 +473,8 @@ async function processTask(task) {
     if (task.task_type === 'planetbids_scan') {
       console.log(`[${ts()}] Task ${task.id} complete: found=${result.found} new=${result.new} errors=${result.errors}`);
       await maybeQualifyCandidates();
+    } else if (task.task_type === 'document_processing') {
+      console.log(`[${ts()}] Task ${task.id} complete: documents_processed=${result.documents_processed} documents_failed=${result.documents_failed} pages=${result.pages_extracted} chunks=${result.chunks_created}`);
     } else {
       console.log(`[${ts()}] Task ${task.id} complete: documents_acquired=${result.documents_acquired} documents_failed=${result.documents_failed}`);
     }
@@ -387,6 +487,16 @@ async function processTask(task) {
           document_acquisition_status: 'failed',
           document_acquisition_completed_at: new Date().toISOString(),
           document_acquisition_error: e.message,
+        })
+        .eq('id', task.payload.candidate_id);
+    }
+    if (task.task_type === 'document_processing' && task.payload?.candidate_id) {
+      await supabase
+        .from('opportunity_candidates')
+        .update({
+          document_processing_status: 'failed',
+          document_processing_completed_at: new Date().toISOString(),
+          document_processing_error: e.message,
         })
         .eq('id', task.payload.candidate_id);
     }
