@@ -375,6 +375,10 @@ export type Database = {
           document_acquisition_error: string | null
           document_acquisition_started_at: string | null
           document_acquisition_status: string
+          document_processing_completed_at: string | null
+          document_processing_error: string | null
+          document_processing_started_at: string | null
+          document_processing_status: string
           id: string
           last_crawled_at: string | null
           portal_type: string | null
@@ -409,6 +413,10 @@ export type Database = {
           document_acquisition_error?: string | null
           document_acquisition_started_at?: string | null
           document_acquisition_status?: string
+          document_processing_completed_at?: string | null
+          document_processing_error?: string | null
+          document_processing_started_at?: string | null
+          document_processing_status?: string
           id?: string
           last_crawled_at?: string | null
           portal_type?: string | null
@@ -443,6 +451,10 @@ export type Database = {
           document_acquisition_error?: string | null
           document_acquisition_started_at?: string | null
           document_acquisition_status?: string
+          document_processing_completed_at?: string | null
+          document_processing_error?: string | null
+          document_processing_started_at?: string | null
+          document_processing_status?: string
           id?: string
           last_crawled_at?: string | null
           portal_type?: string | null
@@ -496,53 +508,242 @@ export type Database = {
           },
         ]
       }
+      opportunity_document_chunks: {
+        Row: {
+          char_count: number
+          chunk_index: number
+          citation_label: string | null
+          created_at: string
+          document_class: string | null
+          document_family: string | null
+          id: string
+          opportunity_candidate_id: string
+          opportunity_document_id: string
+          page_end: number
+          page_start: number
+          text: string
+          token_estimate: number | null
+        }
+        Insert: {
+          char_count?: number
+          chunk_index: number
+          citation_label?: string | null
+          created_at?: string
+          document_class?: string | null
+          document_family?: string | null
+          id?: string
+          opportunity_candidate_id: string
+          opportunity_document_id: string
+          page_end: number
+          page_start: number
+          text: string
+          token_estimate?: number | null
+        }
+        Update: {
+          char_count?: number
+          chunk_index?: number
+          citation_label?: string | null
+          created_at?: string
+          document_class?: string | null
+          document_family?: string | null
+          id?: string
+          opportunity_candidate_id?: string
+          opportunity_document_id?: string
+          page_end?: number
+          page_start?: number
+          text?: string
+          token_estimate?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "opportunity_document_chunks_opportunity_candidate_id_fkey"
+            columns: ["opportunity_candidate_id"]
+            isOneToOne: false
+            referencedRelation: "opportunity_candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "opportunity_document_chunks_opportunity_document_id_fkey"
+            columns: ["opportunity_document_id"]
+            isOneToOne: false
+            referencedRelation: "opportunity_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      opportunity_document_pages: {
+        Row: {
+          char_count: number
+          created_at: string
+          extraction_method: string | null
+          id: string
+          opportunity_candidate_id: string
+          opportunity_document_id: string
+          page_label: string | null
+          page_number: number
+          sheet_number: string | null
+          sheet_title: string | null
+          text: string | null
+          text_confidence: number | null
+        }
+        Insert: {
+          char_count?: number
+          created_at?: string
+          extraction_method?: string | null
+          id?: string
+          opportunity_candidate_id: string
+          opportunity_document_id: string
+          page_label?: string | null
+          page_number: number
+          sheet_number?: string | null
+          sheet_title?: string | null
+          text?: string | null
+          text_confidence?: number | null
+        }
+        Update: {
+          char_count?: number
+          created_at?: string
+          extraction_method?: string | null
+          id?: string
+          opportunity_candidate_id?: string
+          opportunity_document_id?: string
+          page_label?: string | null
+          page_number?: number
+          sheet_number?: string | null
+          sheet_title?: string | null
+          text?: string | null
+          text_confidence?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "opportunity_document_pages_opportunity_candidate_id_fkey"
+            columns: ["opportunity_candidate_id"]
+            isOneToOne: false
+            referencedRelation: "opportunity_candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "opportunity_document_pages_opportunity_document_id_fkey"
+            columns: ["opportunity_document_id"]
+            isOneToOne: false
+            referencedRelation: "opportunity_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       opportunity_documents: {
         Row: {
           acquisition_error: string | null
           acquisition_status: string
+          addendum_number: number | null
           agent_task_id: string | null
           created_at: string
+          detected_file_type: string | null
+          detected_mime_type: string | null
+          document_class: string | null
+          document_date: string | null
+          document_family: string | null
+          document_revision: string | null
+          document_sequence: number | null
+          document_source_order: number | null
+          document_subclass: string | null
           file_name: string
           file_size: number | null
           file_type: string | null
+          has_text: boolean
           id: string
+          inferred_precedence_rank: number | null
+          is_addendum: boolean
           manifest_data: Json | null
+          needs_ocr: boolean
           opportunity_candidate_id: string
+          processing_completed_at: string | null
+          processing_error: string | null
+          processing_metadata: Json | null
+          processing_started_at: string | null
+          processing_status: string
           source_url: string | null
           storage_bucket: string
           storage_path: string | null
+          text_char_count: number | null
+          text_extraction_method: string | null
+          text_page_count: number | null
           updated_at: string
         }
         Insert: {
           acquisition_error?: string | null
           acquisition_status?: string
+          addendum_number?: number | null
           agent_task_id?: string | null
           created_at?: string
+          detected_file_type?: string | null
+          detected_mime_type?: string | null
+          document_class?: string | null
+          document_date?: string | null
+          document_family?: string | null
+          document_revision?: string | null
+          document_sequence?: number | null
+          document_source_order?: number | null
+          document_subclass?: string | null
           file_name: string
           file_size?: number | null
           file_type?: string | null
+          has_text?: boolean
           id?: string
+          inferred_precedence_rank?: number | null
+          is_addendum?: boolean
           manifest_data?: Json | null
+          needs_ocr?: boolean
           opportunity_candidate_id: string
+          processing_completed_at?: string | null
+          processing_error?: string | null
+          processing_metadata?: Json | null
+          processing_started_at?: string | null
+          processing_status?: string
           source_url?: string | null
           storage_bucket?: string
           storage_path?: string | null
+          text_char_count?: number | null
+          text_extraction_method?: string | null
+          text_page_count?: number | null
           updated_at?: string
         }
         Update: {
           acquisition_error?: string | null
           acquisition_status?: string
+          addendum_number?: number | null
           agent_task_id?: string | null
           created_at?: string
+          detected_file_type?: string | null
+          detected_mime_type?: string | null
+          document_class?: string | null
+          document_date?: string | null
+          document_family?: string | null
+          document_revision?: string | null
+          document_sequence?: number | null
+          document_source_order?: number | null
+          document_subclass?: string | null
           file_name?: string
           file_size?: number | null
           file_type?: string | null
+          has_text?: boolean
           id?: string
+          inferred_precedence_rank?: number | null
+          is_addendum?: boolean
           manifest_data?: Json | null
+          needs_ocr?: boolean
           opportunity_candidate_id?: string
+          processing_completed_at?: string | null
+          processing_error?: string | null
+          processing_metadata?: Json | null
+          processing_started_at?: string | null
+          processing_status?: string
           source_url?: string | null
           storage_bucket?: string
           storage_path?: string | null
+          text_char_count?: number | null
+          text_extraction_method?: string | null
+          text_page_count?: number | null
           updated_at?: string
         }
         Relationships: [
