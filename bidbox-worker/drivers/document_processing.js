@@ -190,8 +190,12 @@ async function extractPdfPages(bytes) {
       }
     }
   } finally {
-    await pdf.cleanup().catch(() => {});
-    await Promise.resolve(pdf.destroy()).catch(() => {});
+    if (typeof pdf.cleanup === 'function') {
+      await Promise.resolve(pdf.cleanup()).catch(() => {});
+    }
+    if (typeof pdf.destroy === 'function') {
+      await Promise.resolve(pdf.destroy()).catch(() => {});
+    }
   }
 
   return pages;
