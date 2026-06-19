@@ -718,7 +718,7 @@ const Opportunities = () => {
         />
       )}
 
-      {/* Analyze Project */}
+      {/* Action: View Report (once analyzed) | Analyze Project | View Project */}
       {candidate.status === "converted" ? (
         <Button
           variant="outline"
@@ -726,6 +726,15 @@ const Opportunities = () => {
           onClick={() => navigate(`/projects/${candidate.converted_project_id}`)}
         >
           View Project
+        </Button>
+      ) : isAnalyzedCandidate(candidate) ? (
+        <Button
+          size="sm"
+          onClick={() => navigate(`/opportunities/${candidate.id}`)}
+          className="w-full bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90"
+        >
+          <Sparkles className="h-4 w-4 mr-2" />
+          View Project Intelligence Report
         </Button>
       ) : (
         <div className="space-y-1.5">
@@ -744,23 +753,6 @@ const Opportunities = () => {
             )}
             {bidClosed ? "Bid Closed" : analyzeLabel}
           </Button>
-          {candidate.analysis_status !== "not_requested" && (
-            <p className="text-xs text-muted-foreground">
-              {candidate.document_processing_status === "processed"
-                ? "Document evidence extracted. Project Intelligence not generated yet."
-                : candidate.document_processing_status === "partial"
-                ? "Some document evidence extracted. Project Intelligence not generated yet."
-                : candidate.document_processing_status === "processing"
-                ? "Processing source documents. Project Intelligence not generated yet."
-                : candidate.document_processing_status === "queued"
-                ? "Document processing queued. Project Intelligence not generated yet."
-                : candidate.document_acquisition_status === "failed"
-                ? "Documents were not acquired. You can retry analysis."
-                : candidate.document_acquisition_status === "acquired"
-                ? "Documents acquired. Ready for document processing. Project Intelligence not generated yet."
-                : "Document acquisition queued. Project Intelligence not generated yet."}
-            </p>
-          )}
         </div>
       )}
     </div>
