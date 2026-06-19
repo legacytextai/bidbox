@@ -6,6 +6,10 @@ const {
   queueDocumentProcessingForCandidate,
   runDocumentProcessing,
 } = require('./drivers/document_processing');
+const {
+  queueProjectIntelligenceForCandidate,
+  runProjectIntelligence,
+} = require('./drivers/project_intelligence');
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -349,6 +353,92 @@ async function runDocumentProcessingTask(task, supabase) {
 
   try {
     const result = await runDocumentProcessing(task, supabase, log);
+    let projectIntelligenceTaskId = null;
+    let projectIntelligenceDuplicate = false;
+    let projectIntelligenceSkipped = false;
+    if (
+      ['processed', 'partial'].includes(result.status)
+      && result.chunks_created > 0
+    ) {
+      try {
+        const queued = await queueProjectIntelligenceForCandidate({
+          supabase,
+          candidateId: result.candidate_id,
+          sourceTaskId: task.id,
+        });
+        projectIntelligenceTaskId = queued.taskId;
+        projectIntelligenceDuplicate = queued.duplicate;
+        projectIntelligenceSkipped = Boolean(queued.skipped);
+        if (queued.skipped) {
+          log(`Project Intelligence not queued: ${queued.reason}`);
+        } else {
+          log(`Project Intelligence ${queued.duplicate ? 'already queued' : 'queued'}: ${queued.taskId}`);
+        }
+      } catch (e) {
+        log(`Project Intelligence queue failed: ${e.message}`);
+      }
+    }
+    if (runLogId) {
+      await supabase
+        .from('agent_run_logs')
+        .update({
+          status: result.errorSummary ? 'complete_with_errors' : 'complete',
+          logs: logs.join('\n'),
+          completed_at: new Date().toISOString(),
+        })
+        .eq('id', runLogId);
+    }
+    return {
+      ...result,
+      project_intelligence_task_id: projectIntelligenceTaskId,
+      project_intelligence_duplicate: projectIntelligenceDuplicate,
+      project_intelligence_skipped: projectIntelligenceSkipped,
+    };
+  } catch (e) {
+    if (runLogId) {
+      await supabase
+        .from('agent_run_logs')
+        .update({
+          status: 'failed',
+          logs: logs.join('\n'),
+          completed_at: new Date().toISOString(),
+        })
+        .eq('id', runLogId);
+    }
+    throw e;
+  }
+}
+
+async function runProjectIntelligenceTask(task, supabase) {
+  const logs = [];
+  const log = (msg) => {
+    const line = `[${ts()}] ${msg}`;
+    logs.push(line);
+    console.log(line);
+  };
+
+  let runLogId = null;
+  try {
+    const { data: runLog, error: runLogError } = await supabase
+      .from('agent_run_logs')
+      .insert({
+        task_id: task.id,
+        status: 'running',
+        logs: logs.join('\n'),
+      })
+      .select('id')
+      .single();
+    if (runLogError) {
+      console.warn(`[${ts()}] agent_run_logs insert failed: ${runLogError.message}`);
+    } else {
+      runLogId = runLog.id;
+    }
+  } catch (e) {
+    console.warn(`[${ts()}] agent_run_logs insert threw: ${e.message}`);
+  }
+
+  try {
+    const result = await runProjectIntelligence(task, supabase, log);
     if (runLogId) {
       await supabase
         .from('agent_run_logs')
@@ -380,7 +470,7 @@ async function claimNextTask() {
     .from('agent_tasks')
     .select('*')
     .eq('status', 'pending')
-    .in('task_type', ['planetbids_scan', 'project_analysis', 'document_processing'])
+    .in('task_type', ['planetbids_scan', 'project_analysis', 'document_processing', 'project_intelligence'])
     .order('priority', { ascending: false })
     .order('created_at', { ascending: true })
     .limit(1)
@@ -420,6 +510,8 @@ async function processTask(task) {
       result = await runProjectAnalysisAcquisition(task, supabase);
     } else if (task.task_type === 'document_processing') {
       result = await runDocumentProcessingTask(task, supabase);
+    } else if (task.task_type === 'project_intelligence') {
+      result = await runProjectIntelligenceTask(task, supabase);
     } else {
       throw new Error(`Unsupported task type: ${task.task_type}`);
     }
@@ -443,9 +535,25 @@ async function processTask(task) {
           pages_extracted: result.pages_extracted,
           chunks_created: result.chunks_created,
           needs_ocr_count: result.needs_ocr_count,
+          project_intelligence_task_id: result.project_intelligence_task_id,
+          project_intelligence_duplicate: result.project_intelligence_duplicate,
+          project_intelligence_skipped: result.project_intelligence_skipped,
           error_summary: result.errorSummary,
           phase: 'f3_document_processing',
-          intelligence_status: 'not_generated',
+          intelligence_status: result.project_intelligence_task_id ? 'queued' : 'not_generated',
+        }
+      : task.task_type === 'project_intelligence'
+      ? {
+          candidate_id: result.candidate_id,
+          report_id: result.report_id,
+          status: result.status,
+          findings_inserted: result.findings_inserted,
+          citations_inserted: result.citations_inserted,
+          critical_findings: result.critical_findings,
+          executive_summary_bullets: result.executive_summary_bullets,
+          error_summary: result.errorSummary,
+          phase: 'f4_project_intelligence',
+          no_citation_no_fact: true,
         }
       : {
           candidate_id: result.candidate_id,
@@ -475,6 +583,8 @@ async function processTask(task) {
       await maybeQualifyCandidates();
     } else if (task.task_type === 'document_processing') {
       console.log(`[${ts()}] Task ${task.id} complete: documents_processed=${result.documents_processed} documents_failed=${result.documents_failed} pages=${result.pages_extracted} chunks=${result.chunks_created}`);
+    } else if (task.task_type === 'project_intelligence') {
+      console.log(`[${ts()}] Task ${task.id} complete: report=${result.report_id} findings=${result.findings_inserted} citations=${result.citations_inserted}`);
     } else {
       console.log(`[${ts()}] Task ${task.id} complete: documents_acquired=${result.documents_acquired} documents_failed=${result.documents_failed}`);
     }
@@ -497,6 +607,16 @@ async function processTask(task) {
           document_processing_status: 'failed',
           document_processing_completed_at: new Date().toISOString(),
           document_processing_error: e.message,
+        })
+        .eq('id', task.payload.candidate_id);
+    }
+    if (task.task_type === 'project_intelligence' && task.payload?.candidate_id) {
+      await supabase
+        .from('opportunity_candidates')
+        .update({
+          analysis_status: 'failed',
+          analysis_completed_at: new Date().toISOString(),
+          analysis_error: e.message,
         })
         .eq('id', task.payload.candidate_id);
     }

@@ -64,7 +64,7 @@ const FILTERS: { label: string; value: string }[] = [
 ];
 
 const isAnalyzedCandidate = (c: { analysis_status: string }) =>
-  c.analysis_status !== "not_requested";
+  c.analysis_status === "ready";
 
 const PORTAL_STYLES: Record<string, string> = {
   caltrans: "bg-blue-500/10 text-blue-700",
@@ -92,7 +92,7 @@ const ANALYSIS_STYLES: Record<AnalysisStatus, string> = {
 const ANALYSIS_LABELS: Record<AnalysisStatus, string> = {
   not_requested: "Not analyzed",
   queued: "Queued",
-  analyzing: "Analyzing",
+  analyzing: "Generating report",
   ready: "Ready",
   failed: "Failed",
 };
@@ -532,8 +532,8 @@ const Opportunities = () => {
     }
   };
 
-  // Filter by tab: "all" shows everything; "analyzed" shows opportunities that
-  // have entered the analysis workflow (queued/analyzing/ready/failed).
+  // Filter by tab: "all" shows everything; "analyzed" shows only opportunities
+  // with completed F4 Project Intelligence reports.
   const filtered = useMemo(
     () =>
       candidates.filter((c) =>
@@ -737,7 +737,7 @@ const Opportunities = () => {
         />
       )}
 
-      {/* Action: View Report (once analyzed) | Analyze Project | View Project */}
+      {/* Action: View Report (after F4) | Analyze Project | View Project */}
       {candidate.status === "converted" ? (
         <Button
           variant="outline"
@@ -754,6 +754,16 @@ const Opportunities = () => {
         >
           <Sparkles className="h-4 w-4 mr-2" />
           View Project Intelligence Report
+        </Button>
+      ) : candidate.analysis_status !== "not_requested" ? (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => navigate(`/opportunities/${candidate.id}`)}
+          className="w-full"
+        >
+          <Sparkles className="h-4 w-4 mr-2" />
+          View Analysis Progress
         </Button>
       ) : (
         <div className="space-y-1.5">

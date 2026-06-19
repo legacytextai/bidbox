@@ -15,6 +15,7 @@ import {
   Sparkles,
   CheckCircle2,
   XCircle,
+  ShieldAlert,
 } from "lucide-react";
 
 type AnalysisStatus =
@@ -23,6 +24,13 @@ type AnalysisStatus =
   | "analyzing"
   | "ready"
   | "failed";
+
+type FindingStatus =
+  | "found"
+  | "unknown"
+  | "conflict"
+  | "not_applicable"
+  | "needs_review";
 
 interface Candidate {
   id: string;
@@ -41,6 +49,42 @@ interface Candidate {
   document_processing_status: string;
 }
 
+interface ReportRow {
+  id: string;
+  status: string;
+  title: string | null;
+  executive_summary: any;
+  confidence_score: number | null;
+  error: string | null;
+  completed_at: string | null;
+  generation_metadata: any | null;
+}
+
+interface Finding {
+  id: string;
+  category: string;
+  field_key: string;
+  label: string;
+  value_text: string | null;
+  value_jsonb: any | null;
+  status: FindingStatus;
+  confidence: "high" | "medium" | "low";
+  is_critical: boolean;
+  sort_order: number;
+  notes: string | null;
+}
+
+interface Citation {
+  id: string;
+  finding_id: string;
+  source_document_name: string;
+  page_number: number | null;
+  page_label: string | null;
+  source_excerpt: string;
+  citation_label: string | null;
+  opportunity_document_chunk_id: string;
+}
+
 interface DocumentRow {
   id: string;
   file_name: string | null;
@@ -49,6 +93,16 @@ interface DocumentRow {
   text_page_count: number | null;
   processing_status: string | null;
 }
+
+const REPORT_SECTIONS = [
+  { key: "project_overview", title: "Project Overview", icon: Sparkles },
+  { key: "scope_summary", title: "Scope Summary", icon: FileText },
+  { key: "trade_breakdown", title: "Trade Breakdown", icon: FileText },
+  { key: "key_dates", title: "Key Dates", icon: Clock },
+  { key: "bid_requirements", title: "Bid Requirements", icon: CheckCircle2 },
+  { key: "addenda_summary", title: "Addenda Summary", icon: FileText },
+  { key: "risk_flags", title: "Risk Flags", icon: AlertTriangle },
+];
 
 const formatDate = (iso: string | null) =>
   iso
@@ -72,9 +126,17 @@ const ANALYSIS_BADGE: Record<AnalysisStatus, string> = {
 const ANALYSIS_LABEL: Record<AnalysisStatus, string> = {
   not_requested: "Not analyzed",
   queued: "Queued",
-  analyzing: "Analyzing",
+  analyzing: "Generating report",
   ready: "Ready",
   failed: "Failed",
+};
+
+const STATUS_STYLE: Record<FindingStatus, string> = {
+  found: "bg-green-500/10 text-green-700",
+  unknown: "bg-gray-500/10 text-gray-600",
+  conflict: "bg-red-500/10 text-red-700",
+  not_applicable: "bg-gray-500/10 text-gray-600",
+  needs_review: "bg-yellow-500/10 text-yellow-700",
 };
 
 const isTerminalAnalysis = (s: AnalysisStatus) =>
@@ -86,6 +148,9 @@ const OpportunityReport = () => {
   const { toast } = useToast();
 
   const [candidate, setCandidate] = useState<Candidate | null>(null);
+  const [report, setReport] = useState<ReportRow | null>(null);
+  const [findings, setFindings] = useState<Finding[]>([]);
+  const [citations, setCitations] = useState<Citation[]>([]);
   const [documents, setDocuments] = useState<DocumentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
@@ -98,17 +163,8 @@ const OpportunityReport = () => {
       .select("*")
       .eq("id", id)
       .maybeSingle();
-    const docsRes = await sb
-      .from("opportunity_documents")
-      .select(
-        "id, file_name, document_class, document_family, text_page_count, processing_status",
-      )
-      .eq("candidate_id", id);
-    const cand = candRes.data;
-    const candErr = candRes.error;
-    const docs = docsRes.data;
 
-    if (candErr || !cand) {
+    if (candRes.error || !candRes.data) {
       toast({
         title: "Not found",
         description: "Opportunity could not be loaded.",
@@ -117,8 +173,49 @@ const OpportunityReport = () => {
       setLoading(false);
       return;
     }
-    setCandidate(cand as any);
-    setDocuments((docs ?? []) as any);
+
+    const reportRes = await sb
+      .from("opportunity_intelligence_reports")
+      .select("*")
+      .eq("opportunity_candidate_id", id)
+      .order("report_version", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const docsRes = await sb
+      .from("opportunity_documents")
+      .select(
+        "id, file_name, document_class, document_family, text_page_count, processing_status",
+      )
+      .eq("opportunity_candidate_id", id)
+      .order("document_source_order", { ascending: true, nullsFirst: false })
+      .order("created_at", { ascending: true });
+
+    let findingRows: Finding[] = [];
+    let citationRows: Citation[] = [];
+    if (reportRes.data?.id) {
+      const findingsRes = await sb
+        .from("opportunity_intelligence_findings")
+        .select("*")
+        .eq("report_id", reportRes.data.id)
+        .order("sort_order", { ascending: true })
+        .order("created_at", { ascending: true });
+
+      const citationsRes = await sb
+        .from("opportunity_intelligence_citations")
+        .select("*")
+        .eq("report_id", reportRes.data.id)
+        .order("created_at", { ascending: true });
+
+      findingRows = (findingsRes.data ?? []) as Finding[];
+      citationRows = (citationsRes.data ?? []) as Citation[];
+    }
+
+    setCandidate(candRes.data as Candidate);
+    setReport((reportRes.data ?? null) as ReportRow | null);
+    setDocuments((docsRes.data ?? []) as DocumentRow[]);
+    setFindings(findingRows);
+    setCitations(citationRows);
     setLoading(false);
   }, [id, toast]);
 
@@ -135,7 +232,6 @@ const OpportunityReport = () => {
     })();
   }, [navigate, load]);
 
-  // Poll while non-terminal so live status updates appear without a refresh.
   useEffect(() => {
     if (!candidate) return;
     if (isTerminalAnalysis(candidate.analysis_status)) return;
@@ -143,12 +239,30 @@ const OpportunityReport = () => {
     return () => window.clearInterval(t);
   }, [candidate, load]);
 
+  const citationsByFinding = useMemo(() => {
+    const map = new Map<string, Citation[]>();
+    citations.forEach((citation) => {
+      const list = map.get(citation.finding_id) ?? [];
+      list.push(citation);
+      map.set(citation.finding_id, list);
+    });
+    return map;
+  }, [citations]);
+
+  const findingsByCategory = useMemo(() => {
+    const map = new Map<string, Finding[]>();
+    findings.forEach((finding) => {
+      const list = map.get(finding.category) ?? [];
+      list.push(finding);
+      map.set(finding.category, list);
+    });
+    return map;
+  }, [findings]);
+
   const crawl = candidate?.crawl_data ?? {};
-  const scope = candidate?.scope_text ?? crawl?.scope_text ?? null;
   const estimatedValue = crawl?.estimated_value as number | undefined;
   const jobWalkAt = crawl?.job_walk_at as string | undefined;
-
-  const reportReady = candidate?.analysis_status === "ready";
+  const reportReady = candidate?.analysis_status === "ready" && report;
 
   const handleAddToCalendar = async () => {
     if (!candidate) return;
@@ -171,13 +285,13 @@ const OpportunityReport = () => {
         return;
       }
 
-      // If already converted, just navigate.
       if (candidate.converted_project_id) {
         navigate(`/projects/${candidate.converted_project_id}`);
         return;
       }
 
       const sb = supabase as any;
+      const scopeFinding = findings.find((f) => f.category === "scope_summary" && f.status === "found");
       const { data: project, error } = await sb
         .from("projects")
         .insert({
@@ -187,7 +301,7 @@ const OpportunityReport = () => {
           bid_due_at: candidate.bid_due_at,
           source_url: candidate.source_url,
           portal_type: candidate.portal_type,
-          scope_text: scope,
+          scope_text: scopeFinding?.value_text ?? candidate.scope_text,
           job_walk_at: jobWalkAt ?? null,
           status: "LIVE",
         })
@@ -224,11 +338,11 @@ const OpportunityReport = () => {
     if (!candidate) return "";
     switch (candidate.analysis_status) {
       case "queued":
-        return "Analysis is queued. The report will appear once processing begins.";
+        return "Project Intelligence is queued. The report will appear after document processing and report generation finish.";
       case "analyzing":
-        return "Analyzing project documents. This typically takes a few minutes.";
+        return "Generating Project Intelligence from processed document evidence.";
       case "failed":
-        return candidate.analysis_error ?? "Analysis failed. Please retry.";
+        return candidate.analysis_error ?? "Project Intelligence failed.";
       default:
         return "Project Intelligence has not been generated yet.";
     }
@@ -258,11 +372,13 @@ const OpportunityReport = () => {
   }
 
   const status = candidate.analysis_status;
+  const executiveBullets = Array.isArray(report?.executive_summary?.bullets)
+    ? report?.executive_summary?.bullets
+    : [];
 
   return (
     <Layout showSidebar={true}>
-      <div className="p-8 max-w-5xl mx-auto space-y-6">
-        {/* Header */}
+      <div className="p-8 max-w-6xl mx-auto space-y-6">
         <div>
           <Button
             variant="ghost"
@@ -292,6 +408,14 @@ const OpportunityReport = () => {
                   )}
                   {ANALYSIS_LABEL[status]}
                 </span>
+                {report?.status && (
+                  <span className="text-xs text-muted-foreground">
+                    Report: {report.status}
+                    {typeof report.confidence_score === "number"
+                      ? ` · Confidence ${(report.confidence_score * 100).toFixed(0)}%`
+                      : ""}
+                  </span>
+                )}
                 {candidate.source_url && (
                   <a
                     href={candidate.source_url}
@@ -308,8 +432,8 @@ const OpportunityReport = () => {
             <Button
               size="lg"
               onClick={handleAddToCalendar}
-              disabled={adding}
-              className="bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90"
+              disabled={adding || (!reportReady && !candidate.converted_project_id)}
+              className="bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90 disabled:opacity-40"
             >
               {adding ? (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -323,9 +447,36 @@ const OpportunityReport = () => {
           </div>
         </div>
 
-        {/* Project Overview */}
-        <Section title="Project Overview" icon={<Sparkles className="h-4 w-4" />}>
-          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+        {!reportReady && (
+          <Section title="Project Intelligence" icon={<Sparkles className="h-4 w-4" />}>
+            <Pending message={pendingSectionMessage} />
+            {candidate.analysis_status === "failed" && (
+              <p className="mt-3 text-sm text-red-700">
+                {candidate.analysis_error ?? report?.error}
+              </p>
+            )}
+          </Section>
+        )}
+
+        <Section title="Executive Summary" icon={<Sparkles className="h-4 w-4" />}>
+          {executiveBullets.length > 0 ? (
+            <ul className="space-y-2 text-sm text-foreground">
+              {executiveBullets.map((bullet: any, index: number) => (
+                <li key={`${bullet.text}-${index}`} className="flex gap-2">
+                  <span className="mt-2 h-1.5 w-1.5 rounded-full bg-[hsl(var(--bidbox-blue))] shrink-0" />
+                  <span>{bullet.text}</span>
+                </li>
+              ))}
+            </ul>
+          ) : reportReady ? (
+            <Unknown message="No cited executive summary was generated." />
+          ) : (
+            <Pending message={pendingSectionMessage} />
+          )}
+        </Section>
+
+        <Section title="Project Snapshot" icon={<FileText className="h-4 w-4" />}>
+          <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
             <Field label="Agency" value={candidate.agency} />
             <Field label="Bid Due" value={formatDate(candidate.bid_due_at)} />
             <Field
@@ -340,72 +491,21 @@ const OpportunityReport = () => {
           </dl>
         </Section>
 
-        {/* Scope Summary */}
-        <Section title="Scope Summary" icon={<FileText className="h-4 w-4" />}>
-          {scope ? (
-            <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
-              {scope}
-            </p>
-          ) : (
-            <Pending message={pendingSectionMessage} />
-          )}
-        </Section>
+        {REPORT_SECTIONS.map((section) => {
+          const Icon = section.icon;
+          return (
+            <Section key={section.key} title={section.title} icon={<Icon className="h-4 w-4" />}>
+              <FindingsList
+                findings={findingsByCategory.get(section.key) ?? []}
+                citationsByFinding={citationsByFinding}
+                pendingMessage={pendingSectionMessage}
+                ready={Boolean(reportReady)}
+              />
+            </Section>
+          );
+        })}
 
-        {/* Key Dates */}
-        <Section title="Key Dates" icon={<Clock className="h-4 w-4" />}>
-          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-            <Field label="Bid Due" value={formatDate(candidate.bid_due_at)} />
-            <Field
-              label="Job Walk"
-              value={jobWalkAt ? formatDate(jobWalkAt) : null}
-            />
-          </dl>
-        </Section>
-
-        {/* Bid Requirements */}
-        <Section
-          title="Bid Requirements"
-          icon={<CheckCircle2 className="h-4 w-4" />}
-        >
-          {reportReady ? (
-            <p className="text-sm text-muted-foreground italic">
-              No bid requirements were extracted by the intelligence agent.
-            </p>
-          ) : (
-            <Pending message={pendingSectionMessage} />
-          )}
-        </Section>
-
-        {/* Addenda Summary */}
-        <Section title="Addenda Summary" icon={<FileText className="h-4 w-4" />}>
-          {reportReady ? (
-            <p className="text-sm text-muted-foreground italic">
-              No addenda detected.
-            </p>
-          ) : (
-            <Pending message={pendingSectionMessage} />
-          )}
-        </Section>
-
-        {/* Risk Flags */}
-        <Section
-          title="Risk Flags"
-          icon={<AlertTriangle className="h-4 w-4" />}
-        >
-          {reportReady ? (
-            <p className="text-sm text-muted-foreground italic">
-              No risks flagged by the intelligence agent.
-            </p>
-          ) : (
-            <Pending message={pendingSectionMessage} />
-          )}
-        </Section>
-
-        {/* Source Citations */}
-        <Section
-          title="Source Citations"
-          icon={<FileText className="h-4 w-4" />}
-        >
+        <Section title="Source Documents" icon={<FileText className="h-4 w-4" />}>
           {documents.length === 0 ? (
             <Pending message="Documents have not been acquired yet." />
           ) : (
@@ -472,9 +572,100 @@ const Field = ({
   </div>
 );
 
+const FindingsList = ({
+  findings,
+  citationsByFinding,
+  pendingMessage,
+  ready,
+}: {
+  findings: Finding[];
+  citationsByFinding: Map<string, Citation[]>;
+  pendingMessage: string;
+  ready: boolean;
+}) => {
+  if (!ready) return <Pending message={pendingMessage} />;
+  if (findings.length === 0) {
+    return <Unknown message="No cited findings were generated for this section." />;
+  }
+
+  return (
+    <div className="space-y-3">
+      {findings.map((finding) => (
+        <article
+          key={finding.id}
+          className="border border-border rounded-md p-3 bg-background"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-sm font-semibold text-foreground">
+                  {finding.label}
+                </h3>
+                {finding.is_critical && (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-red-500/10 text-red-700">
+                    <ShieldAlert className="h-3 w-3" />
+                    Critical
+                  </span>
+                )}
+                <span className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${STATUS_STYLE[finding.status]}`}>
+                  {finding.status.replace("_", " ")}
+                </span>
+                <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                  {finding.confidence} confidence
+                </span>
+              </div>
+              <p className="text-sm text-foreground mt-1 whitespace-pre-wrap">
+                {finding.status === "found" || finding.status === "conflict"
+                  ? finding.value_text ?? "Value captured in structured data"
+                  : finding.notes ?? "Not found in processed documents."}
+              </p>
+            </div>
+          </div>
+
+          <CitationList citations={citationsByFinding.get(finding.id) ?? []} />
+        </article>
+      ))}
+    </div>
+  );
+};
+
+const CitationList = ({ citations }: { citations: Citation[] }) => {
+  if (citations.length === 0) {
+    return (
+      <p className="mt-3 text-xs text-muted-foreground italic">
+        No citation attached. This item is not presented as a source-backed fact.
+      </p>
+    );
+  }
+
+  return (
+    <div className="mt-3 space-y-2">
+      {citations.map((citation) => (
+        <details key={citation.id} className="group">
+          <summary className="cursor-pointer inline-flex items-center gap-1 text-xs font-medium text-[hsl(var(--bidbox-blue))] hover:underline">
+            <FileText className="h-3 w-3" />
+            {citation.citation_label ??
+              `${citation.source_document_name}${citation.page_number ? `, p. ${citation.page_number}` : ""}`}
+          </summary>
+          <blockquote className="mt-2 border-l-2 border-border pl-3 text-xs text-muted-foreground leading-relaxed">
+            {citation.source_excerpt}
+          </blockquote>
+        </details>
+      ))}
+    </div>
+  );
+};
+
 const Pending = ({ message }: { message: string }) => (
   <div className="flex items-start gap-2 text-sm text-muted-foreground">
     <Loader2 className="h-4 w-4 mt-0.5 animate-spin shrink-0" />
+    <p>{message}</p>
+  </div>
+);
+
+const Unknown = ({ message }: { message: string }) => (
+  <div className="flex items-start gap-2 text-sm text-muted-foreground">
+    <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
     <p>{message}</p>
   </div>
 );
