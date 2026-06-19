@@ -807,7 +807,7 @@ const Opportunities = () => {
               {FILTERS.map((f) => {
                 const count = f.value === "all"
                   ? candidates.length
-                  : candidates.filter((c) => c.status === f.value).length;
+                  : candidates.filter(isAnalyzedCandidate).length;
                 return (
                   <button
                     key={f.value}
