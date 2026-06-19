@@ -388,15 +388,43 @@ const QualificationProfile = () => {
               />
             </Section>
 
-            <div className="flex justify-end pt-2">
+            <div className="flex flex-col items-end gap-3 pt-2">
               <Button
                 onClick={handleSave}
                 disabled={saving}
-                className="bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90"
+                className="bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90 min-w-[220px]"
               >
-                {saving ? "Saving..." : "Save Profile"}
+                {saveStage === "saving" && (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving profile…
+                  </>
+                )}
+                {saveStage === "requalifying" && (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Re-evaluating opportunities…
+                  </>
+                )}
+                {saveStage === "done" && (
+                  <>
+                    <Check className="mr-2 h-4 w-4" />
+                    Saved
+                  </>
+                )}
+                {saveStage === "idle" && "Save Profile"}
               </Button>
+
+              {saveStage === "requalifying" && (
+                <div className="w-full max-w-sm animate-fade-in space-y-2">
+                  <Progress value={undefined} className="h-1.5 overflow-hidden [&>div]:animate-[slide-in-right_1.2s_ease-in-out_infinite] [&>div]:bg-[hsl(var(--bidbox-blue))]" />
+                  <p className="text-xs text-muted-foreground text-right">
+                    Re-checking every opportunity against your new profile. This usually takes a few seconds…
+                  </p>
+                </div>
+              )}
             </div>
+
           </div>
         </div>
       )}
