@@ -513,10 +513,14 @@ const Opportunities = () => {
     }
   };
 
-  // Filter by manual status (filter tabs unchanged)
+  // Filter by tab: "all" shows everything; "analyzed" shows opportunities that
+  // have entered the analysis workflow (queued/analyzing/ready/failed).
   const filtered = useMemo(
-    () => candidates.filter((c) => (activeFilter === "all" ? true : c.status === activeFilter)),
-    [candidates, activeFilter]
+    () =>
+      candidates.filter((c) =>
+        activeFilter === "analyzed" ? isAnalyzedCandidate(c) : true,
+      ),
+    [candidates, activeFilter],
   );
 
   // For "All" view: sort by auto_status (green→yellow→null→red), keep created_at DESC within bucket,
