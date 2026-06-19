@@ -285,9 +285,11 @@ const QualificationProfile = () => {
         description: e?.message ?? "Unknown error",
         variant: "destructive",
       });
-    } finally {
-      setSaving(false);
+      setSaveStage("idle");
+      return;
     }
+    setSaveStage("done");
+    setTimeout(() => setSaveStage("idle"), 1500);
   };
 
   return (
