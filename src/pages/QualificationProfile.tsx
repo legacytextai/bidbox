@@ -151,7 +151,8 @@ const QualificationProfile = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [saveStage, setSaveStage] = useState<SaveStage>("idle");
+  const saving = saveStage !== "idle";
   const [profile, setProfile] = useState<ProfileRow>(EMPTY_PROFILE);
 
   const countyOptions = useMemo(
