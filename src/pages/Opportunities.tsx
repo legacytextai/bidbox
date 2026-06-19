@@ -60,9 +60,11 @@ interface Candidate {
 
 const FILTERS: { label: string; value: string }[] = [
   { label: "All", value: "all" },
-  { label: "Pending", value: "pending" },
-  { label: "Converted", value: "converted" },
+  { label: "Analyzed", value: "analyzed" },
 ];
+
+const isAnalyzedCandidate = (c: { analysis_status: string }) =>
+  c.analysis_status !== "not_requested";
 
 const PORTAL_STYLES: Record<string, string> = {
   caltrans: "bg-blue-500/10 text-blue-700",
