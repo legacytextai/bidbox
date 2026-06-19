@@ -177,7 +177,8 @@ const OpportunityReport = () => {
         return;
       }
 
-      const { data: project, error } = await supabase
+      const sb = supabase as any;
+      const { data: project, error } = await sb
         .from("projects")
         .insert({
           gc_id: session.user.id,
@@ -195,7 +196,7 @@ const OpportunityReport = () => {
 
       if (error) throw error;
 
-      await supabase
+      await sb
         .from("opportunity_candidates")
         .update({
           status: "converted",
