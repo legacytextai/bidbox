@@ -92,12 +92,13 @@ const OpportunityReport = () => {
 
   const load = useCallback(async () => {
     if (!id) return;
-    const candRes: any = await supabase
+    const sb = supabase as any;
+    const candRes = await sb
       .from("opportunity_candidates")
       .select("*")
       .eq("id", id)
       .maybeSingle();
-    const docsRes: any = await supabase
+    const docsRes = await sb
       .from("opportunity_documents")
       .select(
         "id, file_name, document_class, document_family, text_page_count, processing_status",
