@@ -292,6 +292,25 @@ const Opportunities = () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { navigate("/auth"); return; }
       loadCandidates();
+
+      // Rehydrate active scan panel if there are non-terminal planetbids_scan
+      // tasks still running in the background (survives reloads/navigation).
+      const sinceIso = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      const { data: activeTasks } = await supabase
+        .from("agent_tasks")
+        .select("id, created_at")
+        .eq("task_type", "planetbids_scan")
+        .in("status", ["pending", "running", "retrying"])
+        .gte("created_at", sinceIso);
+      if (activeTasks && activeTasks.length > 0) {
+        setActiveScanTaskIds(activeTasks.map((t: any) => t.id));
+        setScanStartedAt(
+          activeTasks
+            .map((t: any) => t.created_at)
+            .sort()[0],
+        );
+        setScanActive(true);
+      }
     };
     checkAuth();
   }, [navigate, loadCandidates]);
