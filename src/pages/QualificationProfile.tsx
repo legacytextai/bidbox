@@ -215,7 +215,7 @@ const QualificationProfile = () => {
   }, [load]);
 
   const handleSave = async () => {
-    setSaving(true);
+    setSaveStage("saving");
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
