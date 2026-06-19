@@ -13,7 +13,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { CA_COUNTIES } from "@/lib/californiaRegions";
 import { LICENSE_CLASSES } from "@/lib/licenseClasses";
 import { ALL_NAICS_CODES, NAICS_SECTORS } from "@/lib/naicsCodes";
-import { ChevronDown, X } from "lucide-react";
+import { ChevronDown, X, Loader2, Check } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+
+type SaveStage = "idle" | "saving" | "requalifying" | "done";
 
 interface ProfileRow {
   target_counties: string[];
@@ -148,7 +151,8 @@ const QualificationProfile = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [saveStage, setSaveStage] = useState<SaveStage>("idle");
+  const saving = saveStage !== "idle";
   const [profile, setProfile] = useState<ProfileRow>(EMPTY_PROFILE);
 
   const countyOptions = useMemo(
@@ -211,7 +215,7 @@ const QualificationProfile = () => {
   }, [load]);
 
   const handleSave = async () => {
-    setSaving(true);
+    setSaveStage("saving");
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
@@ -229,7 +233,7 @@ const QualificationProfile = () => {
           description: "Minimum project value cannot exceed the maximum.",
           variant: "destructive",
         });
-        setSaving(false);
+        setSaveStage("idle");
         return;
       }
 
@@ -252,10 +256,11 @@ const QualificationProfile = () => {
           description: upsertError.message ?? "Could not save your profile",
           variant: "destructive",
         });
-        setSaving(false);
+        setSaveStage("idle");
         return;
       }
 
+      setSaveStage("requalifying");
       const { data: qData, error: qError } = await supabase.functions.invoke(
         "qualify-candidates",
         { body: {} },
@@ -280,9 +285,11 @@ const QualificationProfile = () => {
         description: e?.message ?? "Unknown error",
         variant: "destructive",
       });
-    } finally {
-      setSaving(false);
+      setSaveStage("idle");
+      return;
     }
+    setSaveStage("done");
+    setTimeout(() => setSaveStage("idle"), 1500);
   };
 
   return (
@@ -381,15 +388,43 @@ const QualificationProfile = () => {
               />
             </Section>
 
-            <div className="flex justify-end pt-2">
+            <div className="flex flex-col items-end gap-3 pt-2">
               <Button
                 onClick={handleSave}
                 disabled={saving}
-                className="bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90"
+                className="bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90 min-w-[220px]"
               >
-                {saving ? "Saving..." : "Save Profile"}
+                {saveStage === "saving" && (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving profile…
+                  </>
+                )}
+                {saveStage === "requalifying" && (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Re-evaluating opportunities…
+                  </>
+                )}
+                {saveStage === "done" && (
+                  <>
+                    <Check className="mr-2 h-4 w-4" />
+                    Saved
+                  </>
+                )}
+                {saveStage === "idle" && "Save Profile"}
               </Button>
+
+              {saveStage === "requalifying" && (
+                <div className="w-full max-w-sm animate-fade-in space-y-2">
+                  <Progress value={undefined} className="h-1.5 overflow-hidden [&>div]:animate-[slide-in-right_1.2s_ease-in-out_infinite] [&>div]:bg-[hsl(var(--bidbox-blue))]" />
+                  <p className="text-xs text-muted-foreground text-right">
+                    Re-checking every opportunity against your new profile. This usually takes a few seconds…
+                  </p>
+                </div>
+              )}
             </div>
+
           </div>
         </div>
       )}
