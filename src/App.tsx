@@ -22,6 +22,7 @@ import SubcontractorDirectory from "./pages/SubcontractorDirectory";
 import CalendarDashboard from "./pages/CalendarDashboard";
 import SubsNetwork from "./pages/SubsNetwork";
 import Opportunities from "./pages/Opportunities";
+import OpportunityReport from "./pages/OpportunityReport";
 import QualificationProfile from "./pages/QualificationProfile";
 import NotFound from "./pages/NotFound";
 
