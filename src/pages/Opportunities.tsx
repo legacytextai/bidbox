@@ -91,10 +91,10 @@ const ANALYSIS_STYLES: Record<AnalysisStatus, string> = {
 
 const ANALYSIS_LABELS: Record<AnalysisStatus, string> = {
   not_requested: "Not analyzed",
-  queued: "Analysis queued",
-  analyzing: "Analysis queued",
-  ready: "Ready for document processing",
-  failed: "Analysis failed",
+  queued: "Queued",
+  analyzing: "Analyzing",
+  ready: "Ready",
+  failed: "Failed",
 };
 
 const DOCUMENT_ACQUISITION_STYLES: Record<DocumentAcquisitionStatus, string> = {
