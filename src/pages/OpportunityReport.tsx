@@ -92,19 +92,20 @@ const OpportunityReport = () => {
 
   const load = useCallback(async () => {
     if (!id) return;
-    const [{ data: cand, error: candErr }, { data: docs }] = await Promise.all([
-      supabase
-        .from("opportunity_candidates")
-        .select("*")
-        .eq("id", id)
-        .maybeSingle(),
-      supabase
-        .from("opportunity_documents")
-        .select(
-          "id, file_name, document_class, document_family, text_page_count, processing_status",
-        )
-        .eq("candidate_id", id),
-    ]);
+    const candRes: any = await supabase
+      .from("opportunity_candidates")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+    const docsRes: any = await supabase
+      .from("opportunity_documents")
+      .select(
+        "id, file_name, document_class, document_family, text_page_count, processing_status",
+      )
+      .eq("candidate_id", id);
+    const cand = candRes.data;
+    const candErr = candRes.error;
+    const docs = docsRes.data;
 
     if (candErr || !cand) {
       toast({
