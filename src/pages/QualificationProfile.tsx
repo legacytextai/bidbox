@@ -233,7 +233,7 @@ const QualificationProfile = () => {
           description: "Minimum project value cannot exceed the maximum.",
           variant: "destructive",
         });
-        setSaving(false);
+        setSaveStage("idle");
         return;
       }
 
