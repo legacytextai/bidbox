@@ -256,10 +256,11 @@ const QualificationProfile = () => {
           description: upsertError.message ?? "Could not save your profile",
           variant: "destructive",
         });
-        setSaving(false);
+        setSaveStage("idle");
         return;
       }
 
+      setSaveStage("requalifying");
       const { data: qData, error: qError } = await supabase.functions.invoke(
         "qualify-candidates",
         { body: {} },
