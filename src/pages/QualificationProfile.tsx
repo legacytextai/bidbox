@@ -13,7 +13,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { CA_COUNTIES } from "@/lib/californiaRegions";
 import { LICENSE_CLASSES } from "@/lib/licenseClasses";
 import { ALL_NAICS_CODES, NAICS_SECTORS } from "@/lib/naicsCodes";
-import { ChevronDown, X } from "lucide-react";
+import { ChevronDown, X, Loader2, Check } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+
+type SaveStage = "idle" | "saving" | "requalifying" | "done";
 
 interface ProfileRow {
   target_counties: string[];
