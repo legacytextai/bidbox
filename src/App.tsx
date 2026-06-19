@@ -22,6 +22,7 @@ import SubcontractorDirectory from "./pages/SubcontractorDirectory";
 import CalendarDashboard from "./pages/CalendarDashboard";
 import SubsNetwork from "./pages/SubsNetwork";
 import Opportunities from "./pages/Opportunities";
+import OpportunityReport from "./pages/OpportunityReport";
 import QualificationProfile from "./pages/QualificationProfile";
 import NotFound from "./pages/NotFound";
 
@@ -42,6 +43,7 @@ const App = () => (
             <Route path="/auth" element={<Auth />} />
             <Route path="/calendar" element={<CalendarDashboard />} />
             <Route path="/opportunities" element={<Opportunities />} />
+            <Route path="/opportunities/:id" element={<OpportunityReport />} />
             <Route path="/projects" element={<Projects />} />
             <Route path="/projects/new" element={<NewProject />} />
             <Route path="/projects/:id" element={<ProjectDetail />} />

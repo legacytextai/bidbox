@@ -60,9 +60,11 @@ interface Candidate {
 
 const FILTERS: { label: string; value: string }[] = [
   { label: "All", value: "all" },
-  { label: "Pending", value: "pending" },
-  { label: "Converted", value: "converted" },
+  { label: "Analyzed", value: "analyzed" },
 ];
+
+const isAnalyzedCandidate = (c: { analysis_status: string }) =>
+  c.analysis_status !== "not_requested";
 
 const PORTAL_STYLES: Record<string, string> = {
   caltrans: "bg-blue-500/10 text-blue-700",
@@ -89,10 +91,10 @@ const ANALYSIS_STYLES: Record<AnalysisStatus, string> = {
 
 const ANALYSIS_LABELS: Record<AnalysisStatus, string> = {
   not_requested: "Not analyzed",
-  queued: "Analysis queued",
-  analyzing: "Analysis queued",
-  ready: "Ready for document processing",
-  failed: "Analysis failed",
+  queued: "Queued",
+  analyzing: "Analyzing",
+  ready: "Ready",
+  failed: "Failed",
 };
 
 const DOCUMENT_ACQUISITION_STYLES: Record<DocumentAcquisitionStatus, string> = {
@@ -511,10 +513,14 @@ const Opportunities = () => {
     }
   };
 
-  // Filter by manual status (filter tabs unchanged)
+  // Filter by tab: "all" shows everything; "analyzed" shows opportunities that
+  // have entered the analysis workflow (queued/analyzing/ready/failed).
   const filtered = useMemo(
-    () => candidates.filter((c) => (activeFilter === "all" ? true : c.status === activeFilter)),
-    [candidates, activeFilter]
+    () =>
+      candidates.filter((c) =>
+        activeFilter === "analyzed" ? isAnalyzedCandidate(c) : true,
+      ),
+    [candidates, activeFilter],
   );
 
   // For "All" view: sort by auto_status (green→yellow→null→red), keep created_at DESC within bucket,
@@ -712,7 +718,7 @@ const Opportunities = () => {
         />
       )}
 
-      {/* Analyze Project */}
+      {/* Action: View Report (once analyzed) | Analyze Project | View Project */}
       {candidate.status === "converted" ? (
         <Button
           variant="outline"
@@ -720,6 +726,15 @@ const Opportunities = () => {
           onClick={() => navigate(`/projects/${candidate.converted_project_id}`)}
         >
           View Project
+        </Button>
+      ) : isAnalyzedCandidate(candidate) ? (
+        <Button
+          size="sm"
+          onClick={() => navigate(`/opportunities/${candidate.id}`)}
+          className="w-full bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90"
+        >
+          <Sparkles className="h-4 w-4 mr-2" />
+          View Project Intelligence Report
         </Button>
       ) : (
         <div className="space-y-1.5">
@@ -738,23 +753,6 @@ const Opportunities = () => {
             )}
             {bidClosed ? "Bid Closed" : analyzeLabel}
           </Button>
-          {candidate.analysis_status !== "not_requested" && (
-            <p className="text-xs text-muted-foreground">
-              {candidate.document_processing_status === "processed"
-                ? "Document evidence extracted. Project Intelligence not generated yet."
-                : candidate.document_processing_status === "partial"
-                ? "Some document evidence extracted. Project Intelligence not generated yet."
-                : candidate.document_processing_status === "processing"
-                ? "Processing source documents. Project Intelligence not generated yet."
-                : candidate.document_processing_status === "queued"
-                ? "Document processing queued. Project Intelligence not generated yet."
-                : candidate.document_acquisition_status === "failed"
-                ? "Documents were not acquired. You can retry analysis."
-                : candidate.document_acquisition_status === "acquired"
-                ? "Documents acquired. Ready for document processing. Project Intelligence not generated yet."
-                : "Document acquisition queued. Project Intelligence not generated yet."}
-            </p>
-          )}
         </div>
       )}
     </div>
@@ -809,7 +807,7 @@ const Opportunities = () => {
               {FILTERS.map((f) => {
                 const count = f.value === "all"
                   ? candidates.length
-                  : candidates.filter((c) => c.status === f.value).length;
+                  : candidates.filter(isAnalyzedCandidate).length;
                 return (
                   <button
                     key={f.value}
