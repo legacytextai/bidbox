@@ -602,6 +602,55 @@ See `docs/agent-architecture-task-list.md` for implementation tasks.
 
 ---
 
+### 🧠 Opportunity Intelligence MVP Status
+
+> **Strategic Initiative: Opportunity Discovery → Project Intelligence → Qualification**
+>
+> **Current Status (June 2026):**
+> - F1 Opportunity Discovery / Analyze Project: ✅ Complete
+> - F2 Document Acquisition: ✅ Complete
+> - F3 Document Processing: ✅ Complete
+> - F4 Project Intelligence: ⬜ Next
+
+Validated production chain for F3:
+
+```text
+PDF
+↓
+Document Processing Task
+↓
+PDF Text Extraction
+↓
+opportunity_document_pages
+↓
+opportunity_document_chunks
+↓
+Citation Metadata
+```
+
+Production validation target:
+
+```text
+San Miguel Drive Pavement Rehabilitation 9855-2
+City of Newport Beach
+```
+
+Results:
+
+- 5 PDFs processed
+- 178 pages extracted
+- 106 chunks created
+- 0 failures
+- 0 OCR-required documents
+- `opportunity_documents`, `opportunity_document_pages`, and `opportunity_document_chunks` populated correctly
+- Document → page → chunk citation chain verified
+
+F3 is an evidence-processing layer only. It classifies, extracts, organizes, chunks, cites, and tracks status. It does not interpret project requirements, generate intelligence reports, answer estimator questions, resolve precedence conflicts, or make pursuit recommendations. Those responsibilities belong to F4 Project Intelligence and F5 Qualification.
+
+F3A backlog: improve deterministic document classification accuracy. Current observed issues include `Notice Inviting Bids` classified as addendum and `Sample Contract` classified as plans. This is not an F3 blocker and should not delay F4.
+
+---
+
 ### 🔐 Agency Access Management
 
 > **Strategic Initiative: Agency Access Layer for Opportunity Intelligence**

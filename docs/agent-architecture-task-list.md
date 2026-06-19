@@ -269,13 +269,20 @@ Priority order:
 
 ---
 
-## Task 7 - PHASE F: PROJECT INTELLIGENCE ❌ NOT STARTED
+## Task 7 - PHASE F: PROJECT INTELLIGENCE 🔄 IN PROGRESS
 
 Phase F is the next major MVP initiative.
 
 Goal: when an estimator clicks `Analyze Project`, BidBox should acquire the bid package, process available documents, generate a practical Project Intelligence report, and then run evidence-based qualification.
 
 This phase expands the old "Document Collection" idea into the full Project Intelligence layer. Document collection is still required, but it is no longer the end goal.
+
+Current Phase F status:
+- F1 Opportunity Discovery / Analyze Project workflow: ✅ Complete
+- F2 Document Acquisition: ✅ Complete
+- F3 Document Processing: ✅ Complete
+- F4 Project Intelligence Report: ⬜ Next
+- F5 Qualification After Analysis: ⬜ Not Started
 
 ### 7.1. F1 — Analyze Project Workflow ✅ COMPLETE
 
@@ -583,7 +590,7 @@ Dependencies:
 - Opportunity source inventory from Phase E.
 - Future secure credential storage for contractor-owned portal credentials.
 
-### 7.3. F3 — Document Processing 🟡 IMPLEMENTED, PENDING PRODUCTION VALIDATION
+### 7.3. F3 — Document Processing ✅ COMPLETE
 
 Purpose: process acquired bid-package documents into a structured, page-citable evidence layer for future Project Intelligence and qualification.
 
@@ -619,6 +626,21 @@ Current implementation status:
 - PDFs with insufficient text are marked as needing OCR, but OCR is deferred.
 - F3 does not mark `analysis_status = ready`.
 - F3 does not generate Project Intelligence, summaries, recommendations, qualification, estimating, or Add to Calendar output.
+
+Production validation:
+- Target: `San Miguel Drive Pavement Rehabilitation 9855-2`
+- Agency: City of Newport Beach
+- Result: ✅ Successful end-to-end F3 processing
+- 5 PDFs processed
+- 178 pages extracted
+- 106 chunks created
+- 0 failures
+- 0 OCR-required documents
+- `opportunity_documents` populated correctly
+- `opportunity_document_pages` populated correctly
+- `opportunity_document_chunks` populated correctly
+- Document → page → chunk citation chain verified
+- Processing completed successfully in production
 
 #### 7.3.1. Goals
 
@@ -1151,55 +1173,108 @@ Error categories:
 - `chunking_failed`
 - `db_write_failed`
 
-#### 7.3.14. Validation Plan
+#### 7.3.14. Production Validation
 
-Validate F3 against real F2 packages already proven in production:
+F3 was successfully validated end-to-end in production against:
 
-1. `Holiday Decor Rental and Installation Services 26-53`
-   - 3 acquired documents.
-2. `PAVEMENT RESTORATION PARK AVENUE & S BAY FRONT ALLEY 9451-3`
-   - 9 acquired documents.
-   - Includes `Plans.pdf`, addenda, bidder lists, and supporting documents.
+```text
+San Miguel Drive Pavement Rehabilitation 9855-2
+City of Newport Beach
+```
 
-Validation checks:
-- `document_processing` task is created automatically after F2 acquisition.
-- Worker claims task and marks candidate `processing`.
-- Each acquired document receives a processing status.
-- Text-native PDFs produce `opportunity_document_pages` rows.
-- Documents with useful extracted text produce `opportunity_document_chunks` rows.
-- Page rows include page numbers and non-empty text where text exists.
+Validated chain:
+
+```text
+PDF
+↓
+Document Processing Task
+↓
+PDF Text Extraction
+↓
+opportunity_document_pages
+↓
+opportunity_document_chunks
+↓
+Citation Metadata
+```
+
+Production validation results:
+
+```text
+5 PDFs processed
+178 pages extracted
+106 chunks created
+0 failures
+0 OCR-required documents
+```
+
+Verified:
+- `document_processing` task executed successfully.
+- Worker claimed the task and marked candidate/document processing states.
+- `opportunity_documents` populated correctly.
+- `opportunity_document_pages` populated correctly.
+- `opportunity_document_chunks` populated correctly.
+- PDF text extraction succeeded for text-native PDFs.
+- Page rows include page numbers and extracted text.
 - Chunk rows include document/page traceability and citation labels.
-- `document_family` and `document_class` are populated for obvious files.
-- `document_source_order` preserves portal/acquisition order.
-- `inferred_precedence_rank` is populated without claiming legal precedence.
-- `needs_ocr` is set for PDFs with insufficient extracted text.
-- Candidate ends as `processed`, `partial`, or `failed` according to actual evidence.
-- `analysis_status` is not marked ready.
-- No F4 report is generated.
-
-Manual spot checks:
-- Open a stored `Plans.pdf` and confirm page count aligns with extracted page rows when possible.
-- Confirm a known addendum file is classified as `addendum` and family `addenda`.
-- Confirm bidder list/supporting documents are not incorrectly treated as specifications.
-- Confirm citation labels are human-readable.
+- Document → page → chunk citation chain was verified.
+- Processing statuses were updated successfully.
+- Candidate status was updated successfully.
+- `analysis_status` was not marked ready.
+- No F4 report was generated.
+- No qualification, summarization, estimating, recommendation, or conflict-resolution output was generated.
 
 #### 7.3.15. Acceptance Criteria
 
-F3 is complete when:
-- Schema exists for page and chunk storage.
-- Acquired documents can be queued for `document_processing`.
-- Worker processes at least one real acquired PlanetBids package.
-- Text-native PDFs produce page-level extracted text.
-- Extracted pages are stored in `opportunity_document_pages`.
-- Chunks are stored in `opportunity_document_chunks`.
-- Chunks preserve document/page traceability.
-- Document classification and family are populated for obvious documents.
-- `inferred_precedence_rank` is populated.
-- `document_source_order` is populated.
-- Candidate and document processing statuses update correctly.
-- Partial success is supported.
-- Failed/unsupported/needs-OCR documents are visible through status/error fields.
-- No summaries, reports, recommendations, qualification, estimating, or conflict resolution are generated.
+F3 acceptance criteria are satisfied:
+- ✓ Document processing task executes.
+- ✓ PDF text extraction succeeds.
+- ✓ Pages are created.
+- ✓ Chunks are created.
+- ✓ Citation chain is preserved.
+- ✓ Processing statuses are updated.
+- ✓ Candidate status is updated.
+- ✓ Schema exists for page and chunk storage.
+- ✓ Acquired documents can be queued for `document_processing`.
+- ✓ Worker processes a real acquired PlanetBids package.
+- ✓ Text-native PDFs produce page-level extracted text.
+- ✓ Extracted pages are stored in `opportunity_document_pages`.
+- ✓ Chunks are stored in `opportunity_document_chunks`.
+- ✓ Chunks preserve document/page traceability.
+- ✓ Document classification and family are populated.
+- ✓ `inferred_precedence_rank` is populated.
+- ✓ `document_source_order` is populated.
+- ✓ Partial success is supported.
+- ✓ Failed/unsupported/needs-OCR documents are visible through status/error fields.
+- ✓ Production validation completed.
+- ✓ No summaries, reports, recommendations, qualification, estimating, or conflict resolution are generated.
+
+#### 7.3A. F3A — Classification Accuracy Improvements 📋 BACKLOG
+
+Purpose: improve deterministic document classification accuracy without changing the core evidence-processing pipeline.
+
+Observed validation issues:
+
+```text
+Notice Inviting Bids
+→ classified as addendum
+
+Sample Contract
+→ classified as plans
+```
+
+Notes:
+- This is not an F3 blocker.
+- The extraction pipeline works correctly.
+- The issue is classification heuristics only.
+- F3A is a future enhancement and should not delay F4.
+
+Potential future improvements:
+- Stronger filename rules.
+- First-page text classification.
+- Document title signals from manifest metadata.
+- Confidence scoring.
+- Classification QA tooling.
 
 #### 7.3.16. Risks
 

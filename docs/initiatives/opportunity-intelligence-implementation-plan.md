@@ -35,6 +35,9 @@ This plan intentionally avoids building a full autonomous bidding platform. The 
 - F2 document acquisition is complete for the validated PlanetBids path.
 - Production validation proved PlanetBids authentication, vendor/prospective-bidder access, manifest retrieval, document download, Supabase Storage upload, and `opportunity_documents` persistence.
 - Validated production projects include `Holiday Decor Rental and Installation Services 26-53` with 3 documents acquired and `PAVEMENT RESTORATION PARK AVENUE & S BAY FRONT ALLEY 9451-3` with 9 documents acquired.
+- F3 document processing is complete for the validated PlanetBids/text-native PDF path.
+- F3 production validation on `San Miguel Drive Pavement Rehabilitation 9855-2` for City of Newport Beach processed 5 PDFs, extracted 178 pages, created 106 chunks, and produced 0 failures / 0 OCR-required documents.
+- `opportunity_document_pages` and `opportunity_document_chunks` now preserve the document → page → chunk citation chain for future Project Intelligence.
 - `/opportunities` displays discovered candidates and scan progress.
 - `gc_qualification_profiles` and `qualify-candidates` provide preliminary metadata triage.
 - `/calendar` already exists for project date tracking.
@@ -45,7 +48,7 @@ This plan intentionally avoids building a full autonomous bidding platform. The 
 
 - Agency Access Management for agency/vendor/prospective-bidder registration state.
 - Registration memory and human escalation for ambiguous agency registration questions.
-- Text extraction from bid package files.
+- F3A classification accuracy improvements for edge-case document names and titles.
 - OCR for scanned PDFs.
 - Project Intelligence report generation.
 - Evidence-backed qualification after analysis.
@@ -59,9 +62,10 @@ This plan intentionally avoids building a full autonomous bidding platform. The 
 4. Contractor ignores, saves, or chooses `Analyze Project`.
 5. BidBox verifies agency access and resolves registration blockers where possible.
 6. BidBox acquires available bid package documents for analyzed opportunities.
-7. BidBox processes documents and generates a Project Intelligence report.
-8. BidBox qualifies the analyzed project using document-backed facts.
-9. Contractor clicks `Add to Calendar` for opportunities worth tracking.
+7. BidBox processes documents into page/chunk evidence.
+8. BidBox generates a Project Intelligence report.
+9. BidBox qualifies the analyzed project using document-backed facts.
+10. Contractor clicks `Add to Calendar` for opportunities worth tracking.
 
 ## Discovery Layer
 
@@ -217,21 +221,49 @@ Known limitations:
 
 ### 2. Document Processing
 
-Goal: extract enough text to support useful intelligence.
+Status: complete for the validated PlanetBids/text-native PDF processing path.
 
-MVP requirements:
+Goal: extract enough page-citable text evidence to support future Project Intelligence.
 
-- Detect file type.
-- Extract text from text-native PDFs first.
-- Store extracted text or chunks.
-- Track processing status and failures.
-- Add OCR later only when beta documents require it.
+Implemented:
+
+- Detects file type and MIME type.
+- Processes text-native PDFs with `pdfjs-dist`.
+- Stores page-level text in `opportunity_document_pages`.
+- Stores retrieval chunks in `opportunity_document_chunks`.
+- Preserves document → page → chunk citation metadata.
+- Tracks processing status and failures on candidates and documents.
+- Marks OCR need as metadata only; OCR is not implemented.
+
+Production validation:
+
+```text
+San Miguel Drive Pavement Rehabilitation 9855-2
+City of Newport Beach
+
+5 PDFs processed
+178 pages extracted
+106 chunks created
+0 failures
+0 OCR-required documents
+```
+
+Known F3A backlog:
+
+- Improve deterministic classification accuracy.
+- Observed issues:
+  - `Notice Inviting Bids` classified as addendum.
+  - `Sample Contract` classified as plans.
+- This does not block F4 because the evidence extraction and citation chain work correctly.
 
 Out of scope for MVP:
 
 - Quantity takeoff.
 - Full drawing understanding.
 - Complete spec indexing across every file type.
+- Intelligence report generation.
+- Qualification.
+- Summarization or recommendations.
 
 ### 3. Project Intelligence Report
 
@@ -351,11 +383,12 @@ Out of scope:
    - Store source files.
    - Track acquisition status.
 
-7. **Document text extraction**
-   - Start with text-native PDFs.
-   - Add processing status and failure visibility.
+7. **Document text extraction** ✅ Complete
+   - Text-native PDFs are processed into page and chunk evidence.
+   - Processing status and failure visibility are implemented.
+   - F3A classification accuracy improvements remain future backlog and should not delay F4.
 
-8. **Project Intelligence report**
+8. **Project Intelligence report** ⬜ Next
    - Generate the first practical report format.
    - Prioritize scope, trades, requirements, bid events, and risks.
 

@@ -928,6 +928,55 @@ It is not yet sufficient for a contractor to confidently decide whether to chase
 
 ## Document Processing Readiness
 
+### Post-Audit Status Update — June 2026
+
+The original audit below predated F2/F3 completion. Current production status:
+
+- F2 Document Acquisition is complete for the validated PlanetBids path.
+- F3 Document Processing is complete for text-native PDFs.
+- Production validation target: `San Miguel Drive Pavement Rehabilitation 9855-2`, City of Newport Beach.
+- Validated chain:
+
+```text
+PDF
+↓
+Document Processing Task
+↓
+PDF Text Extraction
+↓
+opportunity_document_pages
+↓
+opportunity_document_chunks
+↓
+Citation Metadata
+```
+
+Production validation results:
+
+```text
+5 PDFs processed
+178 pages extracted
+106 chunks created
+0 failures
+0 OCR-required documents
+```
+
+Verified:
+- `opportunity_documents` populated correctly.
+- `opportunity_document_pages` populated correctly.
+- `opportunity_document_chunks` populated correctly.
+- Document → page → chunk citation chain verified.
+- Processing completed successfully in production.
+
+Remaining document-processing gaps are now narrower:
+- OCR for scanned PDFs.
+- Non-PDF text extraction.
+- Classification accuracy improvements under F3A.
+- F4 Project Intelligence report generation.
+- F5 evidence-backed qualification.
+
+The older "missing" items below should be read as the repository state at the time of the original audit, not current F3 status.
+
 ### What Already Exists
 
 Implemented:
@@ -947,18 +996,15 @@ Partial:
 - `crawl-project` can extract metadata such as bid due date, job walk, eligibility, document visibility/accessibility, engineer's estimate, bonds, and addenda from scraped page text. This is webpage metadata extraction, not full document intelligence.
 - `HighSignalPanel` can display extracted engineer estimate, bond requirements, and addenda from `crawl_snapshot.semantic`, but only if `crawl-project` found them in page markdown.
 - `ProjectSignals` surfaces job walk, gated docs, eligibility, and recrawl staleness.
-- The PlanetBids worker may know documents exist, but it stops at metadata.
+- PlanetBids F2/F3 now downloads validated source documents and processes text-native PDFs into page/chunk evidence. This is still partial because it does not cover every portal or file type.
 
-### What Is Completely Missing
+### Remaining Gaps
 
-Missing:
+Still missing or incomplete:
 
-- Automatic download of portal documents.
-- A durable table for opportunity/project document ingestion state.
 - Document de-duplication/versioning.
 - OCR pipeline for scanned PDFs.
-- PDF/DOCX/XLSX text extraction.
-- Chunking and indexing.
+- DOCX/XLSX/ZIP text extraction.
 - Embeddings/vector search.
 - Spec section parser.
 - Plan sheet parser.
@@ -968,23 +1014,19 @@ Missing:
 
 ### Can BidBox Automatically Collect and Process Project Documents at Scale?
 
-No. BidBox cannot currently collect and process project documents at scale.
+Partially. BidBox can now collect and process documents for the validated PlanetBids path, including authenticated acquisition, storage, text-native PDF extraction, page storage, chunk storage, and citation metadata.
 
-It can store manually uploaded documents and can sometimes detect/list source documents. It does not automatically download portal documents, store them as source artifacts, parse their text, run OCR, or extract requirements from them. This is the biggest gap between the current product and a true bid-intelligence agent platform.
+It is not yet a full at-scale, cross-portal bid-intelligence document platform. Remaining limits include non-PlanetBids portals, non-PDF file processing, OCR for scanned PDFs, addenda diffing, embeddings/vector retrieval, and F4/F5 intelligence/qualification.
 
-Required components:
+Remaining components:
 
-1. `opportunity_documents` or generalized `documents` table.
-2. Storage bucket/path convention for source documents.
-3. Portal document downloader per driver.
-4. Document fetch authorization/session handling.
-5. File type detection.
-6. Text extraction for PDFs, DOCX, XLSX, ZIP contents.
-7. OCR fallback.
-8. Chunk storage and extraction status.
-9. AI requirement extraction jobs.
-10. Addenda/version monitoring.
-11. UI to show extracted facts with source citations.
+1. Portal document downloader per non-PlanetBids driver.
+2. Non-PDF text extraction for DOCX, XLSX, and ZIP contents.
+3. OCR fallback.
+4. Embeddings/vector retrieval if needed for F4/F5.
+5. AI requirement extraction jobs.
+6. Addenda/version monitoring.
+7. UI to show extracted facts with source citations.
 
 ## Agent Readiness Assessment
 

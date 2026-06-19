@@ -4,6 +4,132 @@ All notable changes to the BidBox project are documented in this file.
 
 ---
 
+## [Opportunity Intelligence F1-F3 Validation] - 2026-06-16
+
+### Phase Objective
+Advance the Opportunity Intelligence MVP from broad discovery into validated document-backed evidence processing, while preserving the boundary that Project Intelligence and Qualification start in F4/F5.
+
+---
+
+### F1 - Analyze Project Workflow
+
+- Completed the `Analyze Project` workflow as the estimator's human-interest signal.
+- Added analysis state fields to `opportunity_candidates`.
+- Added the authenticated `analyze-project` Edge Function.
+- Queued `project_analysis` tasks through `agent_tasks`.
+- Added duplicate prevention for active analysis/acquisition tasks.
+- Updated `/opportunities` so the primary action is `Analyze Project`, not old Yes/Maybe/No triage or Convert to Project.
+- Kept UI copy explicit that queued/acquired/processed states do not mean Project Intelligence has been generated.
+
+---
+
+### F2 - Document Acquisition
+
+- Implemented PlanetBids document acquisition in the Railway worker.
+- Added `opportunity_documents` and candidate-level `document_acquisition_*` fields.
+- Created the private `opportunity-documents` Supabase Storage bucket.
+- Added authenticated PlanetBids access using `PLANETBIDS_EMAIL` and `PLANETBIDS_PASSWORD`.
+- Added PlanetBids-specific prospective bidder registration support.
+- Validated the full production acquisition chain:
+  - PlanetBids authentication
+  - Vendor/prospective-bidder access
+  - Manifest retrieval
+  - Document download
+  - Supabase Storage upload
+  - `opportunity_documents` persistence
+- Production validation examples:
+  - `Holiday Decor Rental and Installation Services 26-53`: 3 documents acquired, 3 stored, 0 failures.
+  - `PAVEMENT RESTORATION PARK AVENUE & S BAY FRONT ALLEY 9451-3`: 9 documents acquired, 9 stored, 0 failures, including `Plans.pdf`, addenda, bidder lists, and supporting documents.
+
+---
+
+### F3 - Document Processing
+
+- Implemented the F3 evidence-processing pipeline.
+- Added processing fields to `opportunity_candidates` and `opportunity_documents`.
+- Added `opportunity_document_pages`.
+- Added `opportunity_document_chunks`.
+- Added `document_processing` worker task handling.
+- Added `pdfjs-dist` to the worker for text-native PDF extraction.
+- F2 now automatically queues F3 document processing after successful acquisition.
+- F3 processes acquired files in the worker, not the frontend or Edge Functions.
+- Text-native PDFs are extracted page by page.
+- Page text is stored in `opportunity_document_pages`.
+- Retrieval chunks are stored in `opportunity_document_chunks`.
+- Citation metadata preserves the document -> page -> chunk chain.
+- Non-PDF files are marked `unsupported`.
+- Scanned/image-only PDFs are marked as needing OCR when text extraction is insufficient.
+- No OCR, summaries, reports, qualification, estimating, recommendations, or F4 intelligence generation were added.
+
+Production validation target:
+
+```text
+San Miguel Drive Pavement Rehabilitation 9855-2
+City of Newport Beach
+```
+
+Production validation results:
+
+```text
+5 PDFs processed
+178 pages extracted
+106 chunks created
+0 failures
+0 OCR-required documents
+```
+
+Validated chain:
+
+```text
+PDF
+-> Document Processing Task
+-> PDF Text Extraction
+-> opportunity_document_pages
+-> opportunity_document_chunks
+-> Citation Metadata
+```
+
+Verified:
+- `opportunity_documents` populated correctly.
+- `opportunity_document_pages` populated correctly.
+- `opportunity_document_chunks` populated correctly.
+- Document -> page -> chunk citation chain verified.
+- Candidate and document processing statuses updated correctly.
+- Production processing completed successfully.
+
+---
+
+### F3 Bug Fixes
+
+- Fixed a production PDF.js cleanup failure in `bidbox-worker/drivers/document_processing.js`.
+- Root cause: `pdf.destroy()` does not exist on the pinned `pdfjs-dist` legacy `PDFDocumentProxy`, and the call threw synchronously.
+- Fix: guarded both `pdf.cleanup()` and `pdf.destroy()` with `typeof` checks before calling them.
+- Validation passed:
+  - worker syntax checks
+  - `npm run build`
+  - `npx tsc --noEmit`
+
+---
+
+### Roadmap And Documentation
+
+- Updated Opportunity Intelligence roadmap documents to mark F3 as `✅ COMPLETE`.
+- Updated platform status:
+  - F1 Opportunity Discovery / Analyze Project: ✅ Complete
+  - F2 Document Acquisition: ✅ Complete
+  - F3 Document Processing: ✅ Complete
+  - F4 Project Intelligence: ⬜ Next
+- Added F3A backlog item for classification accuracy improvements.
+- Documented observed classification issues:
+  - `Notice Inviting Bids` classified as addendum.
+  - `Sample Contract` classified as plans.
+- Clarified that F3A is not an F3 blocker and should not delay F4.
+- Reaffirmed the architecture boundary:
+  - F3 classifies, extracts, organizes, chunks, cites, and tracks status.
+  - F3 does not interpret requirements, generate intelligence reports, answer estimator questions, resolve precedence conflicts, qualify opportunities, or make pursuit recommendations.
+
+---
+
 ## [Phase 1 Opportunity Intelligence Push] - 2026-06-09
 
 ### Phase Objective

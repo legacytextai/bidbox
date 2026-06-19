@@ -116,6 +116,35 @@ Validated examples:
 - `Holiday Decor Rental and Installation Services 26-53`: 3 documents acquired, 3 stored, 0 failures.
 - `PAVEMENT RESTORATION PARK AVENUE & S BAY FRONT ALLEY 9451-3`: 9 documents acquired, 9 stored, 0 failures, including `Plans.pdf`, addenda, bidder lists, and supporting documents.
 
+F3 Document Processing has now been validated in production for text-native PDFs. `San Miguel Drive Pavement Rehabilitation 9855-2` for City of Newport Beach completed the chain from PDF through `document_processing`, PDF text extraction, `opportunity_document_pages`, `opportunity_document_chunks`, and citation metadata.
+
+F3 validation results:
+
+- 5 PDFs processed
+- 178 pages extracted
+- 106 chunks created
+- 0 failures
+- 0 OCR-required documents
+- Document → page → chunk citation chain verified
+
+Current platform status:
+
+```text
+F1 Opportunity Discovery / Analyze Project
+✅ Complete
+
+F2 Document Acquisition
+✅ Complete
+
+F3 Document Processing
+✅ Complete
+
+F4 Project Intelligence
+⬜ Next
+```
+
+F3 remains an evidence-processing layer only. It classifies, extracts, organizes, chunks, cites, and tracks status. It does not interpret requirements, generate intelligence reports, answer estimator questions, resolve precedence conflicts, or make pursuit recommendations. Those responsibilities belong to F4 Project Intelligence and F5 Qualification.
+
 Outputs may include:
 
 #### Executive Summary

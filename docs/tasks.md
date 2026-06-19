@@ -56,6 +56,32 @@ PlanetBids coverage is the fastest path to broader opportunity intelligence beca
 
 ---
 
+### 2026-06-16: F3 Document Processing Validated
+
+**Completed**:
+- F3 Document Processing is production validated and complete in the Opportunity Intelligence roadmap
+- Validated `San Miguel Drive Pavement Rehabilitation 9855-2` for City of Newport Beach
+- Processed 5 PDFs into page and chunk evidence
+- Extracted 178 pages
+- Created 106 chunks
+- Confirmed 0 failures and 0 OCR-required documents
+- Verified `opportunity_documents`, `opportunity_document_pages`, and `opportunity_document_chunks`
+- Verified document → page → chunk citation chain
+
+**Current Opportunity Intelligence Status**:
+- F1 Opportunity Discovery / Analyze Project: ✅ Complete
+- F2 Document Acquisition: ✅ Complete
+- F3 Document Processing: ✅ Complete
+- F4 Project Intelligence: ⬜ Next
+
+**Key Insight**:
+F3 is an evidence-processing layer, not an intelligence layer. It classifies, extracts, organizes, chunks, cites, and tracks status. It does not generate reports, answer estimator questions, resolve precedence conflicts, qualify opportunities, or recommend pursuit decisions.
+
+**F3A Backlog**:
+Classification accuracy improvements remain a future enhancement. Validation found `Notice Inviting Bids` classified as addendum and `Sample Contract` classified as plans. The extraction pipeline works correctly, so this should not delay F4.
+
+---
+
 ## 🏗️ Architecture Note: State-Agnostic Licensing
 
 > **CRITICAL**: BidBox uses a **future-proof, state-agnostic trade taxonomy**.
