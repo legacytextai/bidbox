@@ -115,8 +115,8 @@ const OpportunityReport = () => {
       setLoading(false);
       return;
     }
-    setCandidate(cand as unknown as Candidate);
-    setDocuments((docs ?? []) as DocumentRow[]);
+    setCandidate(cand as any);
+    setDocuments((docs ?? []) as any);
     setLoading(false);
   }, [id, toast]);
 
