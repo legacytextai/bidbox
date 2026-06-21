@@ -289,18 +289,53 @@ function getToolSchema() {
   };
 }
 
-function parseAiResponse(data) {
+function countRawCitations(raw) {
+  if (!Array.isArray(raw?.findings)) return 0;
+  return raw.findings.reduce((sum, finding) => {
+    return sum + (Array.isArray(finding?.citations) ? finding.citations.length : 0);
+  }, 0);
+}
+
+function parseAiResponse(data, responseStatus) {
+  const choice = data?.choices?.[0] ?? {};
+  const message = choice?.message ?? {};
   const toolCall = data?.choices?.[0]?.message?.tool_calls?.find(
     (call) => call?.function?.name === 'store_project_intelligence_report',
   );
+  const diagnostics = {
+    http_status: responseStatus,
+    finish_reason: choice?.finish_reason ?? null,
+    tool_call_returned: Boolean(toolCall),
+    tool_call_name: toolCall?.function?.name ?? null,
+    tool_arguments_length: toolCall?.function?.arguments?.length ?? 0,
+    content_length: message?.content?.length ?? 0,
+    parsed_executive_summary_bullets: 0,
+    parsed_findings_count: 0,
+    parsed_citations_count: 0,
+    raw_findings_missing: false,
+    raw_findings_empty: false,
+  };
+
+  let parsed;
   if (toolCall?.function?.arguments) {
-    return JSON.parse(toolCall.function.arguments);
+    parsed = JSON.parse(toolCall.function.arguments);
+  } else {
+    const content = data?.choices?.[0]?.message?.content;
+    if (!content) throw new Error('AI response did not include report content');
+    const match = content.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error('AI response was not valid JSON');
+    parsed = JSON.parse(match[0]);
   }
-  const content = data?.choices?.[0]?.message?.content;
-  if (!content) throw new Error('AI response did not include report content');
-  const match = content.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('AI response was not valid JSON');
-  return JSON.parse(match[0]);
+
+  diagnostics.parsed_executive_summary_bullets = Array.isArray(parsed?.executive_summary?.bullets)
+    ? parsed.executive_summary.bullets.length
+    : 0;
+  diagnostics.parsed_findings_count = Array.isArray(parsed?.findings) ? parsed.findings.length : 0;
+  diagnostics.parsed_citations_count = countRawCitations(parsed);
+  diagnostics.raw_findings_missing = !Array.isArray(parsed?.findings);
+  diagnostics.raw_findings_empty = Array.isArray(parsed?.findings) && parsed.findings.length === 0;
+
+  return { report: parsed, diagnostics };
 }
 
 async function callAi({ candidate, evidencePackets }) {
@@ -331,7 +366,7 @@ async function callAi({ candidate, evidencePackets }) {
     throw new Error(`Project Intelligence AI request failed: ${response.status} ${text.slice(0, 300)}`);
   }
 
-  return parseAiResponse(await response.json());
+  return parseAiResponse(await response.json(), response.status);
 }
 
 function makeExcerpt(chunk, requested) {
@@ -721,8 +756,20 @@ async function runProjectIntelligence(task, supabase, log) {
     const chunkMap = new Map(evidence.chunks.map((chunk) => [chunk.id, chunk]));
     const pageMap = new Map(evidence.pages.map((page) => [`${page.opportunity_document_id}:${page.page_number}`, page]));
     const evidencePackets = buildEvidencePackets(evidence.chunks);
-    const raw = await callAi({ candidate: evidence.candidate, evidencePackets });
+    const { report: raw, diagnostics: aiDiagnostics } = await callAi({ candidate: evidence.candidate, evidencePackets });
+    log(
+      `F4 OpenAI response: status=${aiDiagnostics.http_status} ` +
+      `finish_reason=${aiDiagnostics.finish_reason ?? 'unknown'} ` +
+      `tool_call=${aiDiagnostics.tool_call_returned ? aiDiagnostics.tool_call_name : 'none'} ` +
+      `tool_args_chars=${aiDiagnostics.tool_arguments_length} ` +
+      `parsed_findings=${aiDiagnostics.parsed_findings_count} ` +
+      `parsed_citations=${aiDiagnostics.parsed_citations_count}`
+    );
     const validated = validateReport(raw, chunkMap, pageMap);
+    log(
+      `F4 validation output: findings=${validated.findings.length} ` +
+      `citations=${validated.citations.length} rejected=${validated.rejected.length}`
+    );
     const rollup = rollupFindings(validated.findings);
     const persisted = await replaceReportEvidence(
       supabase,
@@ -734,8 +781,11 @@ async function runProjectIntelligence(task, supabase, log) {
 
     const factualCount = validated.findings.filter((finding) => isFactualStatus(finding.status)).length;
     const finalStatus = factualCount > 0 ? (validated.rejected.length > 0 ? 'partial' : 'ready') : 'failed';
+    const emptyReportError = aiDiagnostics.raw_findings_missing || aiDiagnostics.raw_findings_empty
+      ? 'AI returned zero findings before citation validation'
+      : null;
     const errorSummary = finalStatus === 'failed'
-      ? 'Project Intelligence generated no cited factual findings'
+      ? emptyReportError ?? 'Project Intelligence generated no cited factual findings'
       : validated.rejected.length > 0
       ? `${validated.rejected.length} uncited finding(s) downgraded by citation validator`
       : null;
@@ -761,6 +811,26 @@ async function runProjectIntelligence(task, supabase, log) {
           schema_version: REPORT_SCHEMA_VERSION,
           chunks_available: evidence.chunks.length,
           documents_available: evidence.documents.length,
+          openai_response: {
+            http_status: aiDiagnostics.http_status,
+            finish_reason: aiDiagnostics.finish_reason,
+            tool_call_returned: aiDiagnostics.tool_call_returned,
+            tool_call_name: aiDiagnostics.tool_call_name,
+            tool_arguments_length: aiDiagnostics.tool_arguments_length,
+            content_length: aiDiagnostics.content_length,
+          },
+          parsed_output: {
+            executive_summary_bullets: aiDiagnostics.parsed_executive_summary_bullets,
+            findings_count: aiDiagnostics.parsed_findings_count,
+            citations_count: aiDiagnostics.parsed_citations_count,
+            raw_findings_missing: aiDiagnostics.raw_findings_missing,
+            raw_findings_empty: aiDiagnostics.raw_findings_empty,
+          },
+          validation_output: {
+            findings_count: validated.findings.length,
+            citations_count: validated.citations.length,
+            rejected_findings_count: validated.rejected.length,
+          },
           findings_inserted: persisted.findings_inserted,
           citations_inserted: persisted.citations_inserted,
           rejected_findings: validated.rejected,
