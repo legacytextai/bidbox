@@ -11,6 +11,7 @@ Opportunity Intelligence development is tracked separately from this broad histo
 
 - Product strategy source of truth: `docs/initiatives/opportunity-intelligence-mvp.md`
 - Practical implementation plan: `docs/initiatives/opportunity-intelligence-implementation-plan.md`
+- Agency Access Management design decision and future roadmap: `docs/initiatives/agency-access-management.md`
 - Execution roadmap for agent, discovery, Project Intelligence, qualification, and pursuit initiatives: `docs/agent-architecture-task-list.md`
 - Agency Access Management is tracked in the Master Plan and Agent Architecture roadmap as part of the Opportunity Intelligence architecture, not duplicated here.
 

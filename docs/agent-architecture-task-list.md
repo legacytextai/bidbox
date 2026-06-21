@@ -465,6 +465,8 @@ MVP boundary:
 
 Purpose: establish and maintain the agency registration state required for reliable document acquisition.
 
+Detailed initiative document: `docs/initiatives/agency-access-management.md`
+
 Strategic placement:
 
 ```text

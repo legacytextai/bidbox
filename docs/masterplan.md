@@ -656,6 +656,8 @@ F3A backlog: improve deterministic document classification accuracy. Current obs
 > **Strategic Initiative: Agency Access Layer for Opportunity Intelligence**
 >
 > **Status**: Proposed platform capability
+>
+> Detailed initiative document: `docs/initiatives/agency-access-management.md`
 
 Agency Access Management is BidBox's system for obtaining, monitoring, and maintaining access to public agency procurement portals and bid documents.
 
