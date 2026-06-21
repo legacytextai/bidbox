@@ -3,7 +3,7 @@ const MAX_CHUNKS_PER_CATEGORY = 18;
 const MAX_CHUNK_CHARS = 1800;
 const AI_GATEWAY_URL = process.env.PROJECT_INTELLIGENCE_AI_URL
   || 'https://api.openai.com/v1/chat/completions';
-const AI_MODEL = process.env.PROJECT_INTELLIGENCE_MODEL || 'gpt-5-mini';
+const AI_MODEL = process.env.PROJECT_INTELLIGENCE_MODEL || 'gpt-5.4-mini';
 
 const CATEGORIES = [
   {
