@@ -737,23 +737,15 @@ const Opportunities = () => {
         />
       )}
 
-      {/* Action: View Report (after F4) | Analyze Project | View Project */}
-      {candidate.status === "converted" ? (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => navigate(`/projects/${candidate.converted_project_id}`)}
-        >
-          View Project
-        </Button>
-      ) : isAnalyzedCandidate(candidate) ? (
+      {/* Action: View Intelligence Report (after F4) | View Progress | View Project | Analyze Project */}
+      {isAnalyzedCandidate(candidate) ? (
         <Button
           size="sm"
           onClick={() => navigate(`/opportunities/${candidate.id}`)}
           className="w-full bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90"
         >
           <Sparkles className="h-4 w-4 mr-2" />
-          View Project Intelligence Report
+          View Intelligence Report
         </Button>
       ) : candidate.analysis_status !== "not_requested" ? (
         <Button
@@ -764,6 +756,14 @@ const Opportunities = () => {
         >
           <Sparkles className="h-4 w-4 mr-2" />
           View Analysis Progress
+        </Button>
+      ) : candidate.status === "converted" && candidate.converted_project_id ? (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => navigate(`/projects/${candidate.converted_project_id}`)}
+        >
+          View Project
         </Button>
       ) : (
         <div className="space-y-1.5">

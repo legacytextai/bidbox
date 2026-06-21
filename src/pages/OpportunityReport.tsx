@@ -271,6 +271,11 @@ const OpportunityReport = () => {
 
   const handleAddToCalendar = async () => {
     if (!candidate) return;
+    if (candidate.converted_project_id) {
+      navigate(`/projects/${candidate.converted_project_id}`);
+      return;
+    }
+
     if (!candidate.bid_due_at) {
       toast({
         title: "Missing bid due date",
@@ -287,11 +292,6 @@ const OpportunityReport = () => {
       } = await supabase.auth.getSession();
       if (!session) {
         navigate("/auth");
-        return;
-      }
-
-      if (candidate.converted_project_id) {
-        navigate(`/projects/${candidate.converted_project_id}`);
         return;
       }
 
@@ -442,6 +442,8 @@ const OpportunityReport = () => {
             >
               {adding ? (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : candidate.converted_project_id ? (
+                <ExternalLink className="h-4 w-4 mr-2" />
               ) : (
                 <CalendarPlus className="h-4 w-4 mr-2" />
               )}
