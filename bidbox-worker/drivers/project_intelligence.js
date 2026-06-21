@@ -784,10 +784,11 @@ async function runProjectIntelligence(task, supabase, log) {
     const emptyReportError = aiDiagnostics.raw_findings_missing || aiDiagnostics.raw_findings_empty
       ? 'AI returned zero findings before citation validation'
       : null;
+    const warningSummary = validated.rejected.length > 0
+      ? `${validated.rejected.length} uncited finding(s) downgraded by citation validator`
+      : null;
     const errorSummary = finalStatus === 'failed'
       ? emptyReportError ?? 'Project Intelligence generated no cited factual findings'
-      : validated.rejected.length > 0
-      ? `${validated.rejected.length} uncited finding(s) downgraded by citation validator`
       : null;
     const completedAt = new Date().toISOString();
 
@@ -833,6 +834,12 @@ async function runProjectIntelligence(task, supabase, log) {
           },
           findings_inserted: persisted.findings_inserted,
           citations_inserted: persisted.citations_inserted,
+          validator_warnings: warningSummary
+            ? {
+                warning_summary: warningSummary,
+                rejected_findings_count: validated.rejected.length,
+              }
+            : null,
           rejected_findings: validated.rejected,
           no_citation_no_fact: true,
         },
@@ -860,6 +867,7 @@ async function runProjectIntelligence(task, supabase, log) {
       citations_inserted: persisted.citations_inserted,
       critical_findings: validated.findings.filter((finding) => finding.is_critical).length,
       executive_summary_bullets: validated.executive_summary.bullets.length,
+      warningSummary,
       errorSummary,
     };
   } catch (e) {

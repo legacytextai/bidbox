@@ -551,6 +551,7 @@ async function processTask(task) {
           citations_inserted: result.citations_inserted,
           critical_findings: result.critical_findings,
           executive_summary_bullets: result.executive_summary_bullets,
+          warning_summary: result.warningSummary,
           error_summary: result.errorSummary,
           phase: 'f4_project_intelligence',
           no_citation_no_fact: true,
