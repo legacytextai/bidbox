@@ -2,8 +2,8 @@ const REPORT_SCHEMA_VERSION = 'f4_mvp_v1';
 const MAX_CHUNKS_PER_CATEGORY = 18;
 const MAX_CHUNK_CHARS = 1800;
 const AI_GATEWAY_URL = process.env.PROJECT_INTELLIGENCE_AI_URL
-  || 'https://ai.gateway.lovable.dev/v1/chat/completions';
-const AI_MODEL = process.env.PROJECT_INTELLIGENCE_MODEL || 'google/gemini-2.5-flash';
+  || 'https://api.openai.com/v1/chat/completions';
+const AI_MODEL = process.env.PROJECT_INTELLIGENCE_MODEL || 'gpt-5-mini';
 
 const CATEGORIES = [
   {
@@ -98,14 +98,9 @@ function truncate(value, maxLength) {
 }
 
 function getAiKey() {
-  const explicitKey = process.env.PROJECT_INTELLIGENCE_AI_KEY
-    || process.env.LOVABLE_API_KEY
-    || process.env.AI_GATEWAY_API_KEY;
-  if (explicitKey) return explicitKey;
-  if (process.env.PROJECT_INTELLIGENCE_AI_URL) {
-    return process.env.OPENAI_API_KEY || null;
-  }
-  return null;
+  return process.env.OPENAI_API_KEY
+    || process.env.PROJECT_INTELLIGENCE_AI_KEY
+    || null;
 }
 
 function categoryScore(chunk, category) {
@@ -311,7 +306,7 @@ function parseAiResponse(data) {
 async function callAi({ candidate, evidencePackets }) {
   const apiKey = getAiKey();
   if (!apiKey) {
-    throw new Error('Project Intelligence AI key is not configured. Set PROJECT_INTELLIGENCE_AI_KEY, LOVABLE_API_KEY, or AI_GATEWAY_API_KEY in the worker environment.');
+    throw new Error('Project Intelligence AI key is not configured. Set OPENAI_API_KEY in the worker environment.');
   }
 
   const response = await fetch(AI_GATEWAY_URL, {
@@ -761,7 +756,7 @@ async function runProjectIntelligence(task, supabase, log) {
         risk_flags: rollup.byCategory.risk_flags ?? [],
         unknowns: rollup.unknowns,
         generation_metadata: {
-          engine: 'ai_gateway_chat_completions',
+          engine: 'openai_chat_completions',
           model: AI_MODEL,
           schema_version: REPORT_SCHEMA_VERSION,
           chunks_available: evidence.chunks.length,
