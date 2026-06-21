@@ -763,6 +763,246 @@ export type Database = {
           },
         ]
       }
+      opportunity_intelligence_citations: {
+        Row: {
+          citation_label: string | null
+          created_at: string
+          finding_id: string
+          id: string
+          opportunity_document_chunk_id: string
+          opportunity_document_id: string
+          opportunity_document_page_id: string | null
+          page_label: string | null
+          page_number: number | null
+          report_id: string
+          source_document_name: string
+          source_excerpt: string
+        }
+        Insert: {
+          citation_label?: string | null
+          created_at?: string
+          finding_id: string
+          id?: string
+          opportunity_document_chunk_id: string
+          opportunity_document_id: string
+          opportunity_document_page_id?: string | null
+          page_label?: string | null
+          page_number?: number | null
+          report_id: string
+          source_document_name: string
+          source_excerpt: string
+        }
+        Update: {
+          citation_label?: string | null
+          created_at?: string
+          finding_id?: string
+          id?: string
+          opportunity_document_chunk_id?: string
+          opportunity_document_id?: string
+          opportunity_document_page_id?: string | null
+          page_label?: string | null
+          page_number?: number | null
+          report_id?: string
+          source_document_name?: string
+          source_excerpt?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "opportunity_intelligence_cita_opportunity_document_chunk_i_fkey"
+            columns: ["opportunity_document_chunk_id"]
+            isOneToOne: false
+            referencedRelation: "opportunity_document_chunks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "opportunity_intelligence_cita_opportunity_document_page_id_fkey"
+            columns: ["opportunity_document_page_id"]
+            isOneToOne: false
+            referencedRelation: "opportunity_document_pages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "opportunity_intelligence_citations_finding_id_fkey"
+            columns: ["finding_id"]
+            isOneToOne: false
+            referencedRelation: "opportunity_intelligence_findings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "opportunity_intelligence_citations_opportunity_document_id_fkey"
+            columns: ["opportunity_document_id"]
+            isOneToOne: false
+            referencedRelation: "opportunity_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "opportunity_intelligence_citations_report_id_fkey"
+            columns: ["report_id"]
+            isOneToOne: false
+            referencedRelation: "opportunity_intelligence_reports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      opportunity_intelligence_findings: {
+        Row: {
+          category: string
+          confidence: string
+          created_at: string
+          field_key: string
+          id: string
+          is_critical: boolean
+          label: string
+          notes: string | null
+          opportunity_candidate_id: string
+          report_id: string
+          sort_order: number
+          status: string
+          value_jsonb: Json | null
+          value_text: string | null
+        }
+        Insert: {
+          category: string
+          confidence?: string
+          created_at?: string
+          field_key: string
+          id?: string
+          is_critical?: boolean
+          label: string
+          notes?: string | null
+          opportunity_candidate_id: string
+          report_id: string
+          sort_order?: number
+          status: string
+          value_jsonb?: Json | null
+          value_text?: string | null
+        }
+        Update: {
+          category?: string
+          confidence?: string
+          created_at?: string
+          field_key?: string
+          id?: string
+          is_critical?: boolean
+          label?: string
+          notes?: string | null
+          opportunity_candidate_id?: string
+          report_id?: string
+          sort_order?: number
+          status?: string
+          value_jsonb?: Json | null
+          value_text?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "opportunity_intelligence_findings_opportunity_candidate_id_fkey"
+            columns: ["opportunity_candidate_id"]
+            isOneToOne: false
+            referencedRelation: "opportunity_candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "opportunity_intelligence_findings_report_id_fkey"
+            columns: ["report_id"]
+            isOneToOne: false
+            referencedRelation: "opportunity_intelligence_reports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      opportunity_intelligence_reports: {
+        Row: {
+          addenda_summary: Json
+          agent_task_id: string | null
+          bid_requirements: Json
+          completed_at: string | null
+          confidence_score: number | null
+          created_at: string
+          error: string | null
+          executive_summary: Json
+          generation_metadata: Json | null
+          id: string
+          key_dates: Json
+          opportunity_candidate_id: string
+          overview: Json
+          report_schema_version: string
+          report_version: number
+          risk_flags: Json
+          scope_summary: Json
+          started_at: string | null
+          status: string
+          title: string | null
+          trade_breakdown: Json
+          unknowns: Json
+          updated_at: string
+        }
+        Insert: {
+          addenda_summary?: Json
+          agent_task_id?: string | null
+          bid_requirements?: Json
+          completed_at?: string | null
+          confidence_score?: number | null
+          created_at?: string
+          error?: string | null
+          executive_summary?: Json
+          generation_metadata?: Json | null
+          id?: string
+          key_dates?: Json
+          opportunity_candidate_id: string
+          overview?: Json
+          report_schema_version?: string
+          report_version?: number
+          risk_flags?: Json
+          scope_summary?: Json
+          started_at?: string | null
+          status?: string
+          title?: string | null
+          trade_breakdown?: Json
+          unknowns?: Json
+          updated_at?: string
+        }
+        Update: {
+          addenda_summary?: Json
+          agent_task_id?: string | null
+          bid_requirements?: Json
+          completed_at?: string | null
+          confidence_score?: number | null
+          created_at?: string
+          error?: string | null
+          executive_summary?: Json
+          generation_metadata?: Json | null
+          id?: string
+          key_dates?: Json
+          opportunity_candidate_id?: string
+          overview?: Json
+          report_schema_version?: string
+          report_version?: number
+          risk_flags?: Json
+          scope_summary?: Json
+          started_at?: string | null
+          status?: string
+          title?: string | null
+          trade_breakdown?: Json
+          unknowns?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "opportunity_intelligence_reports_agent_task_id_fkey"
+            columns: ["agent_task_id"]
+            isOneToOne: false
+            referencedRelation: "agent_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "opportunity_intelligence_reports_opportunity_candidate_id_fkey"
+            columns: ["opportunity_candidate_id"]
+            isOneToOne: false
+            referencedRelation: "opportunity_candidates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       opportunity_sources: {
         Row: {
           created_at: string
