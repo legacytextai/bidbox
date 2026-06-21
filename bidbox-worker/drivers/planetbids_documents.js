@@ -43,6 +43,74 @@ function inferFileType(fileName) {
   return m ? m[1] : null;
 }
 
+function parseMoneyToken(token) {
+  if (!token) return null;
+  const cleaned = token.replace(/\s+/g, ' ').trim();
+  const hasDollar = cleaned.includes('$');
+  const hasComma = cleaned.includes(',');
+  const unitMatch = cleaned.match(/([KMB])\b|\b(thousand|million|billion)\b/i);
+  const numberMatch = cleaned.match(/(\d[\d,]*(?:\.\d+)?)/);
+  if (!numberMatch) return null;
+
+  const n = parseFloat(numberMatch[1].replace(/,/g, ''));
+  if (!Number.isFinite(n) || n <= 0) return null;
+
+  const unit = (unitMatch?.[1] ?? unitMatch?.[2] ?? '').toLowerCase();
+  let value = n;
+  if (unit === 'b' || unit === 'billion') value = n * 1_000_000_000;
+  if (unit === 'm' || unit === 'million') value = n * 1_000_000;
+  if (unit === 'k' || unit === 'thousand') value = n * 1_000;
+
+  if (!hasDollar && !hasComma && !unit && value < 10000) return null;
+  return Math.round(value);
+}
+
+function parseEstimatedValueDetails(raw) {
+  if (!raw) {
+    return {
+      estimated_value: null,
+      estimated_value_raw: null,
+      estimated_value_low: null,
+      estimated_value_high: null,
+    };
+  }
+
+  const text = String(raw).replace(/\s+/g, ' ').trim();
+  const moneyPattern = /(?:\$+\s*)?\d[\d,]*(?:\.\d+)?\s*(?:[KkMmBb]|thousand|million|billion)?/g;
+  const values = [...text.matchAll(moneyPattern)]
+    .map((m) => ({ value: parseMoneyToken(m[0]) }))
+    .filter((m) => m.value !== null);
+
+  if (values.length === 0) {
+    return {
+      estimated_value: null,
+      estimated_value_raw: text || null,
+      estimated_value_low: null,
+      estimated_value_high: null,
+    };
+  }
+
+  const first = values[0].value;
+  const second = values[1]?.value ?? null;
+  if (second !== null && /(?:-|–|—|\bto\b|\band\b|\bbetween\b)/i.test(text)) {
+    const low = Math.min(first, second);
+    const high = Math.max(first, second);
+    return {
+      estimated_value: Math.round((low + high) / 2),
+      estimated_value_raw: text,
+      estimated_value_low: low,
+      estimated_value_high: high,
+    };
+  }
+
+  return {
+    estimated_value: first,
+    estimated_value_raw: text,
+    estimated_value_low: null,
+    estimated_value_high: null,
+  };
+}
+
 function normalizeManifestItem(item) {
   const a = item?.attributes ?? item ?? {};
   const filename = String(a.filename ?? a.fileName ?? a.file_name ?? a.fileTitle ?? a.file_title ?? 'document');
@@ -566,6 +634,173 @@ async function openDocumentsTab(page, log) {
   return null;
 }
 
+async function extractPortalMetadata(page, log) {
+  const raw = await page.evaluate(() => {
+    const clean = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
+    const bodyText = document.body?.innerText ?? '';
+
+    const field = (label) => {
+      const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const patterns = [
+        new RegExp(`${escaped}\\s*[:\\n]\\s*([^\\n]+)`, 'i'),
+        new RegExp(`${escaped}\\s+([^\\n]{1,180})`, 'i'),
+      ];
+
+      for (const pattern of patterns) {
+        const match = bodyText.match(pattern);
+        if (match?.[1]) {
+          const value = clean(match[1]);
+          if (value && value.toLowerCase() !== label.toLowerCase()) return value.substring(0, 500);
+        }
+      }
+
+      const labels = [...document.querySelectorAll('label, dt, th, strong, b, span, div')]
+        .filter((el) => clean(el.textContent).replace(/:$/, '').toLowerCase() === label.toLowerCase());
+
+      for (const el of labels) {
+        const sibling = el.nextElementSibling ? clean(el.nextElementSibling.textContent) : '';
+        if (sibling && sibling.toLowerCase() !== label.toLowerCase()) return sibling.substring(0, 500);
+
+        const parentText = clean(el.parentElement?.textContent ?? '');
+        const parentMatch = parentText.match(new RegExp(`^${escaped}\\s*:?\\s*(.+)$`, 'i'));
+        if (parentMatch?.[1]) return clean(parentMatch[1]).substring(0, 500);
+      }
+
+      return null;
+    };
+
+    const findEstimateRaw = () => {
+      const labels = [
+        "Engineer's Estimate",
+        'Engineers Estimate',
+        'Estimated Value',
+        'Estimated Bid Value',
+        'Estimated Amount',
+        'Estimated Cost',
+        'Estimate Range',
+        'Construction Estimate',
+        'Budget',
+        'Project Estimate',
+      ];
+
+      for (const label of labels) {
+        const value = field(label);
+        if (value) return value;
+      }
+
+      const contextMatch = bodyText.match(
+        /(?:engineer'?s?\s+estimate|estimated\s+(?:bid\s+)?value|estimated\s+amount|estimated\s+cost|construction\s+estimate|project\s+estimate|budget)[^\n$]{0,80}(\$?\s*\d[\d,]*(?:\.\d+)?\s*(?:[KMB]|thousand|million|billion)?(?:\s*(?:-|–|—|to)\s*\$?\s*\d[\d,]*(?:\.\d+)?\s*(?:[KMB]|thousand|million|billion)?)?)/i
+      );
+      return contextMatch?.[1]?.trim() ?? null;
+    };
+
+    const scopeMatch = bodyText.match(
+      /(?:Description|Scope of (?:Work|Services?|Project))[\s:\n]+([\s\S]{50,3000}?)(?:\n{2,}|\n[A-Z][a-z])/i
+    );
+
+    return {
+      estimated_value_raw: findEstimateRaw(),
+      license_requirements:
+        field('License Requirements') ||
+        field('License Type') ||
+        field('Required License') ||
+        field('License') ||
+        null,
+      department: field('Department') || field('Agency Department') || null,
+      liquidated_damages:
+        field('Liquidated Damages') ||
+        field('Liquidated Damage') ||
+        field('LDs') ||
+        null,
+      contract_duration:
+        field('Contract Duration') ||
+        field('Duration') ||
+        field('Project Duration') ||
+        field('Time of Completion') ||
+        field('Completion Time') ||
+        null,
+      bid_validity:
+        field('Bid Validity') ||
+        field('Bid Valid Until') ||
+        field('Bid Hold') ||
+        field('Validity') ||
+        null,
+      delivery_dates:
+        field('Delivery Dates') ||
+        field('Delivery Date') ||
+        field('Start Date') ||
+        field('Completion Date') ||
+        null,
+      project_address:
+        field('Project Address') ||
+        field('Work Location') ||
+        field('Location') ||
+        field('Project Location') ||
+        null,
+      county: field('County') || field('Location County') || null,
+      scope_text: scopeMatch ? scopeMatch[1].trim().substring(0, 3000) : null,
+    };
+  }).catch((e) => {
+    log(`Portal metadata extraction skipped: ${e.message}`);
+    return {};
+  });
+
+  const estimate = parseEstimatedValueDetails(raw.estimated_value_raw);
+  const metadata = {
+    estimated_value: estimate.estimated_value,
+    estimated_value_raw: estimate.estimated_value_raw,
+    estimated_value_low: estimate.estimated_value_low,
+    estimated_value_high: estimate.estimated_value_high,
+    license_requirements: raw.license_requirements ?? null,
+    department: raw.department ?? null,
+    liquidated_damages: raw.liquidated_damages ?? null,
+    contract_duration: raw.contract_duration ?? null,
+    bid_validity: raw.bid_validity ?? null,
+    delivery_dates: raw.delivery_dates ?? null,
+    project_address: raw.project_address ?? null,
+    county: raw.county ?? null,
+    scope_text: raw.scope_text ?? null,
+    portal_metadata_refreshed_at: new Date().toISOString(),
+  };
+
+  const populated = Object.entries(metadata)
+    .filter(([key, value]) => key !== 'portal_metadata_refreshed_at' && value !== null && value !== '')
+    .map(([key]) => key);
+
+  if (populated.length > 0) {
+    log(`Portal metadata refreshed: ${populated.join(', ')}`);
+  } else {
+    log('Portal metadata refresh found no structured fields');
+  }
+
+  return metadata;
+}
+
+async function mergeCandidatePortalMetadata(supabase, candidate, portalMetadata, log) {
+  const nextMetadata = Object.fromEntries(
+    Object.entries(portalMetadata ?? {}).filter(([, value]) => value !== null && value !== '')
+  );
+  if (Object.keys(nextMetadata).length === 0) return null;
+
+  const crawlData = {
+    ...(candidate.crawl_data ?? {}),
+    ...nextMetadata,
+  };
+
+  const { error } = await supabase
+    .from('opportunity_candidates')
+    .update({ crawl_data: crawlData })
+    .eq('id', candidate.id);
+
+  if (error) {
+    log(`Candidate portal metadata update failed: ${error.message}`);
+    return null;
+  }
+
+  log('Candidate crawl_data updated with portal metadata');
+  return crawlData;
+}
+
 async function getAuthenticatedManifest(candidate, log) {
   const bidId = candidate.crawl_data?.bid_id ?? extractBidId(candidate.source_url);
   if (!bidId) throw new Error('PlanetBids bid_id not found on candidate');
@@ -597,6 +832,7 @@ async function getAuthenticatedManifest(candidate, log) {
     await page.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => {});
     await page.waitForTimeout(2500);
 
+    const portalMetadata = await extractPortalMetadata(page, log);
     const capturedManifestJson = await openDocumentsTab(page, log);
 
     if (!bearerToken) {
@@ -604,11 +840,17 @@ async function getAuthenticatedManifest(candidate, log) {
     }
 
     if (capturedManifestJson) {
-      return normalizeManifestJson(capturedManifestJson, bearerToken, log);
+      return {
+        documents: normalizeManifestJson(capturedManifestJson, bearerToken, log),
+        portalMetadata,
+      };
     }
 
     try {
-      return await fetchManifest(bidId, bearerToken, log);
+      return {
+        documents: await fetchManifest(bidId, bearerToken, log),
+        portalMetadata,
+      };
     } catch (e) {
       const needsProspectiveBidder = e instanceof ManifestHttpError && e.status === 403;
       const uiRequiresProspectiveBidder = await pageShowsProspectiveBidderRequirement(page);
@@ -623,6 +865,13 @@ async function getAuthenticatedManifest(candidate, log) {
       await page.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => {});
       await page.waitForTimeout(2000);
       const retryCapturedManifestJson = await openDocumentsTab(page, log);
+      const refreshedAfterRegistration = await extractPortalMetadata(page, log);
+      const retryPortalMetadata = {
+        ...portalMetadata,
+        ...Object.fromEntries(
+          Object.entries(refreshedAfterRegistration).filter(([, value]) => value !== null && value !== '')
+        ),
+      };
 
       if (!bearerToken) {
         throw new Error('No PlanetBids bearer token captured after prospective bidder registration');
@@ -630,13 +879,19 @@ async function getAuthenticatedManifest(candidate, log) {
 
       if (retryCapturedManifestJson) {
         log('Manifest retry succeeded from Documents tab response');
-        return normalizeManifestJson(retryCapturedManifestJson, bearerToken, log);
+        return {
+          documents: normalizeManifestJson(retryCapturedManifestJson, bearerToken, log),
+          portalMetadata: retryPortalMetadata,
+        };
       }
 
       log('Retrying manifest after prospective bidder registration');
       const docs = await fetchManifest(bidId, bearerToken, log);
       log('Manifest retry succeeded');
-      return docs;
+      return {
+        documents: docs,
+        portalMetadata: retryPortalMetadata,
+      };
     }
   } finally {
     if (browser) {
@@ -757,7 +1012,8 @@ async function downloadAndStoreDocument(supabase, taskId, candidateId, doc, log)
 }
 
 async function acquirePlanetBidsDocuments({ supabase, task, candidate, log }) {
-  const manifestDocs = await getAuthenticatedManifest(candidate, log);
+  const { documents: manifestDocs, portalMetadata } = await getAuthenticatedManifest(candidate, log);
+  await mergeCandidatePortalMetadata(supabase, candidate, portalMetadata, log);
   let acquired = 0;
   let skipped = 0;
   let failed = 0;

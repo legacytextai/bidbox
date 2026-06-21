@@ -355,6 +355,7 @@ async function scrapePlanetBids(payload, log) {
                   "Engineer's Estimate",
                   'Engineers Estimate',
                   'Estimated Value',
+                  'Estimated Bid Value',
                   'Estimated Amount',
                   'Estimated Cost',
                   'Estimate Range',
@@ -386,12 +387,44 @@ async function scrapePlanetBids(payload, log) {
               const estimated_value_raw = findEstimateRaw();
 
               const license_requirements =
-                field('License Type') ||
-                field('License') ||
                 field('License Requirements') ||
+                field('License Type') ||
+                field('Required License') ||
+                field('License') ||
                 null;
 
               const county = field('County') || field('Location County') || null;
+              const department = field('Department') || field('Agency Department') || null;
+              const liquidated_damages =
+                field('Liquidated Damages') ||
+                field('Liquidated Damage') ||
+                field('LDs') ||
+                null;
+              const contract_duration =
+                field('Contract Duration') ||
+                field('Duration') ||
+                field('Project Duration') ||
+                field('Time of Completion') ||
+                field('Completion Time') ||
+                null;
+              const bid_validity =
+                field('Bid Validity') ||
+                field('Bid Valid Until') ||
+                field('Bid Hold') ||
+                field('Validity') ||
+                null;
+              const delivery_dates =
+                field('Delivery Dates') ||
+                field('Delivery Date') ||
+                field('Start Date') ||
+                field('Completion Date') ||
+                null;
+              const project_address =
+                field('Project Address') ||
+                field('Work Location') ||
+                field('Location') ||
+                field('Project Location') ||
+                null;
 
               const commodity_codes = [
                 ...new Set((bodyText.match(/\b91\d{2,4}\b/g) ?? [])),
@@ -407,6 +440,12 @@ async function scrapePlanetBids(payload, log) {
                 due_date_raw,
                 estimated_value_raw,
                 license_requirements,
+                department,
+                liquidated_damages,
+                contract_duration,
+                bid_validity,
+                delivery_dates,
+                project_address,
                 county,
                 commodity_codes,
                 scope_text,
@@ -433,6 +472,12 @@ async function scrapePlanetBids(payload, log) {
               estimated_value_low: estimate.estimated_value_low,
               estimated_value_high: estimate.estimated_value_high,
               license_requirements: raw.license_requirements,
+              department: raw.department,
+              liquidated_damages: raw.liquidated_damages,
+              contract_duration: raw.contract_duration,
+              bid_validity: raw.bid_validity,
+              delivery_dates: raw.delivery_dates,
+              project_address: raw.project_address,
               county: raw.county,
               commodity_codes: raw.commodity_codes,
               scope_text: raw.scope_text,

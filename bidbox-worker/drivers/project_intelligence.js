@@ -162,7 +162,28 @@ function buildEvidencePackets(chunks) {
   return packets;
 }
 
+function getPortalMetadata(candidate) {
+  const crawl = candidate?.crawl_data ?? {};
+  return {
+    estimated_value: crawl.estimated_value ?? null,
+    estimated_value_raw: crawl.estimated_value_raw ?? null,
+    estimated_value_low: crawl.estimated_value_low ?? null,
+    estimated_value_high: crawl.estimated_value_high ?? null,
+    license_requirements: crawl.license_requirements ?? null,
+    liquidated_damages: crawl.liquidated_damages ?? null,
+    department: crawl.department ?? null,
+    delivery_dates: crawl.delivery_dates ?? null,
+    contract_duration: crawl.contract_duration ?? null,
+    bid_validity: crawl.bid_validity ?? null,
+    project_address: crawl.project_address ?? null,
+    county: crawl.county ?? null,
+    scope_text: crawl.scope_text ?? candidate.scope_text ?? null,
+    source_url: candidate.source_url ?? null,
+  };
+}
+
 function buildPrompt({ candidate, evidencePackets }) {
+  const portalMetadata = getPortalMetadata(candidate);
   return [
     {
       role: 'system',
@@ -176,6 +197,11 @@ Core rule: NO CITATION = NO FACT.
 - Do not qualify the project, score fit, or recommend go/no-go.
 - F4 answers: what does this project require?
 - F5 later answers: is this a fit for this contractor?
+- Use structured portal_metadata as source-page context when available. Portal metadata takes precedence over document inference in the Executive Summary and report context for matching fields such as estimate, license, department, location, contract duration, bid validity, delivery dates, and liquidated damages. Cited findings still require chunk citations.
+- The Executive Summary must start with project context before bid requirements:
+  1. First bullet starts with "Project Overview:" and gives a 1-2 sentence description of what the project is.
+  2. Then include one or more bullets starting with "Key Bid Facts:" for bid due date, engineer estimate, contract duration, license requirement, bid bond, performance bond, and job walk when known.
+  3. Then include one or more bullets starting with "Requirements / Risks:" for major requirements or risks.
 
 Return structured findings. Found and conflict findings must include citations.`,
     },
@@ -192,12 +218,13 @@ Return structured findings. Found and conflict findings must include citations.`
           source_url: candidate.source_url,
           metadata: candidate.crawl_data,
         },
+        portal_metadata: portalMetadata,
         required_sections: CATEGORIES.map((category) => category.key),
         critical_field_keys: Array.from(CRITICAL_FIELD_KEYS),
         evidence_packets: evidencePackets,
         output_contract: {
           executive_summary: {
-            bullets: '3-8 concise bullets. Each bullet must be supported by finding_keys that reference cited findings.',
+            bullets: '3-8 concise bullets. First bullet must start with "Project Overview:" and explain what the project is before bid requirements. Then use "Key Bid Facts:" and "Requirements / Risks:" bullets. Use portal_metadata for source-page facts when available.',
           },
           findings: [
             {
@@ -756,6 +783,7 @@ async function runProjectIntelligence(task, supabase, log) {
     const chunkMap = new Map(evidence.chunks.map((chunk) => [chunk.id, chunk]));
     const pageMap = new Map(evidence.pages.map((page) => [`${page.opportunity_document_id}:${page.page_number}`, page]));
     const evidencePackets = buildEvidencePackets(evidence.chunks);
+    const portalMetadata = getPortalMetadata(evidence.candidate);
     const { report: raw, diagnostics: aiDiagnostics } = await callAi({ candidate: evidence.candidate, evidencePackets });
     log(
       `F4 OpenAI response: status=${aiDiagnostics.http_status} ` +
@@ -812,6 +840,7 @@ async function runProjectIntelligence(task, supabase, log) {
           schema_version: REPORT_SCHEMA_VERSION,
           chunks_available: evidence.chunks.length,
           documents_available: evidence.documents.length,
+          portal_metadata: portalMetadata,
           openai_response: {
             http_status: aiDiagnostics.http_status,
             finish_reason: aiDiagnostics.finish_reason,

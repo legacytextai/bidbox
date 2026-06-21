@@ -262,6 +262,11 @@ const OpportunityReport = () => {
   const crawl = candidate?.crawl_data ?? {};
   const estimatedValue = crawl?.estimated_value as number | undefined;
   const jobWalkAt = crawl?.job_walk_at as string | undefined;
+  const licenseRequirements = crawl?.license_requirements as string | undefined;
+  const contractDuration = crawl?.contract_duration as string | undefined;
+  const liquidatedDamages = crawl?.liquidated_damages as string | undefined;
+  const department = crawl?.department as string | undefined;
+  const projectAddress = crawl?.project_address as string | undefined;
   const reportReady = candidate?.analysis_status === "ready" && report;
 
   const handleAddToCalendar = async () => {
@@ -478,6 +483,7 @@ const OpportunityReport = () => {
         <Section title="Project Snapshot" icon={<FileText className="h-4 w-4" />}>
           <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
             <Field label="Agency" value={candidate.agency} />
+            <Field label="Department" value={department} />
             <Field label="Bid Due" value={formatDate(candidate.bid_due_at)} />
             <Field
               label="Estimated Value"
@@ -487,6 +493,10 @@ const OpportunityReport = () => {
                   : null
               }
             />
+            <Field label="Required License" value={licenseRequirements} />
+            <Field label="Contract Duration" value={contractDuration} />
+            <Field label="Liquidated Damages" value={liquidatedDamages} />
+            <Field label="Location" value={projectAddress} />
             <Field label="Portal" value={candidate.portal_type} />
           </dl>
         </Section>
