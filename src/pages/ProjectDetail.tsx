@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Copy, Download, Trash2, Upload, CheckCircle2, Loader2, Plus, RefreshCw, ExternalLink, Sparkles } from "lucide-react";
+import { ArrowLeft, Copy, Download, Trash2, Upload, CheckCircle2, Loader2, Plus, RefreshCw } from "lucide-react";
 import { Layout } from "@/components/Layout";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
@@ -24,6 +24,7 @@ import { CountySelect } from "@/components/CountySelect";
 import { ProjectSignals } from "@/components/ProjectSignals";
 import { HighSignalPanel } from "@/components/HighSignalPanel";
 import { BidReadinessChecklist } from "@/components/BidReadinessChecklist";
+import { OpportunityIntelligenceWorkspace } from "@/components/project-workspace/OpportunityIntelligenceWorkspace";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -72,11 +73,31 @@ interface IntelligenceReport {
   executive_summary: any;
   status: string;
 }
-const getExecutiveBulletText = (bullet: any) => {
-  if (typeof bullet === "string") return bullet;
-  if (typeof bullet?.text === "string") return bullet.text;
-  return null;
-};
+interface IntelligenceFinding {
+  id: string;
+  category: string;
+  field_key: string;
+  label: string;
+  value_text: string | null;
+  value_jsonb: any | null;
+  status: string;
+  confidence: string;
+  is_critical: boolean;
+  sort_order: number;
+}
+interface OpportunityDocument {
+  id: string;
+  file_name: string;
+  file_size: number | null;
+  file_type: string | null;
+  document_family: string | null;
+  document_class: string | null;
+  acquisition_status: string;
+  processing_status: string;
+  storage_bucket: string;
+  storage_path: string | null;
+  source_url: string | null;
+}
 const ProjectDetail = () => {
   const {
     id
@@ -90,6 +111,8 @@ const ProjectDetail = () => {
   const [projectFiles, setProjectFiles] = useState<ProjectFile[]>([]);
   const [sourceOpportunity, setSourceOpportunity] = useState<SourceOpportunity | null>(null);
   const [intelligenceReport, setIntelligenceReport] = useState<IntelligenceReport | null>(null);
+  const [intelligenceFindings, setIntelligenceFindings] = useState<IntelligenceFinding[]>([]);
+  const [opportunityDocuments, setOpportunityDocuments] = useState<OpportunityDocument[]>([]);
   const [bids, setBids] = useState<Bid[]>([]);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [copied, setCopied] = useState(false);
@@ -153,8 +176,11 @@ const ProjectDetail = () => {
     setProject(projectData);
     setSourceOpportunity(null);
     setIntelligenceReport(null);
+    setIntelligenceFindings([]);
+    setOpportunityDocuments([]);
 
     if (projectData.origin === "opportunity_intelligence") {
+      const opportunityCandidateId = projectData.source_opportunity_candidate_id;
       if (projectData.source_opportunity_candidate_id) {
         const {
           data: opportunityData
@@ -164,8 +190,19 @@ const ProjectDetail = () => {
           .eq("id", projectData.source_opportunity_candidate_id)
           .maybeSingle();
         setSourceOpportunity(opportunityData as SourceOpportunity | null);
+
+        const {
+          data: documentsData
+        } = await supabase
+          .from("opportunity_documents")
+          .select("id, file_name, file_size, file_type, document_family, document_class, acquisition_status, processing_status, storage_bucket, storage_path, source_url")
+          .eq("opportunity_candidate_id", opportunityCandidateId)
+          .order("document_source_order", { ascending: true, nullsFirst: false })
+          .order("created_at", { ascending: true });
+        setOpportunityDocuments((documentsData || []) as OpportunityDocument[]);
       }
 
+      let reportId: string | null = null;
       if (projectData.opportunity_intelligence_report_id) {
         const {
           data: reportData
@@ -175,6 +212,7 @@ const ProjectDetail = () => {
           .eq("id", projectData.opportunity_intelligence_report_id)
           .maybeSingle();
         setIntelligenceReport(reportData as IntelligenceReport | null);
+        reportId = reportData?.id ?? null;
       } else if (projectData.source_opportunity_candidate_id) {
         const {
           data: reportData
@@ -186,6 +224,19 @@ const ProjectDetail = () => {
           .limit(1)
           .maybeSingle();
         setIntelligenceReport(reportData as IntelligenceReport | null);
+        reportId = reportData?.id ?? null;
+      }
+
+      if (reportId) {
+        const {
+          data: findingsData
+        } = await supabase
+          .from("opportunity_intelligence_findings")
+          .select("*")
+          .eq("report_id", reportId)
+          .order("sort_order", { ascending: true })
+          .order("created_at", { ascending: true });
+        setIntelligenceFindings((findingsData || []) as IntelligenceFinding[]);
       }
     }
 
@@ -626,95 +677,34 @@ const ProjectDetail = () => {
       </Layout>;
   }
   if (isOpportunityIntelligenceProject) {
-    const reportOpportunityId = project.source_opportunity_candidate_id || sourceOpportunity?.id;
-    const overviewBullet = Array.isArray(intelligenceReport?.executive_summary?.bullets)
-      ? intelligenceReport?.executive_summary?.bullets
-          .map(getExecutiveBulletText)
-          .find((text): text is string => Boolean(text))
-      : null;
-    const projectOverview = overviewBullet?.replace(/^Project Overview:\s*/i, "");
-    const estimatedValue = sourceOpportunity?.crawl_data?.estimated_value;
-
     return <Layout showSidebar={true}>
-        <div className="p-4 space-y-4">
-          <Button variant="ghost" onClick={() => navigate("/projects")} className="mb-2">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Projects
-          </Button>
-
-          <div className="border border-border rounded-lg p-5 bg-card space-y-4">
-            <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline">Opportunity Intelligence</Badge>
-                  <Badge variant="secondary">Workspace shell</Badge>
-                </div>
-                <h1 className="text-2xl font-bold text-foreground">{project.name}</h1>
-                {project.agency && <p className="text-muted-foreground">{project.agency}</p>}
-              </div>
-
-              <Button
-                onClick={() => reportOpportunityId && navigate(`/opportunities/${reportOpportunityId}`)}
-                disabled={!reportOpportunityId}
-                className="bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90 disabled:opacity-40"
-              >
-                <Sparkles className="h-4 w-4 mr-2" />
-                View Intelligence Report
-              </Button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="border border-border rounded-lg p-4">
-                <p className="text-xs uppercase tracking-wide text-muted-foreground">Bid Due</p>
-                <p className="font-medium">
-                  {project.bid_due_at ? format(new Date(project.bid_due_at), "MMM d, yyyy h:mm a") : "Unknown"}
-                </p>
-              </div>
-              <div className="border border-border rounded-lg p-4">
-                <p className="text-xs uppercase tracking-wide text-muted-foreground">Origin</p>
-                <p className="font-medium">Opportunity Intelligence</p>
-              </div>
-              <div className="border border-border rounded-lg p-4">
-                <p className="text-xs uppercase tracking-wide text-muted-foreground">Engineer Estimate</p>
-                <p className="font-medium">
-                  {typeof estimatedValue === "number"
-                    ? estimatedValue.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })
-                    : "Not available"}
-                </p>
-              </div>
-            </div>
-
-            <div className="border border-border rounded-lg p-4 space-y-2">
-              <div className="flex items-center justify-between">
-                <h2 className="font-semibold text-foreground">Project Workspace</h2>
-                {intelligenceReport?.status && <Badge variant="outline">Report {intelligenceReport.status}</Badge>}
-              </div>
-              <p className="text-sm text-muted-foreground">
-                This project was created from an analyzed opportunity. The full evidence-backed Project Intelligence Report remains the source of truth.
-              </p>
-              {projectOverview && (
-                <p className="text-sm text-foreground">
-                  {projectOverview}
-                </p>
-              )}
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              {project.source_url && (
-                <Button variant="outline" onClick={() => window.open(project.source_url, "_blank", "noopener,noreferrer")}>
-                  <ExternalLink className="h-4 w-4 mr-2" />
-                  Source Portal
-                </Button>
-              )}
-              {reportOpportunityId && (
-                <Button variant="outline" onClick={() => navigate(`/opportunities/${reportOpportunityId}`)}>
-                  <Sparkles className="h-4 w-4 mr-2" />
-                  Intelligence Report
-                </Button>
-              )}
-            </div>
-          </div>
-        </div>
+        <OpportunityIntelligenceWorkspace
+          project={project}
+          sourceOpportunity={sourceOpportunity}
+          intelligenceReport={intelligenceReport}
+          findings={intelligenceFindings}
+          opportunityDocuments={opportunityDocuments}
+          projectFiles={projectFiles}
+          projectTrades={projectTrades}
+          submissions={submissions}
+          copied={copied}
+          newFiles={newFiles}
+          currentUpload={currentUpload}
+          isUploading={isUploading}
+          editingTrades={editingTrades}
+          editedTradeIds={editedTradeIds}
+          savingTrades={savingTrades}
+          onCopyBidLink={copyBidLink}
+          onFilesSelected={files => setNewFiles(files)}
+          onUploadFiles={handleFileUpload}
+          onDownloadInternalFile={downloadFile}
+          onDeleteInternalFile={deleteFile}
+          onDownloadBid={downloadBid}
+          onDeleteSubmission={deleteSubmission}
+          onEditingTradesChange={setEditingTrades}
+          onEditedTradeIdsChange={setEditedTradeIds}
+          onSaveTrades={saveTrades}
+        />
       </Layout>;
   }
   return <Layout showSidebar={true}>
