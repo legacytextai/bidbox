@@ -202,6 +202,7 @@ Core rule: NO CITATION = NO FACT.
   1. First bullet starts with "Project Overview:" and gives a 1-2 sentence description of what the project is.
   2. Then include one or more bullets starting with "Key Bid Facts:" for bid due date, engineer estimate, contract duration, license requirement, bid bond, performance bond, and job walk when known.
   3. Then include one or more bullets starting with "Requirements / Risks:" for major requirements or risks.
+- Bid due date/time is critical. If documents, portal_metadata, or candidate metadata disagree on bid due time, create a key_dates finding with status "conflict" or "needs_review"; do not silently choose one.
 
 Return structured findings. Found and conflict findings must include citations.`,
     },
@@ -409,6 +410,35 @@ function isFactualStatus(status) {
   return status === 'found' || status === 'conflict';
 }
 
+function isProjectOverviewText(text) {
+  return /^project overview\s*:/i.test(normalizeText(text));
+}
+
+function normalizeExecutiveSummaryText(text, index) {
+  const value = normalizeText(text);
+  if (!value) return value;
+  if (index !== 0) return value;
+  if (/^scope text\s*:/i.test(value)) {
+    return value.replace(/^scope text\s*:/i, 'Project Overview:');
+  }
+  if (isProjectOverviewText(value)) return value;
+  return `Project Overview: ${value}`;
+}
+
+function buildProjectOverviewBullet(findings) {
+  const overview = findings.find((finding) =>
+    isFactualStatus(finding.status) &&
+    finding.value_text &&
+    (finding.category === 'project_overview' || finding.category === 'scope_summary')
+  );
+
+  if (!overview) return null;
+  return {
+    text: truncate(`Project Overview: ${overview.value_text}`, 240),
+    finding_keys: [overview.finding_key],
+  };
+}
+
 function validateReport(raw, chunkMap, pageMap) {
   const findings = [];
   const citations = [];
@@ -483,22 +513,41 @@ function validateReport(raw, chunkMap, pageMap) {
     .map((finding) => finding.finding_key));
   let bullets = (raw?.executive_summary?.bullets ?? [])
     .filter((bullet) => normalizeText(bullet.text))
-    .map((bullet) => ({
-      text: truncate(bullet.text, 240),
+    .map((bullet, index) => ({
+      text: truncate(normalizeExecutiveSummaryText(bullet.text, index), 240),
       finding_keys: (bullet.finding_keys ?? []).filter((key) => citedFindingKeys.has(key)),
     }))
     .filter((bullet) => bullet.finding_keys.length > 0)
     .slice(0, 8);
 
+  const needsOverviewFirst = bullets.length === 0 || !isProjectOverviewText(bullets[0].text);
+  if (needsOverviewFirst) {
+    const overviewBullet = buildProjectOverviewBullet(findings);
+    if (overviewBullet) {
+      bullets = [
+        overviewBullet,
+        ...bullets.filter((bullet) => bullet.finding_keys[0] !== overviewBullet.finding_keys[0]),
+      ].slice(0, 8);
+    }
+  }
+
   if (bullets.length === 0) {
-    bullets = findings
+    const fallbackFindings = findings
       .filter((finding) => isFactualStatus(finding.status) && finding.value_text)
       .sort((a, b) => Number(b.is_critical) - Number(a.is_critical))
-      .slice(0, 6)
+      .slice(0, 6);
+    const overview = buildProjectOverviewBullet(fallbackFindings);
+    bullets = fallbackFindings
       .map((finding) => ({
         text: truncate(`${finding.label}: ${finding.value_text}`, 240),
         finding_keys: [finding.finding_key],
       }));
+    if (overview) {
+      bullets = [
+        overview,
+        ...bullets.filter((bullet) => bullet.finding_keys[0] !== overview.finding_keys[0]),
+      ].slice(0, 6);
+    }
   }
 
   return {

@@ -107,13 +107,78 @@ const REPORT_SECTIONS = [
 const formatDate = (iso: string | null) =>
   iso
     ? new Date(iso).toLocaleString("en-US", {
-        month: "short",
+        month: "long",
         day: "numeric",
         year: "numeric",
         hour: "numeric",
         minute: "2-digit",
       })
     : "—";
+
+const TIME_RE = /\b(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?|am|pm)\b/i;
+const MONTH_DATE_RE =
+  /\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}\b/i;
+
+const normalizeTimeToken = (text: string | null | undefined) => {
+  const match = String(text ?? "").match(TIME_RE);
+  if (!match) return null;
+  let hour = Number(match[1]);
+  const minute = Number(match[2] ?? "0");
+  const meridiem = match[3].toLowerCase();
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
+  if (meridiem.startsWith("p") && hour !== 12) hour += 12;
+  if (meridiem.startsWith("a") && hour === 12) hour = 0;
+  return hour * 60 + minute;
+};
+
+const extractDateTimeDisplay = (text: string | null | undefined) => {
+  const source = String(text ?? "").replace(/\s+/g, " ").trim();
+  if (!source) return null;
+  const date = source.match(MONTH_DATE_RE)?.[0] ?? null;
+  const time = source.match(TIME_RE)?.[0] ?? null;
+  if (date && time) {
+    const cleanedTime = time
+      .replace(/\./g, "")
+      .replace(/\s+/g, " ")
+      .toUpperCase();
+    return `${date} at ${cleanedTime}`;
+  }
+  return source;
+};
+
+const candidateTimeMinutes = (iso: string | null | undefined) => {
+  if (!iso) return null;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.getHours() * 60 + date.getMinutes();
+};
+
+const isBidDueFinding = (finding: Finding) => {
+  const haystack = `${finding.field_key} ${finding.label}`.toLowerCase();
+  return (
+    /bid.*due/.test(haystack) ||
+    /due.*date/.test(haystack) ||
+    /bid.*opening/.test(haystack) ||
+    /submission.*deadline/.test(haystack)
+  );
+};
+
+const isProjectOverviewBullet = (text: string | null | undefined) =>
+  /^project overview\s*:/i.test(String(text ?? "").trim());
+
+const normalizeExecutiveBulletText = (text: string | null | undefined, index: number) => {
+  const value = String(text ?? "").replace(/\s+/g, " ").trim();
+  if (!value) return value;
+  if (index === 0) {
+    if (/^scope text\s*:/i.test(value)) {
+      return value.replace(/^scope text\s*:/i, "Project Overview:");
+    }
+    if (!isProjectOverviewBullet(value)) {
+      return `Project Overview: ${value}`;
+    }
+  }
+  return value;
+};
 
 const ANALYSIS_BADGE: Record<AnalysisStatus, string> = {
   not_requested: "bg-gray-500/10 text-gray-600",
@@ -258,6 +323,57 @@ const OpportunityReport = () => {
     });
     return map;
   }, [findings]);
+
+  const safeBidDue = useMemo(() => {
+    const sourceBackedFindings = findings.filter((finding) => {
+      const statusSupportsFact = finding.status === "found" || finding.status === "conflict";
+      return statusSupportsFact && isBidDueFinding(finding) && (citationsByFinding.get(finding.id)?.length ?? 0) > 0;
+    });
+
+    const sourceDisplays = sourceBackedFindings
+      .map((finding) => extractDateTimeDisplay(finding.value_text))
+      .filter((value): value is string => Boolean(value));
+
+    const sourceTimes = [
+      ...new Set(
+        sourceBackedFindings
+          .map((finding) => normalizeTimeToken(finding.value_text))
+          .filter((value): value is number => value !== null),
+      ),
+    ];
+
+    const candidateDisplay = formatDate(candidate?.bid_due_at ?? null);
+    const candidateTime = candidateTimeMinutes(candidate?.bid_due_at);
+    const hasSourceConflict = sourceTimes.length > 1;
+    const hasMetadataConflict =
+      sourceTimes.length === 1 &&
+      candidateTime !== null &&
+      sourceTimes[0] !== candidateTime;
+
+    if (hasSourceConflict) {
+      return {
+        display: sourceDisplays[0] ?? candidateDisplay,
+        source: "Needs review",
+        warning: "Multiple cited bid due times were found. Review the Key Dates citations before relying on this deadline.",
+      };
+    }
+
+    if (sourceDisplays.length > 0) {
+      return {
+        display: sourceDisplays[0],
+        source: "Source-backed",
+        warning: hasMetadataConflict
+          ? `Candidate metadata shows ${candidateDisplay}, but the cited source says ${sourceDisplays[0]}. Showing the cited source-backed deadline.`
+          : null,
+      };
+    }
+
+    return {
+      display: candidateDisplay,
+      source: candidate?.bid_due_at ? "Candidate metadata" : null,
+      warning: null,
+    };
+  }, [candidate?.bid_due_at, findings, citationsByFinding]);
 
   const crawl = candidate?.crawl_data ?? {};
   const estimatedValue = crawl?.estimated_value as number | undefined;
@@ -471,7 +587,7 @@ const OpportunityReport = () => {
               {executiveBullets.map((bullet: any, index: number) => (
                 <li key={`${bullet.text}-${index}`} className="flex gap-2">
                   <span className="mt-2 h-1.5 w-1.5 rounded-full bg-[hsl(var(--bidbox-blue))] shrink-0" />
-                  <span>{bullet.text}</span>
+                  <span>{normalizeExecutiveBulletText(bullet.text, index)}</span>
                 </li>
               ))}
             </ul>
@@ -486,7 +602,7 @@ const OpportunityReport = () => {
           <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
             <Field label="Agency" value={candidate.agency} />
             <Field label="Department" value={department} />
-            <Field label="Bid Due" value={formatDate(candidate.bid_due_at)} />
+            <Field label="Bid Due" value={safeBidDue.display} />
             <Field
               label="Estimated Value"
               value={
@@ -501,6 +617,17 @@ const OpportunityReport = () => {
             <Field label="Location" value={projectAddress} />
             <Field label="Portal" value={candidate.portal_type} />
           </dl>
+          {safeBidDue.source && (
+            <p className="mt-3 text-xs text-muted-foreground">
+              Bid due source: {safeBidDue.source}
+            </p>
+          )}
+          {safeBidDue.warning && (
+            <div className="mt-3 flex items-start gap-2 rounded border border-yellow-300 bg-yellow-50 px-3 py-2 text-sm text-yellow-900">
+              <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+              <p>{safeBidDue.warning}</p>
+            </div>
+          )}
         </Section>
 
         {REPORT_SECTIONS.map((section) => {
