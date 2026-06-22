@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Copy, Download, Trash2, Upload, CheckCircle2, Loader2, Plus, RefreshCw } from "lucide-react";
+import { ArrowLeft, Copy, Download, Trash2, Upload, CheckCircle2, Loader2, Plus, RefreshCw, ExternalLink, Sparkles } from "lucide-react";
 import { Layout } from "@/components/Layout";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
@@ -60,6 +60,23 @@ interface ProjectTrade {
   trade_type_id: string;
   trade_types: TradeType;
 }
+interface SourceOpportunity {
+  id: string;
+  raw_title: string | null;
+  agency: string | null;
+  crawl_data: any | null;
+}
+interface IntelligenceReport {
+  id: string;
+  title: string | null;
+  executive_summary: any;
+  status: string;
+}
+const getExecutiveBulletText = (bullet: any) => {
+  if (typeof bullet === "string") return bullet;
+  if (typeof bullet?.text === "string") return bullet.text;
+  return null;
+};
 const ProjectDetail = () => {
   const {
     id
@@ -71,6 +88,8 @@ const ProjectDetail = () => {
   const [loading, setLoading] = useState(true);
   const [project, setProject] = useState<any>(null);
   const [projectFiles, setProjectFiles] = useState<ProjectFile[]>([]);
+  const [sourceOpportunity, setSourceOpportunity] = useState<SourceOpportunity | null>(null);
+  const [intelligenceReport, setIntelligenceReport] = useState<IntelligenceReport | null>(null);
   const [bids, setBids] = useState<Bid[]>([]);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [copied, setCopied] = useState(false);
@@ -132,6 +151,43 @@ const ProjectDetail = () => {
       return;
     }
     setProject(projectData);
+    setSourceOpportunity(null);
+    setIntelligenceReport(null);
+
+    if (projectData.origin === "opportunity_intelligence") {
+      if (projectData.source_opportunity_candidate_id) {
+        const {
+          data: opportunityData
+        } = await supabase
+          .from("opportunity_candidates")
+          .select("id, raw_title, agency, crawl_data")
+          .eq("id", projectData.source_opportunity_candidate_id)
+          .maybeSingle();
+        setSourceOpportunity(opportunityData as SourceOpportunity | null);
+      }
+
+      if (projectData.opportunity_intelligence_report_id) {
+        const {
+          data: reportData
+        } = await supabase
+          .from("opportunity_intelligence_reports")
+          .select("id, title, executive_summary, status")
+          .eq("id", projectData.opportunity_intelligence_report_id)
+          .maybeSingle();
+        setIntelligenceReport(reportData as IntelligenceReport | null);
+      } else if (projectData.source_opportunity_candidate_id) {
+        const {
+          data: reportData
+        } = await supabase
+          .from("opportunity_intelligence_reports")
+          .select("id, title, executive_summary, status")
+          .eq("opportunity_candidate_id", projectData.source_opportunity_candidate_id)
+          .order("report_version", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        setIntelligenceReport(reportData as IntelligenceReport | null);
+      }
+    }
 
     // Initialize editable fields
     const projectTimezone = projectData.timezone || "America/Los_Angeles";
@@ -256,7 +312,7 @@ const ProjectDetail = () => {
     setIsSaving(false);
   };
   const handleReCrawl = async () => {
-    if (!project?.source_url) return;
+    if (!project?.source_url || project.origin === "opportunity_intelligence") return;
     setIsRecrawling(true);
     try {
       // Store current values for change detection
@@ -524,8 +580,11 @@ const ProjectDetail = () => {
     }
   };
 
-  // Check if crawl is still in progress (has source_url but no last_crawled_at)
-  const isCrawlPending = project?.source_url && !project?.last_crawled_at;
+  const isOpportunityIntelligenceProject = project?.origin === "opportunity_intelligence";
+  const isOneLinkProject = project?.origin === "one_link" || (!project?.origin && project?.source_url);
+
+  // One Link projects are the only projects that use source_url/last_crawled_at as crawl state.
+  const isCrawlPending = isOneLinkProject && project?.source_url && !project?.last_crawled_at;
 
   // Poll for crawl completion when pending
   useEffect(() => {
@@ -566,6 +625,98 @@ const ProjectDetail = () => {
         </div>
       </Layout>;
   }
+  if (isOpportunityIntelligenceProject) {
+    const reportOpportunityId = project.source_opportunity_candidate_id || sourceOpportunity?.id;
+    const overviewBullet = Array.isArray(intelligenceReport?.executive_summary?.bullets)
+      ? intelligenceReport?.executive_summary?.bullets
+          .map(getExecutiveBulletText)
+          .find((text): text is string => Boolean(text))
+      : null;
+    const projectOverview = overviewBullet?.replace(/^Project Overview:\s*/i, "");
+    const estimatedValue = sourceOpportunity?.crawl_data?.estimated_value;
+
+    return <Layout showSidebar={true}>
+        <div className="p-4 space-y-4">
+          <Button variant="ghost" onClick={() => navigate("/projects")} className="mb-2">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Projects
+          </Button>
+
+          <div className="border border-border rounded-lg p-5 bg-card space-y-4">
+            <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline">Opportunity Intelligence</Badge>
+                  <Badge variant="secondary">Workspace shell</Badge>
+                </div>
+                <h1 className="text-2xl font-bold text-foreground">{project.name}</h1>
+                {project.agency && <p className="text-muted-foreground">{project.agency}</p>}
+              </div>
+
+              <Button
+                onClick={() => reportOpportunityId && navigate(`/opportunities/${reportOpportunityId}`)}
+                disabled={!reportOpportunityId}
+                className="bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90 disabled:opacity-40"
+              >
+                <Sparkles className="h-4 w-4 mr-2" />
+                View Intelligence Report
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="border border-border rounded-lg p-4">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Bid Due</p>
+                <p className="font-medium">
+                  {project.bid_due_at ? format(new Date(project.bid_due_at), "MMM d, yyyy h:mm a") : "Unknown"}
+                </p>
+              </div>
+              <div className="border border-border rounded-lg p-4">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Origin</p>
+                <p className="font-medium">Opportunity Intelligence</p>
+              </div>
+              <div className="border border-border rounded-lg p-4">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Engineer Estimate</p>
+                <p className="font-medium">
+                  {typeof estimatedValue === "number"
+                    ? estimatedValue.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })
+                    : "Not available"}
+                </p>
+              </div>
+            </div>
+
+            <div className="border border-border rounded-lg p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <h2 className="font-semibold text-foreground">Project Workspace</h2>
+                {intelligenceReport?.status && <Badge variant="outline">Report {intelligenceReport.status}</Badge>}
+              </div>
+              <p className="text-sm text-muted-foreground">
+                This project was created from an analyzed opportunity. The full evidence-backed Project Intelligence Report remains the source of truth.
+              </p>
+              {projectOverview && (
+                <p className="text-sm text-foreground">
+                  {projectOverview}
+                </p>
+              )}
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {project.source_url && (
+                <Button variant="outline" onClick={() => window.open(project.source_url, "_blank", "noopener,noreferrer")}>
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  Source Portal
+                </Button>
+              )}
+              {reportOpportunityId && (
+                <Button variant="outline" onClick={() => navigate(`/opportunities/${reportOpportunityId}`)}>
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  Intelligence Report
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      </Layout>;
+  }
   return <Layout showSidebar={true}>
       <div className="p-4">
           <Button variant="ghost" onClick={() => navigate("/projects")} className="mb-2">
@@ -574,13 +725,13 @@ const ProjectDetail = () => {
           </Button>
 
           {/* Project Signals from One Link crawl */}
-          <ProjectSignals project={project} className="mb-4" onRefresh={project.source_url ? handleReCrawl : undefined} isRefreshing={isRecrawling} />
+          <ProjectSignals project={project} className="mb-4" onRefresh={isOneLinkProject && project.source_url ? handleReCrawl : undefined} isRefreshing={isRecrawling} />
 
           {/* Bid Readiness Checklist - Manual readiness tracking */}
           <BidReadinessChecklist projectId={id!} />
 
           {/* High-Signal Panel (read-only) - Requirements & Risk Signals */}
-          {project?.source_url && project?.last_crawled_at && (
+          {isOneLinkProject && project?.source_url && project?.last_crawled_at && (
             <HighSignalPanel project={project} />
           )}
 
