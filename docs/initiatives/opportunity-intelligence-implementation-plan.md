@@ -22,6 +22,8 @@ The product should first give contractors broad visibility into public works opp
 
 This plan intentionally avoids building a full autonomous bidding platform. The MVP should prove that 1-5 beta contractors can use BidBox to find relevant public works opportunities, analyze selected jobs faster, and decide which ones are worth adding to their calendar.
 
+Current implementation focus: F4 Project Intelligence is complete. Before resuming F5 Qualification, Phase G will harden the transition from Intelligence Report to active pursuit by creating a Project Workspace layer that reuses F4 intelligence and avoids legacy One Link crawl behavior.
+
 ## Current State
 
 ### Already Implemented
@@ -38,6 +40,12 @@ This plan intentionally avoids building a full autonomous bidding platform. The 
 - F3 document processing is complete for the validated PlanetBids/text-native PDF path.
 - F3 production validation on `San Miguel Drive Pavement Rehabilitation 9855-2` for City of Newport Beach processed 5 PDFs, extracted 178 pages, created 106 chunks, and produced 0 failures / 0 OCR-required documents.
 - `opportunity_document_pages` and `opportunity_document_chunks` now preserve the document → page → chunk citation chain for future Project Intelligence.
+- F4 Project Intelligence is complete for the validated MVP path.
+- F4 generates document-backed Project Intelligence reports with executive summaries, project snapshot metadata, scope summaries, trade breakdowns, key dates, bid requirements, addenda summaries, risk flags, source document references, and citation-backed findings.
+- F4 production validation covered multiple real PlanetBids projects across several agencies and confirmed end-to-end F2 → F3 → F4 execution.
+- F4 quality hardening added portal metadata enrichment, engineer-estimate/license propagation, Project Overview executive-summary context, bid due date/time conflict safeguards, and corrected report navigation after calendar conversion.
+- Analyzed opportunities can be added to calendar, and converted opportunities retain access to their Intelligence Report.
+- Current conversion creates/reuses `projects` records as the Calendar anchor, but the Project Workspace still needs Phase G hardening so Opportunity Intelligence projects do not re-enter legacy One Link crawl flows.
 - `/opportunities` displays discovered candidates and scan progress.
 - `gc_qualification_profiles` and `qualify-candidates` provide preliminary metadata triage.
 - `/calendar` already exists for project date tracking.
@@ -50,9 +58,8 @@ This plan intentionally avoids building a full autonomous bidding platform. The 
 - Registration memory and human escalation for ambiguous agency registration questions.
 - F3A classification accuracy improvements for edge-case document names and titles.
 - OCR for scanned PDFs.
-- Project Intelligence report generation.
 - Evidence-backed qualification after analysis.
-- Calendar action specifically tied to analyzed opportunities.
+- Phase G Project Workspace for Opportunity Intelligence pursuits.
 
 ## Target User Workflow
 
@@ -129,7 +136,7 @@ MVP bias: choose the smallest schema that supports analysis status, report stora
 
 ## Project Intelligence Layer
 
-Project Intelligence is the next major build phase.
+Project Intelligence is the core completed MVP analysis layer. The next major build phase is F5 evidence-backed qualification on top of these reports.
 
 ### 0. Agency Access Management
 
@@ -254,18 +261,19 @@ Known F3A backlog:
 - Observed issues:
   - `Notice Inviting Bids` classified as addendum.
   - `Sample Contract` classified as plans.
-- This does not block F4 because the evidence extraction and citation chain work correctly.
+- This did not block F4 because the evidence extraction and citation chain work correctly.
 
 Out of scope for MVP:
 
 - Quantity takeoff.
 - Full drawing understanding.
 - Complete spec indexing across every file type.
-- Intelligence report generation.
 - Qualification.
 - Summarization or recommendations.
 
 ### 3. Project Intelligence Report
+
+Status: complete for the validated MVP path.
 
 Goal: summarize the facts an estimator needs to decide whether to track a job.
 
@@ -284,6 +292,27 @@ Report rules:
 - Do not fabricate facts.
 - Prefer source-backed statements.
 - Make the report short enough for estimator review.
+- Preserve source citations for factual findings.
+- Start Executive Summary with project context through `Project Overview`.
+- Use portal metadata when available for fields such as engineer estimate and license requirements.
+- Warn when bid due date/time sources conflict instead of silently rendering contradictory deadlines.
+
+Implemented:
+
+- `project_intelligence` worker task.
+- Stored report rows, findings, and citations.
+- Citation validation and no-citation-no-fact downgrading.
+- Opportunity Report page with Executive Summary, Project Snapshot, report sections, citations, and source documents.
+- Analyzed tab / report navigation that preserves access after `Add to Calendar`.
+
+Production validation:
+
+- Real PlanetBids projects.
+- Multiple agencies.
+- F2 Document Acquisition functioning.
+- F3 Document Processing functioning.
+- F4 Project Intelligence functioning.
+- Source-backed citations and portal metadata verified.
 
 ## Qualification Layer
 
@@ -321,25 +350,38 @@ Outputs:
 
 ## Pursuit Layer
 
-The MVP pursuit layer has one action:
+The MVP pursuit layer begins with one signal:
 
 ```text
 Add to Calendar
 ```
 
-This is the only pursuit signal needed for validation.
+For Phase G, `Add to Calendar` means create or reuse a `projects` row and open a lightweight Project Workspace seeded from the existing F4 Intelligence Report.
+
+The Intelligence Report and Project Workspace are separate concepts:
+
+- Intelligence Report: the canonical evidence-backed explanation of the opportunity.
+- Project Workspace: the operational home once the contractor is tracking/pursuing the project.
+
+Opportunity Intelligence projects should never re-enter legacy One Link crawl flows after F2/F3/F4 have completed.
 
 ### Current Foundation
 
 - `/calendar` exists.
 - Project bid due dates and job walk dates already appear in calendar contexts.
 - Projects can store source URLs and metadata.
+- Projects currently serve as the Calendar anchor model.
+- `opportunity_candidates.converted_project_id` links converted opportunities to projects.
+- F4 Intelligence Reports remain stored separately from projects.
 
 ### MVP Requirements
 
 - Let the estimator add an analyzed opportunity to the calendar.
-- Preserve the Project Intelligence report link or context.
+- Create or reuse a `projects` row as the operational anchor.
+- Track project origin so legacy One Link projects and Opportunity Intelligence projects use different workspace logic.
+- Preserve the Project Intelligence report link and originating opportunity link.
 - Show bid due date and key bid events when available.
+- Build a lightweight Project Workspace for active pursuits.
 - Avoid building a full pursuit CRM before validation.
 
 Out of scope:
@@ -386,19 +428,23 @@ Out of scope:
 7. **Document text extraction** ✅ Complete
    - Text-native PDFs are processed into page and chunk evidence.
    - Processing status and failure visibility are implemented.
-   - F3A classification accuracy improvements remain future backlog and should not delay F4.
+   - F3A classification accuracy improvements remain future backlog and did not block F4.
 
-8. **Project Intelligence report** ⬜ Next
-   - Generate the first practical report format.
-   - Prioritize scope, trades, requirements, bid events, and risks.
+8. **Project Intelligence report** ✅ Complete
+   - Generated and validated the first practical report format.
+   - Includes scope, trades, requirements, bid events, risks, source documents, and citations.
 
-9. **Post-analysis qualification**
+9. **Pursuit Management & Project Workspace** 🔄 Next active task
+   - Treat `Add to Calendar` as create/reuse project.
+   - Add project origin and report/opportunity linkage.
+   - Separate Opportunity Intelligence projects from legacy One Link projects.
+   - Build the MVP Project Workspace as a pursuit-management shell over F4 intelligence.
+   - Validate Opportunity → Intelligence Report → Add to Calendar → Project Workspace.
+
+10. **Post-analysis qualification**
    - Evaluate the report against the contractor profile.
    - Output Strong Match / Review Carefully / Poor Match.
-
-10. **Add to Calendar**
-   - Let the estimator add analyzed opportunities to the existing calendar.
-   - Use this as the MVP pursuit signal.
+   - Consider licensing, bonding, insurance, experience, labor compliance, self-perform capability, strategic fit, risk profile, and pursuit recommendation.
 
 11. **Beta feedback loop**
    - Test with 1-5 contractors.
@@ -414,8 +460,9 @@ The MVP includes:
 - Document acquisition for analyzed opportunities.
 - Basic document text extraction.
 - Project Intelligence report.
-- Evidence-backed qualification.
 - Add to Calendar.
+- Lightweight Project Workspace seeded from the Intelligence Report.
+- Evidence-backed qualification.
 
 The MVP excludes:
 
@@ -447,6 +494,7 @@ Business validation signals:
 - Project Intelligence report reduces manual portal/document review time.
 - Post-analysis qualification matches estimator judgment often enough to be trusted.
 - `Add to Calendar` becomes a meaningful signal of real pursuit interest.
+- Converted opportunities open a Project Workspace without duplicate document acquisition, processing, intelligence generation, or legacy crawl states.
 
 ## Relationship to Agent Architecture Roadmap
 
@@ -454,7 +502,7 @@ This implementation plan maps directly to `docs/agent-architecture-task-list.md`
 
 - Phase E: Discovery layer.
 - Phase F: Agency Access Management and Project Intelligence layer.
-- Phase G: Add-to-Calendar pursuit layer.
+- Phase G: Pursuit Management & Project Workspace layer.
 - Future Initiatives: estimating, outreach, coverage, compliance, and proposal agents.
 
 The roadmap should not split into competing files. This plan explains execution intent; the Agent Architecture Task List tracks execution phases and tasks.

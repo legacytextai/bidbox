@@ -424,6 +424,9 @@ const OpportunityReport = () => {
           portal_type: candidate.portal_type,
           scope_text: scopeFinding?.value_text ?? candidate.scope_text,
           job_walk_at: jobWalkAt ?? null,
+          origin: "opportunity_intelligence",
+          source_opportunity_candidate_id: candidate.id,
+          opportunity_intelligence_report_id: report.id,
           status: "LIVE",
         })
         .select("id")

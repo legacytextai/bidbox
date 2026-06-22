@@ -972,10 +972,11 @@ Remaining document-processing gaps are now narrower:
 - OCR for scanned PDFs.
 - Non-PDF text extraction.
 - Classification accuracy improvements under F3A.
-- F4 Project Intelligence report generation.
 - F5 evidence-backed qualification.
 
-The older "missing" items below should be read as the repository state at the time of the original audit, not current F3 status.
+Current update: F4 Project Intelligence report generation is now MVP complete. BidBox has validated document-backed report generation on real PlanetBids projects across multiple agencies. Reports include executive summaries, project snapshot metadata, scope summaries, trade breakdowns, key dates, bid requirements, addenda summaries, risk flags, source document references, and citation-backed findings. F4 also includes portal metadata enrichment, engineer-estimate/license propagation when available, bid due date/time conflict safeguards, and corrected report navigation after calendar conversion.
+
+The older "missing" items below should be read as the repository state at the time of the original audit, not current F3/F4 status.
 
 ### What Already Exists
 
@@ -997,6 +998,7 @@ Partial:
 - `HighSignalPanel` can display extracted engineer estimate, bond requirements, and addenda from `crawl_snapshot.semantic`, but only if `crawl-project` found them in page markdown.
 - `ProjectSignals` surfaces job walk, gated docs, eligibility, and recrawl staleness.
 - PlanetBids F2/F3 now downloads validated source documents and processes text-native PDFs into page/chunk evidence. This is still partial because it does not cover every portal or file type.
+- F4 now consumes F3 evidence to generate citation-backed Project Intelligence reports for the validated MVP path.
 
 ### Remaining Gaps
 
@@ -1009,22 +1011,22 @@ Still missing or incomplete:
 - Spec section parser.
 - Plan sheet parser.
 - Addenda document diffing.
-- AI extraction from downloaded documents.
+- Broader AI extraction beyond the F4 MVP report format.
 - Human review queue for uncertain extracted requirements.
 
 ### Can BidBox Automatically Collect and Process Project Documents at Scale?
 
 Partially. BidBox can now collect and process documents for the validated PlanetBids path, including authenticated acquisition, storage, text-native PDF extraction, page storage, chunk storage, and citation metadata.
 
-It is not yet a full at-scale, cross-portal bid-intelligence document platform. Remaining limits include non-PlanetBids portals, non-PDF file processing, OCR for scanned PDFs, addenda diffing, embeddings/vector retrieval, and F4/F5 intelligence/qualification.
+It is not yet a full at-scale, cross-portal bid-intelligence document platform. Remaining limits include non-PlanetBids portals, non-PDF file processing, OCR for scanned PDFs, addenda diffing, embeddings/vector retrieval, and F5 evidence-backed qualification.
 
 Remaining components:
 
 1. Portal document downloader per non-PlanetBids driver.
 2. Non-PDF text extraction for DOCX, XLSX, and ZIP contents.
 3. OCR fallback.
-4. Embeddings/vector retrieval if needed for F4/F5.
-5. AI requirement extraction jobs.
+4. Embeddings/vector retrieval if needed for scale or F5.
+5. Evidence-backed qualification jobs.
 6. Addenda/version monitoring.
 7. UI to show extracted facts with source citations.
 

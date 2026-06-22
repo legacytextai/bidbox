@@ -117,6 +117,7 @@ const NewProject = () => {
           portal_type: portalType,
           bid_due_at: defaultBidDue.toISOString(),
           timezone: "America/Los_Angeles",
+          origin: "one_link",
         })
         .select()
         .single();
@@ -221,6 +222,7 @@ const NewProject = () => {
           job_walk_at: formData.job_walk_at ? localDateTimeToUtc(formData.job_walk_at, validation.timezone) : null,
           instructions: validation.instructions || null,
           timezone: validation.timezone,
+          origin: "manual",
         })
         .select()
         .single();

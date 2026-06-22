@@ -271,7 +271,7 @@ Priority order:
 
 ## Task 7 - PHASE F: PROJECT INTELLIGENCE 🔄 IN PROGRESS
 
-Phase F is the next major MVP initiative.
+Phase F is the active MVP initiative.
 
 Goal: when an estimator clicks `Analyze Project`, BidBox should acquire the bid package, process available documents, generate a practical Project Intelligence report, and then run evidence-based qualification.
 
@@ -281,8 +281,8 @@ Current Phase F status:
 - F1 Opportunity Discovery / Analyze Project workflow: ✅ Complete
 - F2 Document Acquisition: ✅ Complete
 - F3 Document Processing: ✅ Complete
-- F4 Project Intelligence Report: ⬜ Next
-- F5 Qualification After Analysis: ⬜ Not Started
+- F4 Project Intelligence Report: ✅ Complete
+- F5 Qualification After Analysis: ⏸ Paused until the Project Workspace bridge is stable
 
 ### 7.1. F1 — Analyze Project Workflow ✅ COMPLETE
 
@@ -1269,7 +1269,7 @@ Notes:
 - This is not an F3 blocker.
 - The extraction pipeline works correctly.
 - The issue is classification heuristics only.
-- F3A is a future enhancement and should not delay F4.
+- F3A is a future enhancement. These classification issues did not block F4 and remain a post-F4 cleanup item.
 
 Potential future improvements:
 - Stronger filename rules.
@@ -1332,29 +1332,46 @@ MVP boundary:
 - Do not resolve conflicting requirements in F3.
 - Do not mark final qualification statuses in F3.
 
-### 7.4. F4 — Project Intelligence Report ❌ NOT STARTED
+### 7.4. F4 — Project Intelligence Report ✅ COMPLETE
 
 Purpose: turn acquired documents into a structured estimator-facing report.
 
-Report sections should align with `docs/initiatives/opportunity-intelligence-mvp.md`:
+Delivered report sections align with `docs/initiatives/opportunity-intelligence-mvp.md`:
 - Executive Summary
+- Project Snapshot
+- Project Overview
 - Scope Summary
 - Trade Breakdown
-- Requirements
-- Bid Events
-- Risks
+- Key Dates
+- Bid Requirements
+- Addenda Summary
+- Risk Flags
+- Source Documents
 
-Needed:
-- Generate and store a report artifact.
-- Mark unknown or unavailable fields explicitly.
-- Avoid fabricating facts when documents are gated, missing, or unreadable.
-- Display the report from the opportunity/project workflow.
+Delivered:
+- Worker-driven `project_intelligence` task execution after F3 document processing.
+- Stored `opportunity_intelligence_reports`, `opportunity_intelligence_findings`, and `opportunity_intelligence_citations`.
+- Citation-backed findings with the project → document → page → chunk evidence chain preserved.
+- Executive Summary with a required `Project Overview` opening context.
+- Project Snapshot metadata including source portal estimate/license fields when available.
+- Trade breakdown, key dates, bid requirements, risk flags, addenda summary, and source document references.
+- Explicit unknown / needs-review / conflict statuses for unavailable or conflicting facts.
+- No-citation-no-fact validation so unsupported factual findings are downgraded rather than shown as facts.
+- Opportunity card workflow opens the Intelligence Report even after an opportunity is added to calendar.
+- Converted project navigation remains available from the Intelligence Report page.
+- Bid due date/time conflict safeguards prefer cited/source-backed deadlines and warn when candidate metadata disagrees.
+
+Production validation:
+- Validated against multiple real PlanetBids projects across several agencies.
+- Confirmed F2 Document Acquisition → F3 Document Processing → F4 Project Intelligence end-to-end.
+- Confirmed OpenAI-backed report generation, citations, persisted findings, executive summaries, source document references, and report rendering.
+- Confirmed portal metadata can flow into reports, including engineer estimates and license requirements when available.
 
 MVP boundary:
 - The report should help an estimator decide whether the job is worth tracking.
 - It does not need to generate estimates, proposals, or subcontractor outreach.
 
-### 7.5. F5 — Qualification After Analysis ❌ NOT STARTED
+### 7.5. F5 — Qualification After Analysis ⏸ PAUSED
 
 Purpose: run qualification after Project Intelligence exists.
 
@@ -1368,13 +1385,19 @@ Needed:
   - Geographic fit
   - Contract size fit
   - License fit
+  - Bonding fit
+  - Insurance fit
   - Scope fit
+  - Labor compliance fit
+  - Self-perform capability
   - Historical fit, when data exists
+  - Strategic fit
   - Risk profile
 - Output:
   - Strong Match
   - Review Carefully
   - Poor Match
+- Generate a pursuit recommendation with cited reasons and explicit unknowns.
 
 MVP boundary:
 - Existing `auto_status` can remain as preliminary scan triage.
@@ -1382,45 +1405,202 @@ MVP boundary:
 
 ---
 
-## Task 8 - PHASE G: PURSUIT MANAGEMENT ❌ NOT STARTED
+## Task 8 - PHASE G: PURSUIT MANAGEMENT & PROJECT WORKSPACE ❌ NOT STARTED
 
-Phase G is deliberately small for MVP.
+Purpose:
 
-Goal: after Project Intelligence and Qualification, the estimator needs one clear action: `Add to Calendar`.
+Create a clean transition from analyzed opportunities into active pursuits while preserving Opportunity Intelligence as the source of truth.
 
-### 8.1. Add to Calendar Signal ❌ NOT STARTED
+Phase G is the bridge between the Opportunity Intelligence system and the operational project workspace. The current Opportunity → Intelligence Report workflow is functioning through F4, but adding a project to the calendar currently routes into the legacy One Link project workspace, which was designed around URL crawling and crawl-state management.
 
-Purpose: capture that an analyzed opportunity is worth tracking.
+Guiding principles:
 
-Needed:
-- Add `Add to Calendar` as the MVP pursuit action after analysis.
-- Ensure selected opportunities appear in the existing calendar experience.
-- Store enough project/date metadata to make the calendar useful.
-- Keep the action lightweight and reversible where possible.
+- Intelligence Report and Project Workspace are different.
+- The Intelligence Report answers: `What is this project? Should we pursue it?`
+- The Project Workspace answers: `We are pursuing it. Now help us manage it.`
+- Once F2/F3/F4 have completed, an opportunity should not re-enter crawl or analysis state just because it was added to calendar.
+- The Project Workspace should consume existing intelligence rather than regenerate it.
+- The Intelligence Report remains the canonical source for executive summary, project overview, key dates, requirements, risks, trade breakdown, citations, and source documents.
+- `projects` remains the MVP operational anchor because the existing Calendar and Projects pages already operate on the `projects` table.
+- `Add to Calendar` means create or reuse a `projects` row.
+- Legacy One Link projects and Opportunity Intelligence projects must be treated differently.
+
+Desired user flow:
+
+```text
+Opportunity
+↓
+Analyze Project
+↓
+Project Intelligence Report
+↓
+Add To Calendar
+↓
+Project Workspace
+```
+
+Inside Project Workspace:
+
+```text
+Project Snapshot
+Qualification (future F5)
+Trade Breakdown
+Risk Summary
+Key Dates
+Source Documents
+View Intelligence Report
+```
 
 MVP boundary:
-- No separate "Pursuing / Not Pursuing" workflow is required for MVP.
-- No automated final bid submission.
+
+- No duplicate intelligence generation.
+- No duplicate document acquisition.
+- No legacy crawl-state UX for Opportunity Intelligence projects.
 - No proposal generation.
 - No estimating workflow.
+- No subcontractor outreach automation.
 
-### 8.2. Active Calendar Tracking ❌ NOT STARTED
+### 8.1. Project Origin & Data Model Foundation ❌ NOT STARTED
 
-Purpose: make selected opportunities visible in the contractor's planning view.
-
-Current repo support:
-- `/calendar` exists.
-- `projects.bid_due_at` and `projects.job_walk_at` exist.
-- Project creation/conversion paths already create calendar-visible records.
+Purpose: make `projects` capable of representing both legacy One Link projects and Opportunity Intelligence pursuits without ambiguity.
 
 Needed:
-- Decide whether analyzed opportunities create or link to `projects` when added to calendar.
-- Preserve source URL and intelligence report link.
-- Show bid due dates and key bid events where available.
+- Add project origin tracking.
+- Create explicit linkage between projects and Opportunity Intelligence artifacts.
+- Add linkage between projects and originating opportunities.
+- Preserve backward compatibility with legacy One Link projects.
+- Backfill existing converted projects where possible.
 
-MVP boundary:
-- Calendar is the pursuit signal.
-- Deeper pursuit management belongs after MVP validation.
+Recommended data model direction:
+- `projects.origin` or equivalent source/type field.
+- `projects.source_opportunity_candidate_id` or equivalent link to the originating opportunity.
+- `projects.opportunity_intelligence_report_id` or equivalent link to the active F4 report.
+
+Acceptance criteria:
+- The system can distinguish legacy/manual/One Link projects from Opportunity Intelligence projects.
+- A project created from `Add to Calendar` can load its originating opportunity and Intelligence Report.
+- Existing legacy projects continue to load.
+
+### 8.2. Opportunity Conversion Hardening ❌ NOT STARTED
+
+Purpose: make `Add to Calendar` reliable, idempotent, and aligned with the Opportunity Intelligence MVP.
+
+Needed:
+- Refactor Add To Calendar workflow.
+- Ensure project creation is idempotent.
+- Reuse existing project if one already exists.
+- Store intelligence report linkage during conversion.
+- Prevent duplicate project creation.
+- Prevent any `crawl-project` execution during conversion.
+
+Acceptance criteria:
+- Clicking `Add to Calendar` creates or reuses exactly one project.
+- `opportunity_candidates.converted_project_id` remains accurate.
+- The linked Project Intelligence Report remains accessible after conversion.
+- Converted opportunities do not start legacy crawl workflows.
+
+### 8.3. Legacy Crawl Separation ❌ NOT STARTED
+
+Purpose: prevent Opportunity Intelligence projects from inheriting One Link crawl assumptions.
+
+Needed:
+- Separate Opportunity Intelligence projects from One Link projects.
+- Remove crawl-state assumptions for intelligence-origin projects.
+- Prevent infinite analyzing states.
+- Prevent recrawl behavior for intelligence-origin projects.
+- Preserve legacy functionality for existing One Link projects.
+
+Acceptance criteria:
+- Opportunity Intelligence projects do not show legacy `Analyzing project...` crawl states.
+- `source_url` alone no longer implies a project is awaiting `last_crawled_at`.
+- One Link projects can still use crawl refresh and crawl signals where appropriate.
+
+### 8.4. Project Workspace MVP ❌ NOT STARTED
+
+Purpose: create a dedicated workspace experience for active pursuits created from Opportunity Intelligence.
+
+Needed:
+- Create dedicated Opportunity Intelligence workspace experience.
+- Display project snapshot information.
+- Display key dates and milestone information.
+- Display trade breakdown summary.
+- Display major requirements and risks.
+- Display source document access.
+- Display link to full Intelligence Report.
+- Establish workspace as the pursuit-management home for active opportunities.
+
+Acceptance criteria:
+- Opening a converted Opportunity Intelligence project shows a workspace seeded from F4 intelligence.
+- The workspace does not duplicate the full citation-heavy report page.
+- The workspace links back to the full Intelligence Report for evidence and citations.
+
+### 8.5. Intelligence Report Integration ❌ NOT STARTED
+
+Purpose: keep F4 as the source of truth while making its outputs usable inside the Project Workspace.
+
+Needed:
+- Use Intelligence Report as the source of truth.
+- Surface intelligence within Project Workspace.
+- Prevent duplicate intelligence storage where possible.
+- Maintain traceability between workspace and report.
+- Preserve access to citations and source evidence.
+
+Acceptance criteria:
+- Project Workspace displays F4-derived facts without re-running F4.
+- Users can navigate from workspace to full report.
+- F4 citations remain traceable from the report experience.
+
+### 8.6. Projects Dashboard Updates ❌ NOT STARTED
+
+Purpose: make the Projects page understandable once it contains both legacy projects and Opportunity Intelligence pursuits.
+
+Needed:
+- Distinguish Opportunity Intelligence projects from legacy projects.
+- Add clear project origin indicators.
+- Support direct navigation to Project Workspace.
+- Support navigation back to Intelligence Report.
+- Improve pursuit visibility for active projects.
+
+Acceptance criteria:
+- Projects dashboard clearly identifies active pursuits created from Opportunity Intelligence.
+- Users can open the correct workspace without falling into legacy analysis states.
+- Users can still access the Intelligence Report from converted projects.
+
+### 8.7. Calendar Integration Validation ❌ NOT STARTED
+
+Purpose: confirm the existing project-based calendar remains reliable for the MVP pursuit signal.
+
+Needed:
+- Validate bid due dates populate correctly.
+- Validate job walk dates populate correctly.
+- Validate converted opportunities appear on calendar.
+- Validate project routing from calendar.
+- Ensure calendar remains project-based for MVP.
+
+Acceptance criteria:
+- Converted Opportunity Intelligence projects appear on `/calendar`.
+- Calendar events route to the appropriate Project Workspace.
+- Bid due and job walk dates match source-backed Opportunity Intelligence values.
+
+### 8.8. Opportunity Intelligence Workspace Validation ❌ NOT STARTED
+
+Purpose: validate the full Opportunity → Workspace path before advancing to deeper pursuit automation.
+
+Needed:
+- Test full Opportunity → Workspace workflow.
+- Validate project conversion behavior.
+- Validate report-to-workspace linkage.
+- Validate source document access.
+- Validate calendar integration.
+- Validate legacy project compatibility.
+- Confirm no duplicate analysis occurs after conversion.
+
+Acceptance criteria:
+- A real analyzed opportunity can be added to calendar and opened as a Project Workspace.
+- The workspace uses existing F4 intelligence.
+- The full Intelligence Report remains accessible.
+- Legacy One Link projects still function.
+- No duplicate F2/F3/F4 tasks are triggered by conversion.
 
 ---
 
@@ -1441,7 +1621,7 @@ Reason outside MVP:
 Status: Not started.
 
 Reason outside MVP:
-- The MVP only needs discovery, analysis, qualification, and Add to Calendar.
+- The MVP only needs discovery, analysis, qualification, Add to Calendar, and a lightweight Project Workspace for active pursuits.
 - Subcontractor outreach, coverage tracking, and bid solicitation automation should wait until the Project Intelligence loop proves valuable.
 
 ### 9.3. Coverage / Compliance / Proposal Agents POST-MVP
@@ -1457,23 +1637,27 @@ Reason outside MVP:
 ## Task 10 - OPEN ITEMS / NEXT PRIORITIES
 
 ### 10.1. Immediate Next
+- Start Task 8 — Phase G: Pursuit Management & Project Workspace
+- Add project origin tracking so legacy One Link projects and Opportunity Intelligence projects follow separate workspace paths
+- Harden `Add to Calendar` so it creates/reuses a project, links the originating opportunity and F4 report, and never triggers legacy crawl analysis
+- Build the MVP Project Workspace as a pursuit-management shell on top of existing F4 intelligence
+- Validate Opportunity → Intelligence Report → Add to Calendar → Project Workspace end to end
 - Keep Phase E source verification moving so Discovery coverage is credible
 - Update `docs/opportunity-source-ledger.md` with production scan-verified statuses
-- Add worker stale-task protection so scans cannot hang indefinitely
 - Monitor F2 document acquisition across additional gated PlanetBids opportunities
-- Design the Agency Access Management data model for internal BidBox agency access state
-- Add the PlanetBids Registration Agent path for agency vendor registration before prospective bidder registration
-- Define the minimum data model for Project Intelligence reports and source documents
 
 ### 10.2. Later
+- Resume Task 7.5 — F5 Qualification After Analysis after the Project Workspace bridge is stable
+- Define the evidence-backed qualification input contract from F4 findings
+- Map contractor profile fields to F4 facts: license, bonding, insurance, geography, scope, labor compliance, self-perform capability, risk profile, and strategic fit
+- Design the pursuit recommendation output: Strong Match / Review Carefully / Poor Match with cited reasons and explicit unknowns
 - Begin E2 master agency portal inventory for beta-relevant agencies
 - Add Agency Access Coverage dashboard for internal BidBox operations
 - Add registration memory and human escalation workflows
 - Add customer-facing Bid Profile agency registration management after internal validation
 - Decide first non-PlanetBids driver after E2 shows source counts
-- Add text extraction and Project Intelligence report generation
-- Add evidence-backed qualification after Project Intelligence
-- Add `Add to Calendar` as the MVP pursuit action
+- Improve F3A document classification accuracy
+- Add OCR and non-PDF extraction if beta projects require it
 
 ### 10.3. Architecture Decisions Locked
 - ✅ Railway worker + agent_tasks polling (not webhooks)

@@ -73,13 +73,24 @@ PlanetBids coverage is the fastest path to broader opportunity intelligence beca
 - F1 Opportunity Discovery / Analyze Project: ✅ Complete
 - F2 Document Acquisition: ✅ Complete
 - F3 Document Processing: ✅ Complete
-- F4 Project Intelligence: ⬜ Next
+- F4 Project Intelligence: ✅ Complete
+- Phase G Pursuit Management & Project Workspace: 🔄 Next active task
+- F5 Qualification Agent: ⏸ Paused until the Project Workspace bridge is stable
 
 **Key Insight**:
 F3 is an evidence-processing layer, not an intelligence layer. It classifies, extracts, organizes, chunks, cites, and tracks status. It does not generate reports, answer estimator questions, resolve precedence conflicts, qualify opportunities, or recommend pursuit decisions.
 
 **F3A Backlog**:
-Classification accuracy improvements remain a future enhancement. Validation found `Notice Inviting Bids` classified as addendum and `Sample Contract` classified as plans. The extraction pipeline works correctly, so this should not delay F4.
+Classification accuracy improvements remain a future enhancement. Validation found `Notice Inviting Bids` classified as addendum and `Sample Contract` classified as plans. The extraction pipeline works correctly, and these issues did not block F4.
+
+**F4 Completion Summary**:
+F4 Project Intelligence is MVP complete. BidBox now generates document-backed Project Intelligence reports from acquired and processed bid packages. Delivered capabilities include executive summaries, project snapshot metadata, scope summaries, trade breakdowns, key dates, bid requirements, risk flags, source document references, citation-backed findings, unknown/needs-review/conflict states, portal metadata enrichment, bid due date/time conflict safeguards, and corrected Opportunity → Intelligence Report navigation after calendar conversion.
+
+**Next Active Task**:
+Task 8 — Phase G: Pursuit Management & Project Workspace. Phase G should harden the transition from Intelligence Report to active pursuit by treating `Add to Calendar` as create/reuse project, preserving Opportunity Intelligence as the source of truth, separating legacy One Link projects from Opportunity Intelligence projects, and building a lightweight Project Workspace for active pursuits.
+
+**Deferred Active Task**:
+Task 7.5 — F5 Qualification Agent is paused until the Project Workspace bridge is stable. F5 should later evaluate whether the contractor should pursue the analyzed opportunity using Project Intelligence findings and the contractor profile, including licensing, bonding, insurance, experience, labor compliance, self-perform capability, strategic fit, risk profile, and pursuit recommendation.
 
 ---
 

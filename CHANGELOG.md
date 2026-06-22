@@ -4,6 +4,72 @@ All notable changes to the BidBox project are documented in this file.
 
 ---
 
+## [Phase G Pursuit Management Planning] - 2026-06-22
+
+### Phase Objective
+
+Begin Phase G documentation and architecture alignment before implementation.
+
+---
+
+### Pursuit Management & Project Workspace
+
+- Reframed Task 8 from a narrow Add to Calendar feature into Phase G: Pursuit Management & Project Workspace.
+- Documented that Intelligence Report and Project Workspace are separate concepts.
+- Confirmed Opportunity Intelligence remains the source of truth for project evaluation.
+- Confirmed `Add to Calendar` creates or reuses a `projects` record.
+- Confirmed `projects` remains the Calendar anchor model for MVP.
+- Documented that Opportunity Intelligence projects should not re-enter legacy One Link crawl flows.
+- Documented that legacy One Link projects and Opportunity Intelligence projects should branch by project origin.
+- Added Phase G task structure for project origin tracking, conversion hardening, legacy crawl separation, Project Workspace MVP, intelligence integration, dashboard updates, calendar validation, and end-to-end workspace validation.
+- Paused F5 Qualification Agent as the next implementation phase until the Project Workspace bridge is stable.
+
+---
+
+## [Opportunity Intelligence F4 MVP Complete] - 2026-06-22
+
+### Phase Objective
+
+Close Task 7.4 — F4 Project Intelligence Report as MVP complete. At the time, F5 Qualification Agent was identified as the next intelligence phase; Phase G has since been prioritized as the workspace bridge before F5 implementation.
+
+---
+
+### F4 - Project Intelligence Report
+
+- Implemented and validated document-backed Project Intelligence reports.
+- Added worker-driven report generation from F3 document/page/chunk evidence.
+- Stored reports, findings, and citations in the F4 intelligence tables.
+- Preserved source-backed citation chains from report finding to source document, page, chunk, and excerpt.
+- Added Executive Summary output with `Project Overview` context.
+- Added Project Snapshot metadata, including source portal metadata where available.
+- Added scope summary, trade breakdown, key dates, bid requirements, addenda summary, risk flags, and source document references.
+- Added explicit unknown, needs-review, and conflict states for unavailable or conflicting facts.
+- Enforced no-citation-no-fact behavior so unsupported factual findings are downgraded.
+
+### F4 Quality And Workflow Hardening
+
+- Confirmed F2 Document Acquisition, F3 Document Processing, and F4 Project Intelligence function end-to-end.
+- Validated F4 against multiple real PlanetBids projects across several agencies.
+- Confirmed portal metadata flows into reports, including engineer estimates and license requirements when available.
+- Improved Executive Summary consistency so reports start with project context before bid requirements.
+- Added bid due date/time conflict safeguards and source-backed deadline display.
+- Corrected the Opportunity → Intelligence Report workflow so analyzed opportunities keep report access after being added to calendar.
+- Corrected converted project navigation so the report page can still open the linked project.
+
+### Roadmap And Documentation
+
+- Marked F4 Project Intelligence as `✅ COMPLETE`.
+- Updated platform status:
+  - F1 Opportunity Discovery / Analyze Project: ✅ Complete
+  - F2 Document Acquisition: ✅ Complete
+  - F3 Document Processing: ✅ Complete
+  - F4 Project Intelligence: ✅ Complete
+- Phase G Pursuit Management & Project Workspace is now the next active implementation phase.
+- Task 7.5 — F5 Qualification Agent remains planned after the Project Workspace bridge is stable.
+- Defined F5 purpose: determine whether the contractor should pursue an analyzed opportunity using Project Intelligence findings and contractor profile inputs, including licensing, bonding, insurance, experience, labor compliance, self-perform capability, strategic fit, risk profile, and pursuit recommendation.
+
+---
+
 ## [Opportunity Intelligence F1-F3 Validation] - 2026-06-16
 
 ### Phase Objective
@@ -118,12 +184,14 @@ Verified:
   - F1 Opportunity Discovery / Analyze Project: ✅ Complete
   - F2 Document Acquisition: ✅ Complete
   - F3 Document Processing: ✅ Complete
-  - F4 Project Intelligence: ⬜ Next
+  - F4 Project Intelligence: ✅ Complete
+  - Phase G Pursuit Management & Project Workspace: 🔄 Next active task
+  - F5 Qualification Agent: ⏸ Paused until the Project Workspace bridge is stable
 - Added F3A backlog item for classification accuracy improvements.
 - Documented observed classification issues:
   - `Notice Inviting Bids` classified as addendum.
   - `Sample Contract` classified as plans.
-- Clarified that F3A is not an F3 blocker and should not delay F4.
+- Clarified that F3A was not an F3 blocker and did not block F4.
 - Reaffirmed the architecture boundary:
   - F3 classifies, extracts, organizes, chunks, cites, and tracks status.
   - F3 does not interpret requirements, generate intelligence reports, answer estimator questions, resolve precedence conflicts, qualify opportunities, or make pursuit recommendations.

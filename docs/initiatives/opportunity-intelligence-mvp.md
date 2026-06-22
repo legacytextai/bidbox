@@ -140,10 +140,20 @@ F3 Document Processing
 ✅ Complete
 
 F4 Project Intelligence
-⬜ Next
+✅ Complete
+
+Phase G Pursuit Management & Project Workspace
+🔄 Next active task
+
+F5 Qualification Agent
+⏸ Paused until the Project Workspace bridge is stable
 ```
 
 F3 remains an evidence-processing layer only. It classifies, extracts, organizes, chunks, cites, and tracks status. It does not interpret requirements, generate intelligence reports, answer estimator questions, resolve precedence conflicts, or make pursuit recommendations. Those responsibilities belong to F4 Project Intelligence and F5 Qualification.
+
+F4 Project Intelligence is now MVP complete. BidBox has validated document-backed report generation on real PlanetBids projects across multiple agencies. Reports include source-backed citations, executive summaries with project context, project snapshot metadata, scope summaries, trade breakdowns, key dates, bid requirements, addenda summaries, risk flags, and source document references. Portal metadata now flows into reports where available, including engineer estimates and license requirements. Bid due date/time conflict safeguards and corrected Opportunity → Intelligence Report navigation are complete.
+
+The next active task is Phase G: Pursuit Management & Project Workspace. Phase G should harden the transition from Intelligence Report to active pursuit by treating `Add to Calendar` as create/reuse project, preserving Opportunity Intelligence as the evaluation source of truth, separating legacy One Link projects from Opportunity Intelligence projects, and building a lightweight Project Workspace for active pursuits.
 
 Outputs may include:
 
@@ -213,9 +223,16 @@ The estimator's pursuit signal is:
 
 - Add to Calendar
 
-For the MVP, `Add to Calendar` is the only action needed after qualification.
+For the MVP, `Add to Calendar` creates or reuses a `projects` record because Projects remain the Calendar anchor model.
 
 If an estimator adds a project to the calendar, that is the signal that the project is worth tracking.
+
+The Intelligence Report and Project Workspace are separate concepts:
+
+- The Intelligence Report remains the source of truth for project evaluation, citations, source documents, requirements, risks, and trade breakdown.
+- The Project Workspace is the operational shell for an active pursuit after the estimator decides to track the project.
+
+Opportunity Intelligence projects should not re-enter legacy One Link crawl or re-analysis flows after F2/F3/F4 are complete.
 
 ## MVP Success Criteria
 
@@ -225,7 +242,7 @@ A contractor can:
 2. Select interesting opportunities.
 3. Receive an AI-generated intelligence report.
 4. Understand whether a project is worth pursuing.
-5. Add selected opportunities to the calendar.
+5. Add selected opportunities to the calendar and open a Project Workspace that preserves access to the Intelligence Report.
 
 If BidBox accomplishes these five outcomes, the MVP has successfully validated the product.
 
@@ -235,8 +252,8 @@ All additional agents become future enhancements rather than MVP requirements.
 
 The next major development priority is not additional agent creation.
 
-The next major development priority is Project Intelligence.
+F4 Project Intelligence is complete. The next major development priority is Phase G: Pursuit Management & Project Workspace.
 
-Opportunity Discovery -> Project Intelligence -> Qualification -> Add to Calendar is the core MVP loop.
+Opportunity Discovery -> Project Intelligence -> Qualification -> Add to Calendar -> Project Workspace is the core MVP loop.
 
 Everything else is secondary.

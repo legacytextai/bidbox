@@ -610,7 +610,9 @@ See `docs/agent-architecture-task-list.md` for implementation tasks.
 > - F1 Opportunity Discovery / Analyze Project: ✅ Complete
 > - F2 Document Acquisition: ✅ Complete
 > - F3 Document Processing: ✅ Complete
-> - F4 Project Intelligence: ⬜ Next
+> - F4 Project Intelligence: ✅ Complete
+> - Phase G Pursuit Management & Project Workspace: 🔄 Next active task
+> - F5 Qualification Agent: ⏸ Paused until the Project Workspace bridge is stable
 
 Validated production chain for F3:
 
@@ -647,7 +649,40 @@ Results:
 
 F3 is an evidence-processing layer only. It classifies, extracts, organizes, chunks, cites, and tracks status. It does not interpret project requirements, generate intelligence reports, answer estimator questions, resolve precedence conflicts, or make pursuit recommendations. Those responsibilities belong to F4 Project Intelligence and F5 Qualification.
 
-F3A backlog: improve deterministic document classification accuracy. Current observed issues include `Notice Inviting Bids` classified as addendum and `Sample Contract` classified as plans. This is not an F3 blocker and should not delay F4.
+F3A backlog: improve deterministic document classification accuracy. Current observed issues include `Notice Inviting Bids` classified as addendum and `Sample Contract` classified as plans. This was not an F3/F4 blocker and remains a post-F4 cleanup item.
+
+F4 is now MVP complete. BidBox can generate document-backed Project Intelligence reports from processed bid packages, including executive summaries, project snapshot metadata, scope summaries, trade breakdowns, key dates, bid requirements, risk flags, addenda summaries, source document references, and citation-backed findings. Production validation covered multiple real PlanetBids projects across several agencies and confirmed the end-to-end chain from F2 acquisition through F3 processing to F4 report rendering.
+
+F4 quality hardening completed:
+
+- Portal metadata flows into reports when available, including engineer estimates and license requirements.
+- Executive Summary starts with project context through a `Project Overview` opening.
+- Bid due date/time display prefers cited/source-backed deadlines and warns on conflicts.
+- Opportunities preserve access to the Intelligence Report after being added to calendar.
+- Converted project navigation remains available from the report page.
+
+Next active task: Phase G Pursuit Management & Project Workspace.
+
+Phase G establishes the operational bridge after F4:
+
+```text
+Opportunity
+→ Intelligence Report
+→ Add to Calendar
+→ Project Workspace
+```
+
+Architecture direction:
+
+- Opportunity Intelligence remains the source of truth for evaluation.
+- The Intelligence Report and Project Workspace are separate concepts.
+- `Add to Calendar` creates or reuses a `projects` record.
+- `projects` remains the Calendar anchor model for MVP.
+- Opportunity Intelligence projects must not re-enter legacy One Link crawl flows.
+- Legacy One Link projects and Opportunity Intelligence projects should branch by project origin.
+- Project Workspace becomes a lightweight pursuit-management shell built on top of F4 intelligence.
+
+F5 Qualification Agent remains the next intelligence layer after the workspace bridge is stable. F5 should determine whether the contractor should pursue an analyzed opportunity by evaluating licensing, bonding, insurance, experience, labor compliance, self-perform capability, strategic fit, and risk profile against the Project Intelligence findings and contractor profile.
 
 ---
 
