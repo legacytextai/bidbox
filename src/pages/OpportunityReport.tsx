@@ -115,6 +115,10 @@ const formatDate = (iso: string | null) =>
       })
     : "—";
 
+const isUniqueViolation = (error: any) =>
+  error?.code === "23505" ||
+  String(error?.message ?? "").toLowerCase().includes("duplicate key");
+
 const TIME_RE = /\b(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?|am|pm)\b/i;
 const MONTH_DATE_RE =
   /\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}\b/i;
@@ -387,20 +391,6 @@ const OpportunityReport = () => {
 
   const handleAddToCalendar = async () => {
     if (!candidate) return;
-    if (candidate.converted_project_id) {
-      navigate(`/projects/${candidate.converted_project_id}`);
-      return;
-    }
-
-    if (!candidate.bid_due_at) {
-      toast({
-        title: "Missing bid due date",
-        description:
-          "This opportunity has no bid due date. Open the source to confirm.",
-        variant: "destructive",
-      });
-      return;
-    }
     setAdding(true);
     try {
       const {
@@ -413,6 +403,104 @@ const OpportunityReport = () => {
 
       const sb = supabase as any;
       const scopeFinding = findings.find((f) => f.category === "scope_summary" && f.status === "found");
+
+      const syncCandidateLink = async (projectId: string) => {
+        const { error: updateError } = await sb
+          .from("opportunity_candidates")
+          .update({
+            status: "converted",
+            converted_project_id: projectId,
+          })
+          .eq("id", candidate.id);
+
+        if (updateError) throw updateError;
+
+        setCandidate((current) =>
+          current
+            ? {
+                ...current,
+                status: "converted",
+                converted_project_id: projectId,
+              }
+            : current,
+        );
+      };
+
+      const findExistingProject = async () => {
+        const { data: freshCandidate, error: freshCandidateError } = await sb
+          .from("opportunity_candidates")
+          .select("converted_project_id")
+          .eq("id", candidate.id)
+          .maybeSingle();
+
+        if (freshCandidateError) throw freshCandidateError;
+        if (freshCandidate?.converted_project_id) {
+          const { data: projectByCandidateLink, error: projectByCandidateLinkError } = await sb
+            .from("projects")
+            .select("id, origin, source_opportunity_candidate_id, opportunity_intelligence_report_id")
+            .eq("id", freshCandidate.converted_project_id)
+            .maybeSingle();
+
+          if (projectByCandidateLinkError) throw projectByCandidateLinkError;
+          return projectByCandidateLink;
+        }
+
+        const { data: projectBySource, error: projectBySourceError } = await sb
+          .from("projects")
+          .select("id, origin, source_opportunity_candidate_id, opportunity_intelligence_report_id")
+          .eq("origin", "opportunity_intelligence")
+          .eq("source_opportunity_candidate_id", candidate.id)
+          .maybeSingle();
+
+        if (projectBySourceError) throw projectBySourceError;
+        return projectBySource;
+      };
+
+      const existingProject = await findExistingProject();
+      if (existingProject?.id) {
+        const projectUpdates: Record<string, string> = {};
+        if (existingProject.origin !== "opportunity_intelligence") {
+          projectUpdates.origin = "opportunity_intelligence";
+        }
+        if (!existingProject.source_opportunity_candidate_id) {
+          projectUpdates.source_opportunity_candidate_id = candidate.id;
+        }
+        if (!existingProject.opportunity_intelligence_report_id && report?.id) {
+          projectUpdates.opportunity_intelligence_report_id = report.id;
+        }
+
+        if (Object.keys(projectUpdates).length > 0) {
+          const { error: projectLinkError } = await sb
+            .from("projects")
+            .update(projectUpdates)
+            .eq("id", existingProject.id);
+
+          if (projectLinkError) throw projectLinkError;
+        }
+
+        await syncCandidateLink(existingProject.id);
+        toast({
+          title: "Already on Calendar",
+          description: "Opening the existing project for this opportunity.",
+        });
+        navigate(`/projects/${existingProject.id}`);
+        return;
+      }
+
+      if (!report?.id) {
+        throw new Error("Project Intelligence report is required before adding this opportunity to the calendar.");
+      }
+
+      if (!candidate.bid_due_at) {
+        toast({
+          title: "Missing bid due date",
+          description:
+            "This opportunity has no bid due date. Open the source to confirm.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       const { data: project, error } = await sb
         .from("projects")
         .insert({
@@ -432,15 +520,24 @@ const OpportunityReport = () => {
         .select("id")
         .single();
 
-      if (error) throw error;
+      if (error) {
+        if (isUniqueViolation(error)) {
+          const recoveredProject = await findExistingProject();
+          if (recoveredProject?.id) {
+            await syncCandidateLink(recoveredProject.id);
+            toast({
+              title: "Already on Calendar",
+              description: "Opening the existing project for this opportunity.",
+            });
+            navigate(`/projects/${recoveredProject.id}`);
+            return;
+          }
+        }
 
-      await sb
-        .from("opportunity_candidates")
-        .update({
-          status: "converted",
-          converted_project_id: project.id,
-        })
-        .eq("id", candidate.id);
+        throw error;
+      }
+
+      await syncCandidateLink(project.id);
 
       toast({
         title: "Added to Calendar",
