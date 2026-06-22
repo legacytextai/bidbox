@@ -1,6 +1,7 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
+import { formatInProjectTimezone } from "@/lib/timezoneUtils";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -126,8 +127,43 @@ interface OpportunityIntelligenceWorkspaceProps {
   onSaveTrades: () => void;
 }
 
-const formatDateTime = (iso: string | null | undefined) =>
-  iso ? format(new Date(iso), "MMM d, yyyy h:mm a") : "Not available";
+const formatDateTime = (iso: string | null | undefined) => {
+  if (!iso) return "Not available";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "Not available";
+  return formatInProjectTimezone(date.toISOString(), "America/Los_Angeles", "MMMM d, yyyy 'at' h:mm a");
+};
+
+const formatDateTimeOrNull = (iso: string | null | undefined) => {
+  if (!iso) return null;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+  return formatInProjectTimezone(date.toISOString(), "America/Los_Angeles", "MMMM d, yyyy 'at' h:mm a");
+};
+
+const RAW_TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?(?:\s*UTC|Z|[+-]\d{2}:?\d{2})?$/i;
+const DATE_TIME_RE = /\b\d{1,2}\/\d{1,2}\/\d{4}\s+\d{1,2}:\d{2}\s*(?:AM|PM)\s*(?:PDT|PST|PT)?\b/i;
+
+const normalizeDateTimeText = (value: string | null | undefined) => {
+  const text = String(value ?? "").replace(/\s+/g, " ").trim();
+  if (!text) return null;
+  if (RAW_TIMESTAMP_RE.test(text)) {
+    const date = new Date(text.replace(/\s+UTC$/i, "Z"));
+    if (!Number.isNaN(date.getTime())) {
+      return formatInProjectTimezone(date.toISOString(), "America/Los_Angeles", "MMMM d, yyyy 'at' h:mm a");
+    }
+  }
+
+  const compactMatch = text.match(DATE_TIME_RE)?.[0];
+  if (compactMatch) {
+    const parsed = new Date(compactMatch.replace(/\s+(PDT|PST|PT)$/i, ""));
+    if (!Number.isNaN(parsed.getTime())) {
+      return format(parsed, "MMMM d, yyyy 'at' h:mm a");
+    }
+  }
+
+  return text;
+};
 
 const formatCurrency = (value: unknown) => {
   if (typeof value === "number" && Number.isFinite(value)) {
@@ -171,6 +207,63 @@ const findFirst = (findings: IntelligenceFinding[], keys: string[], categories?:
     return keyMatches && categoryMatches;
   });
 
+const hasDocumentNameEvidence = (documents: OpportunityDocument[], keywords: string[]) =>
+  documents.some((document) => {
+    const haystack = [
+      document.file_name,
+      document.document_family,
+      document.document_class,
+    ].join(" ").toLowerCase();
+    return keywords.some((keyword) => haystack.includes(keyword));
+  });
+
+const isAffirmative = (value: unknown) => {
+  if (value === true) return true;
+  if (typeof value !== "string") return false;
+  return /^(yes|true|required|mandatory)$/i.test(value.trim());
+};
+
+const isCriticalRequirementFinding = (finding: IntelligenceFinding) => {
+  const haystack = `${finding.field_key} ${finding.label}`.toLowerCase();
+  const requirementSignals = [
+    "license",
+    "bid bond",
+    "performance bond",
+    "payment bond",
+    "insurance",
+    "dir",
+    "prevailing wage",
+    "prequalification",
+    "pre-bid",
+    "prebid",
+    "job walk",
+    "site visit",
+    "subcontractor listing",
+    "bid form",
+    "addenda acknowledgement",
+  ];
+  return finding.category === "bid_requirements" && requirementSignals.some((signal) => haystack.includes(signal));
+};
+
+const isRiskFinding = (finding: IntelligenceFinding) => {
+  const haystack = `${finding.field_key} ${finding.label} ${finding.value_text ?? ""}`.toLowerCase();
+  const riskSignals = [
+    "liquidated damages",
+    "utility",
+    "restricted access",
+    "environmental",
+    "bmp",
+    "schedule",
+    "long lead",
+    "dsa",
+    "inspection",
+    "hazard",
+    "night work",
+    "traffic control",
+  ];
+  return finding.category === "risk_flags" || riskSignals.some((signal) => haystack.includes(signal));
+};
+
 export function OpportunityIntelligenceWorkspace({
   project,
   sourceOpportunity,
@@ -200,6 +293,7 @@ export function OpportunityIntelligenceWorkspace({
 }: OpportunityIntelligenceWorkspaceProps) {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [deletingProject, setDeletingProject] = useState(false);
   const reportOpportunityId = project.source_opportunity_candidate_id || sourceOpportunity?.id;
   const bidRoomUrl = `${window.location.origin}/bid/${project.public_token}`;
 
@@ -220,6 +314,30 @@ export function OpportunityIntelligenceWorkspace({
     const durationFinding = findFirst(findings, ["duration", "calendar days", "working days"], ["key_dates", "bid_requirements"]);
     const damagesFinding = findFirst(findings, ["liquidated damages", "damages"], ["risk_flags", "bid_requirements"]);
     const jobWalkFinding = findFirst(findings, ["job walk", "pre-bid", "prebid"], ["key_dates"]);
+    const jobWalkMetadata =
+      sourceOpportunity?.crawl_data?.job_walk_at ||
+      sourceOpportunity?.crawl_data?.pre_bid_meeting_at ||
+      sourceOpportunity?.crawl_data?.prebid_meeting_at;
+    const hasJobWalkMetadata =
+      Boolean(jobWalkMetadata) ||
+      isAffirmative(sourceOpportunity?.crawl_data?.pre_bid_meeting) ||
+      isAffirmative(sourceOpportunity?.crawl_data?.job_walk_exists) ||
+      isAffirmative(sourceOpportunity?.crawl_data?.attendance_required) ||
+      isAffirmative(sourceOpportunity?.crawl_data?.job_walk_mandatory);
+    const hasJobWalkDocumentEvidence = hasDocumentNameEvidence(opportunityDocuments, [
+      "job walk",
+      "pre-bid",
+      "pre bid",
+      "prebid",
+      "site visit",
+      "attendance list",
+      "sign in",
+      "sign-in",
+    ]);
+
+    const jobWalkValue =
+      normalizeDateTimeText(getFindingValue(jobWalkFinding)) ||
+      normalizeDateTimeText(jobWalkMetadata);
 
     return {
       projectOverview,
@@ -240,13 +358,14 @@ export function OpportunityIntelligenceWorkspace({
         sourceOpportunity?.crawl_data?.liquidated_damages ||
         "Not available",
       bidDue:
-        getFindingValue(findFirst(findings, ["bid due", "bid date", "deadline"], ["key_dates"])) ||
+        normalizeDateTimeText(getFindingValue(findFirst(findings, ["bid due", "bid date", "deadline"], ["key_dates"]))) ||
         formatDateTime(project.bid_due_at),
       jobWalk:
-        getFindingValue(jobWalkFinding) ||
-        formatDateTime(project.job_walk_at || sourceOpportunity?.crawl_data?.job_walk_at),
+        normalizeDateTimeText(jobWalkValue) ||
+        formatDateTimeOrNull(project.job_walk_at) ||
+        (hasJobWalkMetadata || hasJobWalkDocumentEvidence ? "Needs Review" : "Not available"),
     };
-  }, [findings, intelligenceReport, project.bid_due_at, project.job_walk_at, sourceOpportunity]);
+  }, [findings, intelligenceReport, opportunityDocuments, project.bid_due_at, project.job_walk_at, sourceOpportunity]);
 
   const highlighted = useMemo(() => {
     const found = findings.filter((finding) =>
@@ -255,10 +374,10 @@ export function OpportunityIntelligenceWorkspace({
 
     return {
       criticalRequirements: found
-        .filter((finding) => finding.category === "bid_requirements" || finding.is_critical)
+        .filter(isCriticalRequirementFinding)
         .slice(0, 5),
       risks: found
-        .filter((finding) => finding.category === "risk_flags")
+        .filter(isRiskFinding)
         .slice(0, 5),
       trades: found
         .filter((finding) => finding.category === "trade_breakdown" || finding.category === "scope_summary")
@@ -325,6 +444,34 @@ export function OpportunityIntelligenceWorkspace({
     );
   };
 
+  const handleDeleteProject = async () => {
+    setDeletingProject(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("manage-opportunity-intelligence", {
+        body: {
+          action: "delete_project",
+          project_id: project.id,
+        },
+      });
+      if (error || data?.success === false) {
+        throw new Error(data?.error ?? error?.message ?? "Failed to delete project");
+      }
+      toast({
+        title: "Project deleted",
+        description: "The Intelligence Report remains available from Opportunities.",
+      });
+      navigate("/projects");
+    } catch (e: any) {
+      toast({
+        title: "Failed to delete project",
+        description: e?.message ?? "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setDeletingProject(false);
+    }
+  };
+
   return (
     <div className="p-4 space-y-4">
       <Button variant="ghost" onClick={() => navigate("/projects")} className="mb-2">
@@ -337,9 +484,8 @@ export function OpportunityIntelligenceWorkspace({
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="outline">Opportunity Intelligence</Badge>
-              <Badge variant="secondary">Active Pursuit</Badge>
               <Badge variant={project.status === "LIVE" ? "default" : "outline"}>
-                {project.status === "LIVE" ? "Active Pursuit" : normalizeLabel(project.status || "Unknown")}
+                {project.status === "LIVE" ? "Active" : normalizeLabel(project.status || "Unknown")}
               </Badge>
             </div>
             <div>
@@ -370,6 +516,28 @@ export function OpportunityIntelligenceWorkspace({
               <CalendarDays className="h-4 w-4 mr-2" />
               Open Calendar
             </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="outline" className="text-destructive hover:text-destructive" disabled={deletingProject}>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete Project
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete Project?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will remove the project from Projects, Calendar, and Bid HQ. The Intelligence Report will remain available.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleDeleteProject} disabled={deletingProject}>
+                    {deletingProject ? "Deleting..." : "Delete Project"}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </div>
 
@@ -610,7 +778,22 @@ export function OpportunityIntelligenceWorkspace({
               ))}
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">No trades selected yet.</p>
+            <div className="space-y-3">
+              {highlighted.trades.length > 0 && (
+                <div className="rounded-md border border-dashed border-border p-3">
+                  <p className="text-sm font-medium">Suggested Trades from Intelligence</p>
+                  <div className="mt-2 space-y-2">
+                    {highlighted.trades.map((finding) => (
+                      <p key={finding.id} className="text-sm text-muted-foreground">
+                        <span className="font-medium text-foreground">{finding.label}:</span>{" "}
+                        {finding.value_text || "Review in Intelligence Report"}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <p className="text-sm text-muted-foreground">No editable required trades selected yet.</p>
+            </div>
           )}
         </CardContent>
       </Card>

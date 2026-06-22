@@ -281,17 +281,37 @@ async function runProjectAnalysisAcquisition(task, supabase) {
 
   let documentProcessingTaskId = null;
   let documentProcessingDuplicate = false;
+  let projectIntelligenceTaskId = null;
+  let projectIntelligenceDuplicate = false;
+  let projectIntelligenceSkipped = false;
   if (acquisitionStatus === 'acquired' && (result.acquired + result.skipped) > 0) {
     try {
-      const queued = await queueDocumentProcessingForCandidate({
-        supabase,
-        candidateId: candidate.id,
-      });
-      documentProcessingTaskId = queued.taskId;
-      documentProcessingDuplicate = queued.duplicate;
-      log(`Document processing ${queued.duplicate ? 'already queued' : 'queued'}: ${queued.taskId}`);
+      if (task.payload?.safe_reanalysis) {
+        const queued = await queueProjectIntelligenceForCandidate({
+          supabase,
+          candidateId: candidate.id,
+          sourceTaskId: task.id,
+          safeReanalysis: true,
+        });
+        projectIntelligenceTaskId = queued.taskId;
+        projectIntelligenceDuplicate = queued.duplicate;
+        projectIntelligenceSkipped = Boolean(queued.skipped);
+        if (queued.skipped) {
+          log(`Safe Project Intelligence re-analysis not queued: ${queued.reason}`);
+        } else {
+          log(`Safe Project Intelligence re-analysis ${queued.duplicate ? 'already queued' : 'queued'}: ${queued.taskId}`);
+        }
+      } else {
+        const queued = await queueDocumentProcessingForCandidate({
+          supabase,
+          candidateId: candidate.id,
+        });
+        documentProcessingTaskId = queued.taskId;
+        documentProcessingDuplicate = queued.duplicate;
+        log(`Document processing ${queued.duplicate ? 'already queued' : 'queued'}: ${queued.taskId}`);
+      }
     } catch (e) {
-      log(`Document processing queue failed: ${e.message}`);
+      log(`${task.payload?.safe_reanalysis ? 'Safe Project Intelligence re-analysis' : 'Document processing'} queue failed: ${e.message}`);
     }
   }
 
@@ -319,6 +339,9 @@ async function runProjectAnalysisAcquisition(task, supabase) {
     documents_failed: result.failed,
     document_processing_task_id: documentProcessingTaskId,
     document_processing_duplicate: documentProcessingDuplicate,
+    project_intelligence_task_id: projectIntelligenceTaskId,
+    project_intelligence_duplicate: projectIntelligenceDuplicate,
+    project_intelligence_skipped: projectIntelligenceSkipped,
     errorSummary,
   };
 }
@@ -564,9 +587,12 @@ async function processTask(task) {
           documents_failed: result.documents_failed,
           document_processing_task_id: result.document_processing_task_id,
           document_processing_duplicate: result.document_processing_duplicate,
+          project_intelligence_task_id: result.project_intelligence_task_id,
+          project_intelligence_duplicate: result.project_intelligence_duplicate,
+          project_intelligence_skipped: result.project_intelligence_skipped,
           error_summary: result.errorSummary,
           phase: 'f2_document_acquisition',
-          intelligence_status: 'not_generated',
+          intelligence_status: result.project_intelligence_task_id ? 'queued' : 'not_generated',
         };
 
     await supabase

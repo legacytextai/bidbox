@@ -53,6 +53,8 @@ const CATEGORIES = [
     keywords: [
       'license', 'bid bond', 'performance bond', 'payment bond', 'dir', 'prevailing wage',
       'insurance', 'experience', 'prequalification', 'forms', 'non-collusion',
+      'mandatory pre-bid', 'pre-bid meeting', 'prebid meeting', 'job walk',
+      'site visit', 'attendance required',
     ],
   },
   {
@@ -176,6 +178,16 @@ function getPortalMetadata(candidate) {
     contract_duration: crawl.contract_duration ?? null,
     bid_validity: crawl.bid_validity ?? null,
     project_address: crawl.project_address ?? null,
+    job_walk_at: crawl.job_walk_at ?? null,
+    job_walk_exists: crawl.job_walk_exists ?? null,
+    job_walk_mandatory: crawl.job_walk_mandatory ?? null,
+    job_walk_details: crawl.job_walk_details ?? null,
+    pre_bid_meeting: crawl.pre_bid_meeting ?? null,
+    pre_bid_meeting_at: crawl.pre_bid_meeting_at ?? null,
+    attendance_required: crawl.attendance_required ?? null,
+    meeting_type: crawl.meeting_type ?? null,
+    meeting_link: crawl.meeting_link ?? null,
+    additional_details: crawl.additional_details ?? null,
     county: crawl.county ?? null,
     scope_text: crawl.scope_text ?? candidate.scope_text ?? null,
     source_url: candidate.source_url ?? null,
@@ -197,12 +209,13 @@ Core rule: NO CITATION = NO FACT.
 - Do not qualify the project, score fit, or recommend go/no-go.
 - F4 answers: what does this project require?
 - F5 later answers: is this a fit for this contractor?
-- Use structured portal_metadata as source-page context when available. Portal metadata takes precedence over document inference in the Executive Summary and report context for matching fields such as estimate, license, department, location, contract duration, bid validity, delivery dates, and liquidated damages. Cited findings still require chunk citations.
+- Use structured portal_metadata as source-page context when available. Portal metadata takes precedence over document inference in the Executive Summary and report context for matching fields such as estimate, license, department, location, contract duration, bid validity, delivery dates, pre-bid/job-walk details, and liquidated damages. Cited findings still require chunk citations.
 - The Executive Summary must start with project context before bid requirements:
   1. First bullet starts with "Project Overview:" and gives a 1-2 sentence description of what the project is.
   2. Then include one or more bullets starting with "Key Bid Facts:" for bid due date, engineer estimate, contract duration, license requirement, bid bond, performance bond, and job walk when known.
   3. Then include one or more bullets starting with "Requirements / Risks:" for major requirements or risks.
 - Bid due date/time is critical. If documents, portal_metadata, or candidate metadata disagree on bid due time, create a key_dates finding with status "conflict" or "needs_review"; do not silently choose one.
+- Mandatory pre-bid/job-walk is critical. Treat required site visits, mandatory pre-bid meetings, attendance lists, job walk sign-in sheets, and pre-bid conference references as critical bid_requirements/key_dates evidence. If document names or portal_metadata indicate a job walk but the exact date/time is unclear, create a mandatory_job_walk finding with status "needs_review".
 
 Return structured findings. Found and conflict findings must include citations.`,
     },
@@ -579,7 +592,7 @@ function rollupFindings(findings) {
   return { byCategory, unknowns };
 }
 
-async function queueProjectIntelligenceForCandidate({ supabase, candidateId, sourceTaskId = null }) {
+async function queueProjectIntelligenceForCandidate({ supabase, candidateId, sourceTaskId = null, safeReanalysis = false }) {
   const { data: existing, error: existingError } = await supabase
     .from('agent_tasks')
     .select('id, status')
@@ -601,14 +614,19 @@ async function queueProjectIntelligenceForCandidate({ supabase, candidateId, sou
   }
 
   const now = new Date().toISOString();
+  const candidateUpdate = safeReanalysis
+    ? {
+        analysis_error: null,
+      }
+    : {
+        analysis_status: 'queued',
+        analysis_error: null,
+        analysis_started_at: null,
+        analysis_completed_at: null,
+      };
   const { error: candidateError } = await supabase
     .from('opportunity_candidates')
-    .update({
-      analysis_status: 'queued',
-      analysis_error: null,
-      analysis_started_at: null,
-      analysis_completed_at: null,
-    })
+    .update(candidateUpdate)
     .eq('id', candidateId);
   if (candidateError) throw new Error(`Candidate Project Intelligence queue update failed: ${candidateError.message}`);
 
@@ -624,6 +642,7 @@ async function queueProjectIntelligenceForCandidate({ supabase, candidateId, sou
         source_task_id: sourceTaskId,
         report_schema_version: REPORT_SCHEMA_VERSION,
         retry_failed: false,
+        safe_reanalysis: safeReanalysis,
         queued_at: now,
       },
     })
@@ -687,7 +706,7 @@ async function loadEvidence(supabase, candidateId) {
   };
 }
 
-async function prepareReportRow(supabase, candidateId, taskId) {
+async function prepareReportRow(supabase, candidateId, taskId, { createNewVersion = false } = {}) {
   const startedAt = new Date().toISOString();
   const { data: existing } = await supabase
     .from('opportunity_intelligence_reports')
@@ -697,7 +716,7 @@ async function prepareReportRow(supabase, candidateId, taskId) {
     .limit(1)
     .maybeSingle();
 
-  if (existing) {
+  if (existing && !createNewVersion) {
     const { data, error } = await supabase
       .from('opportunity_intelligence_reports')
       .update({
@@ -721,7 +740,7 @@ async function prepareReportRow(supabase, candidateId, taskId) {
       opportunity_candidate_id: candidateId,
       agent_task_id: taskId,
       status: 'generating',
-      report_version: 1,
+      report_version: existing ? existing.report_version + 1 : 1,
       report_schema_version: REPORT_SCHEMA_VERSION,
       started_at: startedAt,
     })
@@ -729,6 +748,15 @@ async function prepareReportRow(supabase, candidateId, taskId) {
     .single();
   if (error) throw new Error(`Report insert failed: ${error.message}`);
   return data;
+}
+
+async function deleteSupersededReports(supabase, candidateId, activeReportId) {
+  const { error } = await supabase
+    .from('opportunity_intelligence_reports')
+    .delete()
+    .eq('opportunity_candidate_id', candidateId)
+    .neq('id', activeReportId);
+  if (error) throw new Error(`Superseded report cleanup failed: ${error.message}`);
 }
 
 async function replaceReportEvidence(supabase, reportId, candidateId, findings, citations) {
@@ -812,19 +840,32 @@ function calculateConfidenceScore(findings) {
 async function runProjectIntelligence(task, supabase, log) {
   const { candidate_id } = task.payload ?? {};
   if (!candidate_id) throw new Error('project_intelligence task missing candidate_id');
+  const safeReanalysis = Boolean(task.payload?.safe_reanalysis);
 
   const startedAt = new Date().toISOString();
-  await supabase
-    .from('opportunity_candidates')
-    .update({
-      analysis_status: 'analyzing',
-      analysis_started_at: startedAt,
-      analysis_completed_at: null,
-      analysis_error: null,
-    })
-    .eq('id', candidate_id);
+  if (safeReanalysis) {
+    await supabase
+      .from('opportunity_candidates')
+      .update({
+        analysis_started_at: startedAt,
+        analysis_error: null,
+      })
+      .eq('id', candidate_id);
+  } else {
+    await supabase
+      .from('opportunity_candidates')
+      .update({
+        analysis_status: 'analyzing',
+        analysis_started_at: startedAt,
+        analysis_completed_at: null,
+        analysis_error: null,
+      })
+      .eq('id', candidate_id);
+  }
 
-  const report = await prepareReportRow(supabase, candidate_id, task.id);
+  const report = await prepareReportRow(supabase, candidate_id, task.id, {
+    createNewVersion: safeReanalysis,
+  });
   log(`Starting F4 Project Intelligence for candidate ${candidate_id}`);
 
   try {
@@ -930,11 +971,31 @@ async function runProjectIntelligence(task, supabase, log) {
     await supabase
       .from('opportunity_candidates')
       .update({
-        analysis_status: finalStatus === 'failed' ? 'failed' : 'ready',
+        analysis_status: finalStatus === 'failed' && !safeReanalysis ? 'failed' : 'ready',
         analysis_completed_at: completedAt,
-        analysis_error: finalStatus === 'failed' ? errorSummary : null,
+        analysis_error: finalStatus === 'failed'
+          ? safeReanalysis
+            ? `Re-analysis failed: ${errorSummary}`
+            : errorSummary
+          : null,
       })
       .eq('id', candidate_id);
+
+    if (finalStatus !== 'failed') {
+      const { error: projectLinkError } = await supabase
+        .from('projects')
+        .update({ opportunity_intelligence_report_id: report.id })
+        .eq('origin', 'opportunity_intelligence')
+        .eq('source_opportunity_candidate_id', candidate_id);
+
+      if (projectLinkError) {
+        log(`F4 project report link update skipped: ${projectLinkError.message}`);
+      }
+
+      if (safeReanalysis) {
+        await deleteSupersededReports(supabase, candidate_id, report.id);
+      }
+    }
 
     log(`F4 Project Intelligence complete: report=${report.id} status=${finalStatus} findings=${persisted.findings_inserted} citations=${persisted.citations_inserted}`);
     return {
@@ -961,9 +1022,9 @@ async function runProjectIntelligence(task, supabase, log) {
     await supabase
       .from('opportunity_candidates')
       .update({
-        analysis_status: 'failed',
+        analysis_status: safeReanalysis ? 'ready' : 'failed',
         analysis_completed_at: completedAt,
-        analysis_error: e.message,
+        analysis_error: safeReanalysis ? `Re-analysis failed: ${e.message}` : e.message,
       })
       .eq('id', candidate_id);
     throw e;

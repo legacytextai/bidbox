@@ -16,7 +16,6 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { z } from "zod";
-import FilePreview from "@/components/FilePreview";
 import { formatInProjectTimezone } from "@/lib/timezoneUtils";
 import { FileDropzone } from "@/components/FileDropzone";
 import { Badge } from "@/components/ui/badge";
@@ -29,10 +28,15 @@ const bidSchema = z.object({
   bid_item: z.string().max(200).optional(),
 });
 
-interface ProjectFile {
+interface SourceDocument {
   id: string;
   file_name: string;
-  file_url: string;
+  file_size: number | null;
+  file_type: string | null;
+  document_family: string | null;
+  document_class: string | null;
+  signed_url: string | null;
+  source_url: string | null;
 }
 
 interface UploadFile {
@@ -54,7 +58,7 @@ const BidRoom = () => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [project, setProject] = useState<any>(null);
-  const [projectFiles, setProjectFiles] = useState<ProjectFile[]>([]);
+  const [sourceDocuments, setSourceDocuments] = useState<SourceDocument[]>([]);
   const [projectTrades, setProjectTrades] = useState<ProjectTrade[]>([]);
   const [countdown, setCountdown] = useState("");
   const [isExpired, setIsExpired] = useState(false);
@@ -122,7 +126,7 @@ const BidRoom = () => {
       }
 
       setProject(data.project);
-      setProjectFiles(data.files || []);
+      setSourceDocuments(data.source_documents || []);
       setProjectTrades(data.trades || []);
       setLoading(false);
     } catch (error) {
@@ -134,30 +138,6 @@ const BidRoom = () => {
       });
       setLoading(false);
     }
-  };
-
-  const downloadFile = async (filePath: string, fileName: string) => {
-    const { data, error } = await supabase.storage
-      .from("project-files")
-      .download(filePath);
-
-    if (error) {
-      toast({
-        title: "Error",
-        description: "Failed to download file",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const url = URL.createObjectURL(data);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = fileName;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
   };
 
   const handleFilesSelected = async (files: File[]) => {
@@ -321,6 +301,21 @@ const BidRoom = () => {
         return <FileIcon className="h-5 w-5 text-muted-foreground" />;
     }
   };
+
+  const formatSourceDocumentMeta = (document: SourceDocument) => {
+    const family = (document.document_family || "source document")
+      .replace(/[_-]+/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+    if (!document.file_size) return family;
+    const size = document.file_size < 1024 * 1024
+      ? `${(document.file_size / 1024).toFixed(1)} KB`
+      : `${(document.file_size / (1024 * 1024)).toFixed(1)} MB`;
+    return `${family} · ${size}`;
+  };
+
+  const previewableSourceDocuments = sourceDocuments.filter((document) =>
+    document.signed_url && document.file_name.toLowerCase().endsWith(".pdf")
+  );
 
   return (
     <div className="min-h-screen bg-background">
@@ -582,31 +577,65 @@ const BidRoom = () => {
 
           <div className="space-y-6">
             <div className="bg-card border border-border rounded-lg p-6">
-              <h3 className="font-semibold text-foreground mb-4">Download Project Files</h3>
-              {projectFiles.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No files available</p>
+              <h3 className="font-semibold text-foreground mb-4">Download Source Bid Documents</h3>
+              {sourceDocuments.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No source bid documents available</p>
               ) : (
                 <div className="flex gap-3 overflow-x-auto pb-2">
-                  {projectFiles.map((file) => (
-                    <div
-                      key={file.id}
-                      className="flex items-center gap-3 px-4 py-3 bg-muted rounded-full border border-border hover:bg-muted/80 transition-colors cursor-pointer flex-shrink-0"
-                      onClick={() => downloadFile(file.file_url, file.file_name)}
+                  {sourceDocuments.map((document) => (
+                    <button
+                      key={document.id}
+                      type="button"
+                      className="flex items-center gap-3 px-4 py-3 bg-muted rounded-full border border-border hover:bg-muted/80 transition-colors cursor-pointer flex-shrink-0 disabled:cursor-not-allowed disabled:opacity-50"
+                      onClick={() => document.signed_url && window.open(document.signed_url, "_blank", "noopener,noreferrer")}
+                      disabled={!document.signed_url}
                     >
-                      {getFileIcon(file.file_name)}
-                      <span className="text-sm font-medium text-foreground whitespace-nowrap">
-                        {file.file_name}
+                      {getFileIcon(document.file_name)}
+                      <span className="text-left">
+                        <span className="block text-sm font-medium text-foreground whitespace-nowrap">
+                          {document.file_name}
+                        </span>
+                        <span className="block text-xs text-muted-foreground whitespace-nowrap">
+                          {formatSourceDocumentMeta(document)}
+                        </span>
                       </span>
                       <Download className="h-4 w-4 text-[hsl(var(--bidbox-blue))]" />
-                    </div>
+                    </button>
                   ))}
                 </div>
               )}
             </div>
 
             <div className="bg-card border border-border rounded-lg p-6">
-              <h3 className="font-semibold text-foreground mb-4">Preview Project Files</h3>
-              <FilePreview files={projectFiles} />
+              <h3 className="font-semibold text-foreground mb-4">Preview Source Bid Documents</h3>
+              {previewableSourceDocuments.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No previewable source PDFs available</p>
+              ) : (
+                <div className="space-y-4">
+                  {previewableSourceDocuments.slice(0, 2).map((document) => (
+                    <div key={document.id} className="rounded-lg border border-border overflow-hidden">
+                      <div className="flex items-center justify-between gap-3 bg-muted px-4 py-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-foreground">{document.file_name}</p>
+                          <p className="text-xs text-muted-foreground">{formatSourceDocumentMeta(document)}</p>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => document.signed_url && window.open(document.signed_url, "_blank", "noopener,noreferrer")}
+                        >
+                          Open
+                        </Button>
+                      </div>
+                      <iframe
+                        title={document.file_name}
+                        src={document.signed_url ?? undefined}
+                        className="h-[420px] w-full bg-background"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>

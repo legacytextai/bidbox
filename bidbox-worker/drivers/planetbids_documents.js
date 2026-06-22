@@ -669,6 +669,94 @@ async function extractPortalMetadata(page, log) {
       return null;
     };
 
+    const extractPreBidSection = () => {
+      const sectionHeaderRe = /^(pre[-\s]?bid(?:\s+meeting)?(?:\s+information)?|prebid(?:\s+meeting)?(?:\s+information)?|job\s+walk|site\s+visit|mandatory\s+pre[-\s]?bid)$/i;
+      const fieldLabels = [
+        'Date & Time',
+        'Date/Time',
+        'Meeting Date',
+        'Meeting Time',
+        'Attendance Required',
+        'Attendance Mandatory',
+        'Meeting Type',
+        'Meeting Link',
+        'Additional Details',
+      ];
+      const fieldLabelRe = new RegExp(fieldLabels.map((label) => label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'i');
+      const nodes = [...document.querySelectorAll('h1,h2,h3,h4,h5,h6,legend,summary,label,dt,th,strong,b,span,div')];
+
+      const findSectionContainer = () => {
+        for (const node of nodes) {
+          const ownText = clean([...node.childNodes]
+            .filter((child) => child.nodeType === Node.TEXT_NODE)
+            .map((child) => child.textContent)
+            .join(' ') || node.textContent);
+          if (!ownText || ownText.length > 120 || !sectionHeaderRe.test(ownText.replace(/:$/, ''))) continue;
+
+          let current = node.parentElement;
+          let best = null;
+          for (let depth = 0; current && current !== document.body && depth < 6; depth += 1) {
+            const text = clean(current.textContent);
+            const headerIndex = text.toLowerCase().indexOf(ownText.toLowerCase());
+            const headerNearStart = headerIndex >= 0 && headerIndex <= Math.max(80, text.length * 0.2);
+            if (headerNearStart && fieldLabelRe.test(text) && text.length <= 5000) {
+              best = current;
+              break;
+            }
+            current = current.parentElement;
+          }
+          if (best) return { header: ownText.replace(/:$/, ''), container: best };
+        }
+        return null;
+      };
+
+      const section = findSectionContainer();
+      if (!section) return {};
+
+      const sectionText = clean(section.container.textContent);
+      const scopedField = (label) => {
+        const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const exactLabels = [...section.container.querySelectorAll('label,dt,th,strong,b,span,div')]
+          .filter((el) => clean(el.textContent).replace(/:$/, '').toLowerCase() === label.toLowerCase());
+
+        for (const el of exactLabels) {
+          const sibling = el.nextElementSibling ? clean(el.nextElementSibling.textContent) : '';
+          if (sibling && sibling.toLowerCase() !== label.toLowerCase()) return sibling.substring(0, 500);
+
+          const parentText = clean(el.parentElement?.textContent ?? '');
+          const parentMatch = parentText.match(new RegExp(`^${escaped}\\s*:?\\s*(.+)$`, 'i'));
+          if (parentMatch?.[1]) return clean(parentMatch[1]).substring(0, 500);
+        }
+
+        const match = sectionText.match(new RegExp(`${escaped}\\s*:?\\s*([^\\n]{1,300})`, 'i'));
+        return match?.[1] ? clean(match[1]).substring(0, 500) : null;
+      };
+
+      const dateTime =
+        scopedField('Date & Time') ||
+        scopedField('Date/Time');
+      const meetingDate = scopedField('Meeting Date');
+      const meetingTime = scopedField('Meeting Time');
+      const combinedMeetingDateTime = meetingDate && meetingTime ? `${meetingDate} ${meetingTime}` : meetingDate || meetingTime || null;
+      const attendanceRequired =
+        scopedField('Attendance Required') ||
+        scopedField('Attendance Mandatory');
+      const meetingType = scopedField('Meeting Type');
+      const meetingLink = scopedField('Meeting Link');
+      const additionalDetails = scopedField('Additional Details');
+
+      return {
+        pre_bid_meeting: true,
+        job_walk_at: dateTime || combinedMeetingDateTime || null,
+        pre_bid_meeting_at: dateTime || combinedMeetingDateTime || null,
+        job_walk_details: [section.header, meetingType, additionalDetails].filter(Boolean).join(' | ') || section.header,
+        attendance_required: attendanceRequired || null,
+        meeting_type: meetingType || null,
+        meeting_link: meetingLink || null,
+        additional_details: additionalDetails || null,
+      };
+    };
+
     const findEstimateRaw = () => {
       const labels = [
         "Engineer's Estimate",
@@ -697,6 +785,7 @@ async function extractPortalMetadata(page, log) {
     const scopeMatch = bodyText.match(
       /(?:Description|Scope of (?:Work|Services?|Project))[\s:\n]+([\s\S]{50,3000}?)(?:\n{2,}|\n[A-Z][a-z])/i
     );
+    const preBidSection = extractPreBidSection();
 
     return {
       estimated_value_raw: findEstimateRaw(),
@@ -737,6 +826,34 @@ async function extractPortalMetadata(page, log) {
         field('Location') ||
         field('Project Location') ||
         null,
+      job_walk_at:
+        preBidSection.job_walk_at ||
+        field('Job Walk Date') ||
+        field('Job Walk Date & Time') ||
+        field('Pre-Bid Meeting Date') ||
+        field('Pre-Bid Meeting Date & Time') ||
+        field('Prebid Meeting Date') ||
+        field('Site Visit Date') ||
+        null,
+      pre_bid_meeting_at: preBidSection.pre_bid_meeting_at || null,
+      job_walk_details:
+        preBidSection.job_walk_details ||
+        field('Job Walk') ||
+        field('Pre-Bid Meeting') ||
+        field('Prebid Meeting') ||
+        field('Mandatory Pre-Bid') ||
+        field('Site Visit') ||
+        null,
+      attendance_required:
+        preBidSection.attendance_required ||
+        field('Attendance Required') ||
+        field('Attendance Mandatory') ||
+        field('Mandatory Attendance') ||
+        null,
+      pre_bid_meeting: preBidSection.pre_bid_meeting || null,
+      meeting_type: preBidSection.meeting_type || null,
+      meeting_link: preBidSection.meeting_link || null,
+      additional_details: preBidSection.additional_details || null,
       county: field('County') || field('Location County') || null,
       scope_text: scopeMatch ? scopeMatch[1].trim().substring(0, 3000) : null,
     };
@@ -758,6 +875,14 @@ async function extractPortalMetadata(page, log) {
     bid_validity: raw.bid_validity ?? null,
     delivery_dates: raw.delivery_dates ?? null,
     project_address: raw.project_address ?? null,
+    job_walk_at: raw.job_walk_at ?? null,
+    pre_bid_meeting_at: raw.pre_bid_meeting_at ?? null,
+    job_walk_details: raw.job_walk_details ?? null,
+    attendance_required: raw.attendance_required ?? null,
+    pre_bid_meeting: raw.pre_bid_meeting ?? null,
+    meeting_type: raw.meeting_type ?? null,
+    meeting_link: raw.meeting_link ?? null,
+    additional_details: raw.additional_details ?? null,
     county: raw.county ?? null,
     scope_text: raw.scope_text ?? null,
     portal_metadata_refreshed_at: new Date().toISOString(),

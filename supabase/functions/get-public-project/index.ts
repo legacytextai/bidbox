@@ -69,24 +69,44 @@ serve(async (req) => {
       console.log('View count incremented for project:', projectData.id);
     }
 
-    // Fetch associated files
-    const { data: filesData, error: filesError } = await supabase
-      .from('project_files')
-      .select('*')
-      .eq('project_id', projectData.id);
+    let sourceDocuments: any[] = [];
+    if (projectData.origin === 'opportunity_intelligence' && projectData.source_opportunity_candidate_id) {
+      const { data: sourceDocsData, error: sourceDocsError } = await supabase
+        .from('opportunity_documents')
+        .select('id, file_name, file_size, file_type, document_family, document_class, storage_bucket, storage_path, source_url, document_source_order, created_at')
+        .eq('opportunity_candidate_id', projectData.source_opportunity_candidate_id)
+        .eq('acquisition_status', 'acquired')
+        .order('document_source_order', { ascending: true, nullsFirst: false })
+        .order('created_at', { ascending: true });
 
-    if (filesError) {
-      console.error('Error fetching files:', filesError);
-      return new Response(
-        JSON.stringify({ error: 'Failed to fetch project files' }), 
-        {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
-      );
+      if (sourceDocsError) {
+        console.error('Error fetching source opportunity documents:', sourceDocsError);
+      } else {
+        sourceDocuments = await Promise.all((sourceDocsData || []).map(async (doc: any) => {
+          if (!doc.storage_path) {
+            return { ...doc, signed_url: null };
+          }
+
+          const bucket = doc.storage_bucket || 'opportunity-documents';
+          const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+            .from(bucket)
+            .createSignedUrl(doc.storage_path, 60 * 60);
+
+          if (signedUrlError) {
+            console.error('Error creating source document signed URL:', {
+              document_id: doc.id,
+              bucket,
+              error: signedUrlError.message,
+            });
+            return { ...doc, signed_url: null };
+          }
+
+          return { ...doc, signed_url: signedUrlData?.signedUrl ?? null };
+        }));
+      }
     }
 
-    console.log('Files found:', filesData?.length || 0);
+    console.log('Source opportunity documents found:', sourceDocuments.length);
 
     // Fetch associated trades with trade type info
     const { data: tradesData, error: tradesError } = await supabase
@@ -133,7 +153,7 @@ serve(async (req) => {
           gc_estimating_email: gcEstimatingEmail,
           gc_email: gcEmail
         },
-        files: filesData || [],
+        source_documents: sourceDocuments,
         trades
       }), 
       {

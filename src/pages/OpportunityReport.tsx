@@ -5,6 +5,17 @@ import { Layout } from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
   ArrowLeft,
   ExternalLink,
   CalendarPlus,
@@ -16,6 +27,8 @@ import {
   CheckCircle2,
   XCircle,
   ShieldAlert,
+  RotateCcw,
+  Trash2,
 } from "lucide-react";
 
 type AnalysisStatus =
@@ -223,6 +236,8 @@ const OpportunityReport = () => {
   const [documents, setDocuments] = useState<DocumentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
+  const [reanalyzing, setReanalyzing] = useState(false);
+  const [deletingAnalysis, setDeletingAnalysis] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -247,6 +262,7 @@ const OpportunityReport = () => {
       .from("opportunity_intelligence_reports")
       .select("*")
       .eq("opportunity_candidate_id", id)
+      .in("status", ["ready", "partial"])
       .order("report_version", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -382,12 +398,79 @@ const OpportunityReport = () => {
   const crawl = candidate?.crawl_data ?? {};
   const estimatedValue = crawl?.estimated_value as number | undefined;
   const jobWalkAt = crawl?.job_walk_at as string | undefined;
+  const preBidMeetingAt = crawl?.pre_bid_meeting_at as string | undefined;
   const licenseRequirements = crawl?.license_requirements as string | undefined;
   const contractDuration = crawl?.contract_duration as string | undefined;
   const liquidatedDamages = crawl?.liquidated_damages as string | undefined;
   const department = crawl?.department as string | undefined;
   const projectAddress = crawl?.project_address as string | undefined;
   const reportReady = candidate?.analysis_status === "ready" && report;
+
+  const isAffirmative = (value: unknown) => {
+    if (value === true) return true;
+    if (typeof value !== "string") return false;
+    return /^(yes|true|required|mandatory)$/i.test(value.trim());
+  };
+
+  const normalizeDateTimeText = (value: string | null | undefined) => {
+    const text = String(value ?? "").replace(/\s+/g, " ").trim();
+    if (!text) return null;
+    const date = new Date(text.replace(/\s+UTC$/i, "Z"));
+    if (!Number.isNaN(date.getTime())) return formatDate(date.toISOString());
+    return text;
+  };
+
+  const isJobWalkFinding = (finding: Finding) => {
+    const haystack = `${finding.field_key} ${finding.label}`.toLowerCase();
+    return (
+      haystack.includes("job walk") ||
+      haystack.includes("pre-bid") ||
+      haystack.includes("prebid") ||
+      haystack.includes("site visit")
+    );
+  };
+
+  const hasJobWalkDocumentEvidence = documents.some((document) => {
+    const haystack = [
+      document.file_name,
+      document.document_class,
+      document.document_family,
+    ].join(" ").toLowerCase();
+    return [
+      "job walk",
+      "pre-bid",
+      "pre bid",
+      "prebid",
+      "site visit",
+      "attendance list",
+      "sign in",
+      "sign-in",
+    ].some((signal) => haystack.includes(signal));
+  });
+
+  const safeJobWalk = useMemo(() => {
+    const finding = findings.find((item) =>
+      (item.status === "found" || item.status === "needs_review" || item.status === "conflict") &&
+      isJobWalkFinding(item) &&
+      (citationsByFinding.get(item.id)?.length ?? 0) > 0
+    );
+    const citedDisplay = normalizeDateTimeText(finding?.value_text);
+    if (citedDisplay) return citedDisplay;
+
+    const metadataDisplay =
+      normalizeDateTimeText(jobWalkAt) ||
+      normalizeDateTimeText(preBidMeetingAt);
+    if (metadataDisplay) return metadataDisplay;
+
+    const hasMetadataEvidence =
+      isAffirmative(crawl?.pre_bid_meeting) ||
+      isAffirmative(crawl?.attendance_required) ||
+      isAffirmative(crawl?.job_walk_exists) ||
+      isAffirmative(crawl?.job_walk_mandatory);
+
+    if (hasMetadataEvidence || hasJobWalkDocumentEvidence) return "Needs Review";
+    return null;
+  }, [citationsByFinding, crawl, documents, findings, hasJobWalkDocumentEvidence, jobWalkAt, preBidMeetingAt]);
 
   const handleAddToCalendar = async () => {
     if (!candidate) return;
@@ -479,10 +562,6 @@ const OpportunityReport = () => {
         }
 
         await syncCandidateLink(existingProject.id);
-        toast({
-          title: "Already on Calendar",
-          description: "Opening the existing project for this opportunity.",
-        });
         navigate(`/projects/${existingProject.id}`);
         return;
       }
@@ -525,10 +604,6 @@ const OpportunityReport = () => {
           const recoveredProject = await findExistingProject();
           if (recoveredProject?.id) {
             await syncCandidateLink(recoveredProject.id);
-            toast({
-              title: "Already on Calendar",
-              description: "Opening the existing project for this opportunity.",
-            });
             navigate(`/projects/${recoveredProject.id}`);
             return;
           }
@@ -552,6 +627,64 @@ const OpportunityReport = () => {
       });
     } finally {
       setAdding(false);
+    }
+  };
+
+  const handleReanalyze = async () => {
+    if (!candidate) return;
+    setReanalyzing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("manage-opportunity-intelligence", {
+        body: {
+          action: "reanalyze",
+          candidate_id: candidate.id,
+        },
+      });
+      if (error || data?.success === false) {
+        throw new Error(data?.error ?? error?.message ?? "Failed to queue re-analysis");
+      }
+      toast({
+        title: "Re-analysis queued",
+        description: "BidBox will regenerate Project Intelligence from the current processed evidence.",
+      });
+      await load();
+    } catch (e: any) {
+      toast({
+        title: "Failed to re-analyze",
+        description: e?.message ?? "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setReanalyzing(false);
+    }
+  };
+
+  const handleDeleteAnalysis = async () => {
+    if (!candidate) return;
+    setDeletingAnalysis(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("manage-opportunity-intelligence", {
+        body: {
+          action: "delete_analysis",
+          candidate_id: candidate.id,
+        },
+      });
+      if (error || data?.success === false) {
+        throw new Error(data?.error ?? error?.message ?? "Failed to delete analysis");
+      }
+      toast({
+        title: "Analysis deleted",
+        description: "The opportunity was returned to Not Analyzed.",
+      });
+      navigate("/opportunities");
+    } catch (e: any) {
+      toast({
+        title: "Failed to delete analysis",
+        description: e?.message ?? "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setDeletingAnalysis(false);
     }
   };
 
@@ -667,6 +800,58 @@ const OpportunityReport = () => {
                 ? "View Project"
                 : "Add Project to Calendar"}
             </Button>
+            <div className="flex flex-wrap gap-2">
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="outline" disabled={reanalyzing || !candidate}>
+                    <RotateCcw className="h-4 w-4 mr-2" />
+                    Re-Analyze Project
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Re-Analyze Project?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will regenerate Project Intelligence from the currently processed evidence. The current
+                      report stays available while the new report runs, and it will only be replaced after the new report
+                      succeeds.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleReanalyze} disabled={reanalyzing}>
+                      {reanalyzing ? "Queueing..." : "Re-Analyze"}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="outline" className="text-destructive hover:text-destructive" disabled={deletingAnalysis || !candidate}>
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete Analysis
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete Analysis?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will permanently remove the Intelligence Report, findings, citations, source documents,
+                      and processed document data. The opportunity will remain in Opportunities as Not Analyzed. Any
+                      linked Opportunity Intelligence project, Calendar entry, and Bid HQ workspace will also be
+                      removed.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleDeleteAnalysis} disabled={deletingAnalysis}>
+                      {deletingAnalysis ? "Deleting..." : "Delete Analysis"}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
           </div>
         </div>
 
@@ -703,6 +888,7 @@ const OpportunityReport = () => {
             <Field label="Agency" value={candidate.agency} />
             <Field label="Department" value={department} />
             <Field label="Bid Due" value={safeBidDue.display} />
+            <Field label="Job Walk / Pre-Bid" value={safeJobWalk} />
             <Field
               label="Estimated Value"
               value={
