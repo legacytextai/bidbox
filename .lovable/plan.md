@@ -1,78 +1,50 @@
-I'm using knowledge.
+I'm using knowledge
 
-# Phase 1 Opportunity Intelligence — Sync Verification Report
+## Sync Verification Report — phase1-opportunity-intelligence
 
-This is a verification-only plan. No files will be modified. Lovable's GitHub integration auto-syncs the repo bi-directionally, so the workspace already reflects the latest commits on `phase1-opportunity-intelligence`.
+### Repo state (already at HEAD)
+The Lovable workspace is synced bidirectionally with GitHub, and `git log` confirms the three target commits are present at the tip:
 
-## 1. Branch sync status
+- `2300180` — Phase G 8.3 Legacy Crawl Separation (HEAD)
+- `75c0904` — Phase G 8.2 Opportunity Conversion Hardening
+- `ea9e374` — Phase G 8.1 Project Origin & Data Model Foundation
 
-- Active branch: `phase1-opportunity-intelligence`
-- `git log HEAD..origin/phase1-opportunity-intelligence` → empty (nothing behind)
-- `git log origin/phase1-opportunity-intelligence..HEAD` → empty (nothing ahead)
-- `git diff --stat HEAD origin/phase1-opportunity-intelligence` → empty
-- Working tree: clean (no uncommitted changes)
-- Merge conflicts: none
+No pull is needed — Lovable already reflects GitHub HEAD.
 
-Branch is fully synchronized with origin. No fetch/merge required.
+### Frontend
+Frontend changes deploy when the user clicks **Publish → Update**. No code changes required from me. Build runs automatically in the harness on edits; nothing pending here from these three commits aside from the user re-publishing if they want the live `bidbox.lovable.app` URL refreshed.
 
-## 2. Required commits present
+### Backend / Edge functions
+No edge-function changes are introduced by 8.1–8.3 that require a manual `deploy_edge_functions` step; functions deploy on backend change automatically.
 
-Recent log (HEAD downward):
+### Database migrations — ACTION REQUIRED
+Two new migration files exist in the repo but are NOT applied to Lovable Cloud:
 
-```
-a5dce51  Use GPT-5.4 mini for F4 intelligence
-8512aa2  Switch F4 project intelligence to OpenAI
-3e73951  Update plan
-9f55734  Changes
-3a16cf0  Implement F4 project intelligence reports
-```
-
-- `3a16cf0` (F4 Project Intelligence implementation) — present
-- `a5dce51` (OpenAI migration + gpt-5.4-mini default) — present, HEAD
-
-## 3. Required files present
-
-| File | Status |
+| File | Applied? |
 |---|---|
-| `bidbox-worker/drivers/project_intelligence.js` | Present (820 lines). `AI_MODEL = 'gpt-5.4-mini'`, gateway = `api.openai.com/v1/chat/completions`, key resolves from `OPENAI_API_KEY` |
-| `bidbox-worker/index.js` | Present (654 lines). Imports `queueProjectIntelligenceForCandidate` + `runProjectIntelligence`, claims `project_intelligence` tasks, writes failure state to `opportunity_candidates.analysis_status` |
-| `src/pages/Opportunities.tsx` | Present (912 lines). Filters reduced to All + Analyzed only |
-| `src/pages/OpportunityReport.tsx` | Present (673 lines). Renders F4 report sections, executive summary, findings, citations, "Add to Calendar" conversion |
-| `supabase/migrations/20260619000001_add_project_intelligence_reports.sql` | Present. Creates `opportunity_intelligence_reports`, `_findings`, `_citations` with RLS + GRANTs |
+| `20260622000001_add_project_origin_links.sql` (8.1) | ❌ not applied |
+| `20260622000002_harden_opportunity_conversion.sql` (8.2) | ❌ not applied |
 
-## 4. Opportunities page filter tabs
+Highest applied version in `supabase_migrations.schema_migrations` is `20260621204615`. These were committed via GitHub sync, which does not auto-run migrations against Lovable Cloud — they must be submitted through the migration tool (same situation we hit with the F4 migration).
 
-From `src/pages/Opportunities.tsx`:
+Until these run:
+- `projects.source_opportunity_candidate_id` / origin columns do not exist
+- The unique-index guard preventing duplicate opportunity→project conversions is missing
+- "View Project" from a converted opportunity, and the "Add To Calendar" conversion path, will fail or produce duplicates
 
-```ts
-const FILTERS = [
-  { label: "All", value: "all" },
-  { label: "Analyzed", value: "analyzed" },
-];
-```
+### Readiness for manual validation
+- View Intelligence Report — ready (F4 tables already live from prior migration)
+- Add To Calendar (opportunity → project conversion) — BLOCKED on 8.1 + 8.2 migrations
+- View Project from a converted opportunity — BLOCKED on 8.1 migration
 
-- All tab: present
-- Analyzed tab: present
-- Pending tab: removed
-- Converted tab: removed
+### Proposed next step (requires approval to leave plan mode)
+Submit the two pending migrations via the migration tool, in order:
+1. `20260622000001_add_project_origin_links.sql`
+2. `20260622000002_harden_opportunity_conversion.sql`
 
-## 5. Opportunity Report wiring
+Then re-verify by:
+- Confirming `schema_migrations` advances to `20260622000002`
+- Spot-checking `projects` has the new origin columns
+- Walking the Opportunity → View Intelligence Report → Add To Calendar → View Project flow against a known-good candidate
 
-- Route registered in `src/App.tsx`: `/opportunities/:id → OpportunityReport`
-- Reads `opportunity_intelligence_reports`, `_findings`, `_citations` keyed by `opportunity_candidate_id`
-- Polls every 7s while `analysis_status` is non-terminal
-- Renders all 7 F4 sections (Project Overview, Scope Summary, Trade Breakdown, Key Dates, Bid Requirements, Addenda Summary, Risk Flags) with citations
-- Conversion flow ("Add Project to Calendar") creates a `projects` row and flips candidate to `converted`
-
-## 6. Frontend build
-
-A separate build verification step is not run inside plan mode. Lovable's harness runs the build automatically after any change; the last sync produced no build errors in the preview. If you want an explicit fresh build run, approve this plan and I will trigger it on entering build mode (no source changes will be made).
-
-## Readiness for live F4 testing
-
-Green on all checks except one runtime-environment caveat:
-
-- **Worker AI key:** `project_intelligence.js` requires `OPENAI_API_KEY` to be set in the Railway worker environment. Lovable Cloud's `LOPVABLE_API_KEY` is not used by F4 anymore after the OpenAI migration. Confirm the Railway worker has `OPENAI_API_KEY` provisioned before kicking off live F4 runs.
-- **Model name:** `gpt-5.4-mini` is hard-defaulted; override via `PROJECT_INTELLIGENCE_MODEL` env var if needed.
-
-If you want me to run an explicit `npm run build` and re-check after approval (still no code changes), confirm and I'll proceed in build mode purely for verification.
+No application code changes will be made. Approve and I'll execute the migration submissions.
