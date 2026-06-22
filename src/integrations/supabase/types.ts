@@ -1255,9 +1255,12 @@ export type Database = {
           last_crawled_at: string | null
           location: string | null
           name: string
+          opportunity_intelligence_report_id: string | null
+          origin: string
           portal_type: string | null
           public_token: string
           scope_text: string | null
+          source_opportunity_candidate_id: string | null
           source_url: string | null
           status: string
           timezone: string | null
@@ -1286,9 +1289,12 @@ export type Database = {
           last_crawled_at?: string | null
           location?: string | null
           name: string
+          opportunity_intelligence_report_id?: string | null
+          origin?: string
           portal_type?: string | null
           public_token?: string
           scope_text?: string | null
+          source_opportunity_candidate_id?: string | null
           source_url?: string | null
           status?: string
           timezone?: string | null
@@ -1317,9 +1323,12 @@ export type Database = {
           last_crawled_at?: string | null
           location?: string | null
           name?: string
+          opportunity_intelligence_report_id?: string | null
+          origin?: string
           portal_type?: string | null
           public_token?: string
           scope_text?: string | null
+          source_opportunity_candidate_id?: string | null
           source_url?: string | null
           status?: string
           timezone?: string | null
@@ -1332,6 +1341,20 @@ export type Database = {
             columns: ["gc_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "projects_opportunity_intelligence_report_id_fkey"
+            columns: ["opportunity_intelligence_report_id"]
+            isOneToOne: false
+            referencedRelation: "opportunity_intelligence_reports"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "projects_source_opportunity_candidate_id_fkey"
+            columns: ["source_opportunity_candidate_id"]
+            isOneToOne: false
+            referencedRelation: "opportunity_candidates"
             referencedColumns: ["id"]
           },
         ]
