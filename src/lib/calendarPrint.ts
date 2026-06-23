@@ -1,4 +1,5 @@
 import { format } from "date-fns";
+import { formatProjectDateTime } from "@/lib/timezoneUtils";
 
 interface CalendarEvent {
   id: string;
@@ -50,7 +51,7 @@ function generatePrintHTML(data: PrintCalendarData): string {
         const isBidDue = event.type === "bid_due";
         const bgColor = isBidDue ? "#dc2626" : "#4b5563";
         const label = isBidDue ? "Bid Due" : "Job Walk";
-        const time = format(new Date(event.datetime), "MM/dd @ h:mm a");
+        const time = formatProjectDateTime(event.datetime, { fallback: "Time unavailable" });
         
         return `
           <div class="event" style="background-color: ${bgColor};">

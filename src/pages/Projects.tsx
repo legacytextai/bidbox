@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Copy, CheckCircle2, Lock } from "lucide-react";
 import { Layout } from "@/components/Layout";
-import { formatInProjectTimezone } from "@/lib/timezoneUtils";
+import { formatProjectDateTime } from "@/lib/timezoneUtils";
 import { useSubscription } from "@/hooks/useSubscription";
 import { getProjectDisplayStatus } from "@/lib/projectStatus";
 import { ENFORCE_FREE_PROJECT_LIMIT, FREE_PROJECT_LIMIT } from "@/lib/featureFlags";
@@ -184,7 +184,7 @@ const Projects = () => {
                 </div>
                 
                 <p className="text-sm text-muted-foreground mb-2 mt-2">
-                  Bid Date: {formatInProjectTimezone(project.bid_due_at, project.timezone || "America/Los_Angeles", "MMM d, yyyy h:mm a zzz")}
+                  Bid Date: {formatProjectDateTime(project.bid_due_at, { timezone: project.timezone || "America/Los_Angeles" })}
                 </p>
                 
                 <p className="text-sm text-muted-foreground mb-4">

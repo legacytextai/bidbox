@@ -1,7 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { format } from "date-fns";
-import { formatInTimeZone } from "date-fns-tz";
+import { formatProjectDateTimeOrNull } from "@/lib/timezoneUtils";
 
 interface HighSignalPanelProps {
   project: {
@@ -25,12 +24,7 @@ export function HighSignalPanel({ project }: HighSignalPanelProps) {
   // Format job walk date/time
   const formatJobWalkDate = () => {
     if (!project.job_walk_at) return null;
-    try {
-      const date = new Date(project.job_walk_at);
-      return formatInTimeZone(date, timezone, "MMM d, yyyy · h:mm a zzz");
-    } catch {
-      return null;
-    }
+    return formatProjectDateTimeOrNull(project.job_walk_at, { timezone });
   };
 
   // Render Job Walk section

@@ -1,9 +1,10 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Layout } from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { formatProjectDateTime, formatProjectDateTimeOrNull } from "@/lib/timezoneUtils";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -107,6 +108,13 @@ interface DocumentRow {
   processing_status: string | null;
 }
 
+interface ActiveAnalysisTask {
+  id: string;
+  task_type: string;
+  status: string;
+  payload: any | null;
+}
+
 const REPORT_SECTIONS = [
   { key: "project_overview", title: "Project Overview", icon: Sparkles },
   { key: "scope_summary", title: "Scope Summary", icon: FileText },
@@ -117,16 +125,13 @@ const REPORT_SECTIONS = [
   { key: "risk_flags", title: "Risk Flags", icon: AlertTriangle },
 ];
 
-const formatDate = (iso: string | null) =>
-  iso
-    ? new Date(iso).toLocaleString("en-US", {
-        month: "long",
-        day: "numeric",
-        year: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-      })
-    : "—";
+const ACTIVE_TASK_STATUSES = ["pending", "running", "retrying"];
+const ACTIVE_ANALYSIS_STATUSES = ["queued", "analyzing"];
+const ACTIVE_DOCUMENT_STATUSES = ["queued", "acquiring"];
+const ACTIVE_PROCESSING_STATUSES = ["queued", "processing"];
+
+const formatDate = (value: string | null) =>
+  formatProjectDateTime(value, { fallback: "—" });
 
 const isUniqueViolation = (error: any) =>
   error?.code === "23505" ||
@@ -151,6 +156,8 @@ const normalizeTimeToken = (text: string | null | undefined) => {
 const extractDateTimeDisplay = (text: string | null | undefined) => {
   const source = String(text ?? "").replace(/\s+/g, " ").trim();
   if (!source) return null;
+  const formatted = formatProjectDateTimeOrNull(source);
+  if (formatted) return formatted;
   const date = source.match(MONTH_DATE_RE)?.[0] ?? null;
   const time = source.match(TIME_RE)?.[0] ?? null;
   if (date && time) {
@@ -221,9 +228,6 @@ const STATUS_STYLE: Record<FindingStatus, string> = {
   needs_review: "bg-yellow-500/10 text-yellow-700",
 };
 
-const isTerminalAnalysis = (s: AnalysisStatus) =>
-  s === "ready" || s === "failed";
-
 const OpportunityReport = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -238,6 +242,8 @@ const OpportunityReport = () => {
   const [adding, setAdding] = useState(false);
   const [reanalyzing, setReanalyzing] = useState(false);
   const [deletingAnalysis, setDeletingAnalysis] = useState(false);
+  const [activeAnalysisTask, setActiveAnalysisTask] = useState<ActiveAnalysisTask | null>(null);
+  const wasAnalysisActiveRef = useRef(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -276,6 +282,16 @@ const OpportunityReport = () => {
       .order("document_source_order", { ascending: true, nullsFirst: false })
       .order("created_at", { ascending: true });
 
+    const activeTaskRes = await sb
+      .from("agent_tasks")
+      .select("id, task_type, status, payload")
+      .in("task_type", ["project_analysis", "document_processing", "project_intelligence"])
+      .in("status", ACTIVE_TASK_STATUSES)
+      .contains("payload", { candidate_id: id })
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
     let findingRows: Finding[] = [];
     let citationRows: Citation[] = [];
     if (reportRes.data?.id) {
@@ -299,6 +315,7 @@ const OpportunityReport = () => {
     setCandidate(candRes.data as Candidate);
     setReport((reportRes.data ?? null) as ReportRow | null);
     setDocuments((docsRes.data ?? []) as DocumentRow[]);
+    setActiveAnalysisTask((activeTaskRes.data ?? null) as ActiveAnalysisTask | null);
     setFindings(findingRows);
     setCitations(citationRows);
     setLoading(false);
@@ -316,13 +333,6 @@ const OpportunityReport = () => {
       load();
     })();
   }, [navigate, load]);
-
-  useEffect(() => {
-    if (!candidate) return;
-    if (isTerminalAnalysis(candidate.analysis_status)) return;
-    const t = window.setInterval(load, 7000);
-    return () => window.clearInterval(t);
-  }, [candidate, load]);
 
   const citationsByFinding = useMemo(() => {
     const map = new Map<string, Citation[]>();
@@ -405,6 +415,42 @@ const OpportunityReport = () => {
   const department = crawl?.department as string | undefined;
   const projectAddress = crawl?.project_address as string | undefined;
   const reportReady = candidate?.analysis_status === "ready" && report;
+  const analysisWorkActive = Boolean(
+    activeAnalysisTask ||
+      (candidate && ACTIVE_ANALYSIS_STATUSES.includes(candidate.analysis_status)) ||
+      (candidate && ACTIVE_DOCUMENT_STATUSES.includes(candidate.document_acquisition_status)) ||
+      (candidate && ACTIVE_PROCESSING_STATUSES.includes(candidate.document_processing_status)),
+  );
+
+  const activeAnalysisMessage = useMemo(() => {
+    if (!analysisWorkActive) return null;
+    const taskType = activeAnalysisTask?.task_type;
+    if (taskType === "project_analysis" || ACTIVE_DOCUMENT_STATUSES.includes(candidate?.document_acquisition_status ?? "")) {
+      return "Refreshing source documents and portal metadata.";
+    }
+    if (taskType === "document_processing" || ACTIVE_PROCESSING_STATUSES.includes(candidate?.document_processing_status ?? "")) {
+      return "Processing source documents into cited evidence.";
+    }
+    return "Regenerating Project Intelligence.";
+  }, [activeAnalysisTask?.task_type, analysisWorkActive, candidate?.document_acquisition_status, candidate?.document_processing_status]);
+
+  useEffect(() => {
+    if (!candidate || !analysisWorkActive) return;
+    const t = window.setInterval(load, 5000);
+    return () => window.clearInterval(t);
+  }, [analysisWorkActive, candidate, load]);
+
+  useEffect(() => {
+    if (!candidate || loading) return;
+    if (wasAnalysisActiveRef.current && !analysisWorkActive) {
+      toast({
+        title: "Re-analysis complete",
+        description: "Project Intelligence has been refreshed.",
+      });
+      load();
+    }
+    wasAnalysisActiveRef.current = analysisWorkActive;
+  }, [analysisWorkActive, candidate, load, loading, toast]);
 
   const isAffirmative = (value: unknown) => {
     if (value === true) return true;
@@ -415,9 +461,7 @@ const OpportunityReport = () => {
   const normalizeDateTimeText = (value: string | null | undefined) => {
     const text = String(value ?? "").replace(/\s+/g, " ").trim();
     if (!text) return null;
-    const date = new Date(text.replace(/\s+UTC$/i, "Z"));
-    if (!Number.isNaN(date.getTime())) return formatDate(date.toISOString());
-    return text;
+    return formatProjectDateTimeOrNull(text) ?? text;
   };
 
   const isJobWalkFinding = (finding: Finding) => {
@@ -632,6 +676,7 @@ const OpportunityReport = () => {
 
   const handleReanalyze = async () => {
     if (!candidate) return;
+    if (analysisWorkActive) return;
     setReanalyzing(true);
     try {
       const { data, error } = await supabase.functions.invoke("manage-opportunity-intelligence", {
@@ -661,6 +706,7 @@ const OpportunityReport = () => {
 
   const handleDeleteAnalysis = async () => {
     if (!candidate) return;
+    if (analysisWorkActive) return;
     setDeletingAnalysis(true);
     try {
       const { data, error } = await supabase.functions.invoke("manage-opportunity-intelligence", {
@@ -803,7 +849,7 @@ const OpportunityReport = () => {
             <div className="flex flex-wrap gap-2">
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <Button variant="outline" disabled={reanalyzing || !candidate}>
+                  <Button variant="outline" disabled={reanalyzing || analysisWorkActive || !candidate}>
                     <RotateCcw className="h-4 w-4 mr-2" />
                     Re-Analyze Project
                   </Button>
@@ -819,7 +865,7 @@ const OpportunityReport = () => {
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleReanalyze} disabled={reanalyzing}>
+                    <AlertDialogAction onClick={handleReanalyze} disabled={reanalyzing || analysisWorkActive}>
                       {reanalyzing ? "Queueing..." : "Re-Analyze"}
                     </AlertDialogAction>
                   </AlertDialogFooter>
@@ -828,7 +874,7 @@ const OpportunityReport = () => {
 
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <Button variant="outline" className="text-destructive hover:text-destructive" disabled={deletingAnalysis || !candidate}>
+                  <Button variant="outline" className="text-destructive hover:text-destructive" disabled={deletingAnalysis || analysisWorkActive || !candidate}>
                     <Trash2 className="h-4 w-4 mr-2" />
                     Delete Analysis
                   </Button>
@@ -845,7 +891,7 @@ const OpportunityReport = () => {
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleDeleteAnalysis} disabled={deletingAnalysis}>
+                    <AlertDialogAction onClick={handleDeleteAnalysis} disabled={deletingAnalysis || analysisWorkActive}>
                       {deletingAnalysis ? "Deleting..." : "Delete Analysis"}
                     </AlertDialogAction>
                   </AlertDialogFooter>
@@ -854,6 +900,23 @@ const OpportunityReport = () => {
             </div>
           </div>
         </div>
+
+        {analysisWorkActive && (
+          <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-blue-950">
+            <div className="flex items-start gap-3">
+              <Loader2 className="h-5 w-5 animate-spin mt-0.5 shrink-0" />
+              <div>
+                <p className="font-semibold">Re-Analysis In Progress</p>
+                <p className="text-sm">
+                  {activeAnalysisMessage ?? "Refreshing source documents and regenerating Project Intelligence."}
+                </p>
+                <p className="mt-1 text-xs text-blue-800">
+                  The current report remains available until the new report succeeds.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {!reportReady && (
           <Section title="Project Intelligence" icon={<Sparkles className="h-4 w-4" />}>

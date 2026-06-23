@@ -16,7 +16,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { z } from "zod";
-import { formatInProjectTimezone } from "@/lib/timezoneUtils";
+import { formatProjectDateTime } from "@/lib/timezoneUtils";
 import { FileDropzone } from "@/components/FileDropzone";
 import { Badge } from "@/components/ui/badge";
 import { getCategoryColor } from "@/lib/tradeTypes";
@@ -372,7 +372,7 @@ const BidRoom = () => {
                     </div>
                   </div>
                 )}
-                <p><span className="text-muted-foreground">Bid Due:</span> {formatInProjectTimezone(project.bid_due_at, project.timezone || "America/Los_Angeles", "MMMM d, yyyy 'at' h:mm a zzz")}</p>
+                <p><span className="text-muted-foreground">Bid Due:</span> {formatProjectDateTime(project.bid_due_at, { timezone: project.timezone || "America/Los_Angeles" })}</p>
                 {project.instructions && (
                   <div className="mt-4">
                     <p className="text-muted-foreground mb-2">Instructions:</p>

@@ -17,6 +17,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { ActiveScansPanel } from "@/components/ActiveScansPanel";
+import { formatProjectDateTime } from "@/lib/timezoneUtils";
 
 type CandidateStatus = "pending" | "red" | "yellow" | "green" | "converted";
 type AutoStatus = "green" | "yellow" | "red" | null;
@@ -147,9 +148,7 @@ const ACTIVE_ANALYSIS_STATUSES: AnalysisStatus[] = ["queued", "analyzing"];
 const POLLING_INTERVAL_MS = 7000;
 
 function formatBidDate(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  return formatProjectDateTime(iso, { fallback: "—" });
 }
 
 function formatEstimatedValue(value: number | null | undefined): string | null {

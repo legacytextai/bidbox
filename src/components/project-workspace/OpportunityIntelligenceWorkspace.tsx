@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { format } from "date-fns";
-import { formatInProjectTimezone } from "@/lib/timezoneUtils";
+import { formatProjectDateTime, formatProjectDateTimeOrNull } from "@/lib/timezoneUtils";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -127,42 +126,10 @@ interface OpportunityIntelligenceWorkspaceProps {
   onSaveTrades: () => void;
 }
 
-const formatDateTime = (iso: string | null | undefined) => {
-  if (!iso) return "Not available";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "Not available";
-  return formatInProjectTimezone(date.toISOString(), "America/Los_Angeles", "MMMM d, yyyy 'at' h:mm a");
-};
-
-const formatDateTimeOrNull = (iso: string | null | undefined) => {
-  if (!iso) return null;
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return null;
-  return formatInProjectTimezone(date.toISOString(), "America/Los_Angeles", "MMMM d, yyyy 'at' h:mm a");
-};
-
-const RAW_TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?(?:\s*UTC|Z|[+-]\d{2}:?\d{2})?$/i;
-const DATE_TIME_RE = /\b\d{1,2}\/\d{1,2}\/\d{4}\s+\d{1,2}:\d{2}\s*(?:AM|PM)\s*(?:PDT|PST|PT)?\b/i;
-
 const normalizeDateTimeText = (value: string | null | undefined) => {
   const text = String(value ?? "").replace(/\s+/g, " ").trim();
   if (!text) return null;
-  if (RAW_TIMESTAMP_RE.test(text)) {
-    const date = new Date(text.replace(/\s+UTC$/i, "Z"));
-    if (!Number.isNaN(date.getTime())) {
-      return formatInProjectTimezone(date.toISOString(), "America/Los_Angeles", "MMMM d, yyyy 'at' h:mm a");
-    }
-  }
-
-  const compactMatch = text.match(DATE_TIME_RE)?.[0];
-  if (compactMatch) {
-    const parsed = new Date(compactMatch.replace(/\s+(PDT|PST|PT)$/i, ""));
-    if (!Number.isNaN(parsed.getTime())) {
-      return format(parsed, "MMMM d, yyyy 'at' h:mm a");
-    }
-  }
-
-  return text;
+  return formatProjectDateTimeOrNull(text) ?? text;
 };
 
 const formatCurrency = (value: unknown) => {
@@ -359,10 +326,10 @@ export function OpportunityIntelligenceWorkspace({
         "Not available",
       bidDue:
         normalizeDateTimeText(getFindingValue(findFirst(findings, ["bid due", "bid date", "deadline"], ["key_dates"]))) ||
-        formatDateTime(project.bid_due_at),
+        formatProjectDateTime(project.bid_due_at, { fallback: "Not available" }),
       jobWalk:
         normalizeDateTimeText(jobWalkValue) ||
-        formatDateTimeOrNull(project.job_walk_at) ||
+        formatProjectDateTimeOrNull(project.job_walk_at) ||
         (hasJobWalkMetadata || hasJobWalkDocumentEvidence ? "Needs Review" : "Not available"),
     };
   }, [findings, intelligenceReport, opportunityDocuments, project.bid_due_at, project.job_walk_at, sourceOpportunity]);
@@ -873,7 +840,9 @@ export function OpportunityIntelligenceWorkspace({
                           <p className="font-medium">{submission.bidder_name || "Unknown Bidder"}</p>
                           {submission.company_name && <p className="text-sm text-muted-foreground">{submission.company_name}</p>}
                           {submission.bid_item && <p className="text-sm text-muted-foreground">Division: {submission.bid_item}</p>}
-                          <p className="text-xs text-muted-foreground">{format(new Date(submission.submitted_at), "MMM d, yyyy h:mm a")}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatProjectDateTime(submission.submitted_at, { fallback: "Submitted date unavailable" })}
+                          </p>
                         </div>
                         <AlertDialog>
                           <AlertDialogTrigger asChild>

@@ -12,6 +12,7 @@ import {
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 import { getPortalDisplayName, PortalType } from "@/lib/platformDetection";
+import { formatProjectDateTime } from "@/lib/timezoneUtils";
 import {
   Tooltip,
   TooltipContent,
@@ -162,7 +163,7 @@ export function ProjectSignals({ project, className, onRefresh, isRefreshing }: 
               </Badge>
             </TooltipTrigger>
             <TooltipContent>
-              <p>Last synced with source: {lastChecked.toLocaleString()}</p>
+              <p>Last synced with source: {formatProjectDateTime(project.last_crawled_at, { fallback: "Unknown" })}</p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>

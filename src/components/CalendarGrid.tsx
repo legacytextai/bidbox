@@ -17,6 +17,7 @@ import {
 import { ChevronLeft, ChevronRight, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { printCalendarViaIframe } from "@/lib/calendarPrint";
+import { formatProjectDateTime } from "@/lib/timezoneUtils";
 
 interface Project {
   id: string;
@@ -243,7 +244,7 @@ const CalendarGrid = ({ projects }: CalendarGridProps) => {
                               </div>
                               <div className="font-medium truncate leading-tight">{event.projectName}</div>
                               <div className={`text-[10px] ${subtitleColor}`}>
-                                {format(new Date(event.datetime), "MM/dd @ h:mm a")}
+                                {formatProjectDateTime(event.datetime, { fallback: "Time unavailable" })}
                               </div>
                             </button>
                           );

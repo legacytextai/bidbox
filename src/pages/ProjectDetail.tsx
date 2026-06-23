@@ -10,9 +10,8 @@ import { Layout } from "@/components/Layout";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { format } from "date-fns";
 import { validateProjectFile } from "@/lib/fileValidation";
-import { TIMEZONE_OPTIONS, localDateTimeToUtc, utcToLocalDateTime } from "@/lib/timezoneUtils";
+import { TIMEZONE_OPTIONS, formatProjectDateTime, localDateTimeToUtc, utcToLocalDateTime } from "@/lib/timezoneUtils";
 import { FileDropzone } from "@/components/FileDropzone";
 import { TradeMultiSelect } from "@/components/TradeMultiSelect";
 import { TradeType, getCategoryColor } from "@/lib/tradeTypes";
@@ -971,7 +970,7 @@ const ProjectDetail = () => {
                               Division: {submission.bid_item}
                             </p>}
                           <p className="text-xs text-muted-foreground mt-1">
-                            {format(new Date(submission.submitted_at), "MMM d, yyyy h:mm a")}
+                            {formatProjectDateTime(submission.submitted_at, { timezone: project.timezone || "America/Los_Angeles" })}
                           </p>
                         </div>
                         <AlertDialog>
