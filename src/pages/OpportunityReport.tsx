@@ -541,6 +541,11 @@ const OpportunityReport = () => {
     };
   }, [activeAnalysisStage]);
 
+  const displayedReanalysisFailure = useMemo(() => {
+    if (analysisWorkActive || !reportReady) return null;
+    return reanalysisFailureNotice || reanalysisFailureReason(candidate);
+  }, [analysisWorkActive, candidate, reanalysisFailureNotice, reportReady]);
+
   useEffect(() => {
     if (!candidate || !analysisWorkActive) return;
     const t = window.setInterval(load, 5000);
@@ -1058,7 +1063,7 @@ const OpportunityReport = () => {
           </div>
         )}
 
-        {!analysisWorkActive && reanalysisFailureNotice && (
+        {displayedReanalysisFailure && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-4 text-red-950">
             <div className="flex items-start gap-3">
               <AlertTriangle className="h-5 w-5 mt-0.5 shrink-0 text-red-700" />
@@ -1067,7 +1072,7 @@ const OpportunityReport = () => {
                 <p className="mt-1 text-sm">The previous report is still available.</p>
                 <div className="mt-3 rounded-md border border-red-200 bg-white/70 p-3 text-sm">
                   <p className="font-medium">Reason:</p>
-                  <p className="mt-1 break-words text-red-900">{reanalysisFailureNotice}</p>
+                  <p className="mt-1 break-words text-red-900">{displayedReanalysisFailure}</p>
                 </div>
                 <p className="mt-3 text-sm text-red-800">You may retry re-analysis at any time.</p>
               </div>
