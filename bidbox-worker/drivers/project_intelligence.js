@@ -151,7 +151,7 @@ function dateIdentity(value) {
 
 function criticalDateReference(candidate, portalMetadata, fieldKey) {
   if (fieldKey === 'bid_due_date') {
-    return candidate?.bid_due_at || portalMetadata?.due_date_raw || null;
+    return portalMetadata?.due_date_raw || candidate?.bid_due_at || null;
   }
   if (fieldKey === 'mandatory_job_walk') {
     return portalMetadata?.job_walk_at || portalMetadata?.pre_bid_meeting_at || null;

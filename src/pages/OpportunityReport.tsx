@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Layout } from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { dateIdentity, resolveAuthoritativeBidDue } from "@/lib/bidDueResolver";
 import { formatProjectDateTime, formatProjectDateTimeOrNull } from "@/lib/timezoneUtils";
 import {
   AlertDialog,
@@ -185,21 +186,6 @@ const extractDateTimeDisplay = (text: string | null | undefined) => {
   return source;
 };
 
-const dateIdentity = (value: string | null | undefined) => {
-  if (!value) return null;
-  const text = String(value).replace(/\s+/g, " ").trim();
-  const slash = text.match(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/);
-  if (slash) {
-    const [, month, day, year] = slash;
-    return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
-  }
-  const iso = text.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
-  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
-  const parsed = new Date(text);
-  if (Number.isNaN(parsed.getTime())) return null;
-  return formatProjectDateTime(parsed.toISOString(), { fallback: "" }).match(/\b[A-Z][a-z]+ \d{1,2}, \d{4}\b/)?.[0] ?? null;
-};
-
 const isBidDueFinding = (finding: Finding) => {
   const haystack = `${finding.field_key} ${finding.label}`.toLowerCase();
   return (
@@ -213,9 +199,24 @@ const isBidDueFinding = (finding: Finding) => {
 const isProjectOverviewBullet = (text: string | null | undefined) =>
   /^project overview\s*:/i.test(String(text ?? "").trim());
 
-const normalizeExecutiveBulletText = (text: string | null | undefined, index: number) => {
+const normalizeExecutiveBulletText = (
+  text: string | null | undefined,
+  index: number,
+  bidDue?: { display: string; value: string | null; source: string | null; warning?: string | null },
+) => {
   const value = String(text ?? "").replace(/\s+/g, " ").trim();
   if (!value) return value;
+  const mentionsBidDue = /\b(bid\s*(due|date|deadline)|deadline)\b/i.test(value);
+  const hasStructuredBidDue = bidDue?.source && bidDue.source !== "F4 fallback" && bidDue.display !== "—";
+  if (mentionsBidDue && hasStructuredBidDue) {
+    const bulletDate = dateIdentity(value);
+    const authoritativeDate = dateIdentity(bidDue.value);
+    if (!bulletDate || !authoritativeDate || bulletDate !== authoritativeDate || bidDue.warning) {
+      return bidDue.warning
+        ? `Key Bid Facts: ${bidDue.warning}`
+        : `Key Bid Facts: Bid Due: ${bidDue.display}`;
+    }
+  }
   if (index === 0) {
     if (/^scope text\s*:/i.test(value)) {
       return value.replace(/^scope text\s*:/i, "Project Overview:");
@@ -413,59 +414,88 @@ const OpportunityReport = () => {
       ...new Set(
         sourceBackedFindings
           .map((finding) => normalizeTimeToken(finding.value_text))
-          .filter((value): value is number => value !== null),
+        .filter((value): value is number => value !== null),
       ),
     ];
 
-    const structuredValue =
-      linkedProjectBidDueAt ||
-      candidate?.bid_due_at ||
-      (candidate?.crawl_data?.due_date_raw as string | null | undefined) ||
-      null;
-    const structuredDisplay = formatProjectDateTime(structuredValue, { fallback: "" });
-    const structuredDate = dateIdentity(structuredValue);
+    const f4ValueText = sourceBackedFindings[0]?.value_text ?? null;
+    const resolved = resolveAuthoritativeBidDue({
+      dueDateRaw: candidate?.crawl_data?.due_date_raw as string | null | undefined,
+      candidateBidDueAt: candidate?.bid_due_at ?? null,
+      projectBidDueAt: linkedProjectBidDueAt,
+      f4ValueText,
+    });
     const findingDate = sourceBackedFindings
       .map((finding) => dateIdentity(finding.value_text))
       .find(Boolean);
     const hasSourceConflict = sourceTimes.length > 1;
-    const hasMetadataConflict = Boolean(structuredDate && findingDate && structuredDate !== findingDate);
+    const hasMetadataConflict =
+      resolved.conflict ||
+      Boolean(dateIdentity(resolved.value) && findingDate && dateIdentity(resolved.value) !== findingDate);
 
     if (hasSourceConflict) {
       return {
-        display: structuredDisplay || sourceDisplays[0] || "—",
+        ...resolved,
+        display: resolved.display !== "—" ? resolved.display : sourceDisplays[0] || "—",
         source: "Needs review",
         warning: "Multiple cited bid due times were found. Review the Key Dates citations before relying on this deadline.",
       };
     }
 
-    if (structuredDisplay) {
-      return {
-        display: structuredDisplay,
-        source: linkedProjectBidDueAt
-          ? "Project metadata"
-          : candidate?.bid_due_at
-            ? "Candidate metadata"
-            : "Portal metadata",
-        warning: hasMetadataConflict
-          ? `F4 cited deadline conflicts with structured portal metadata. Showing structured deadline.`
-          : null,
-      };
-    }
-
-    if (sourceDisplays.length > 0) {
-      return {
-        display: sourceDisplays[0],
-        source: "Source-backed",
-        warning: null,
-      };
-    }
-
     return {
-      display: "—",
-      source: null,
-      warning: null,
+      ...resolved,
+      source: resolved.source === "portal_metadata"
+        ? "Portal metadata"
+        : resolved.source === "candidate_metadata"
+          ? "Candidate metadata"
+          : resolved.source === "project_metadata"
+            ? "Project metadata"
+            : resolved.source === "f4_fallback"
+              ? "F4 fallback"
+              : null,
+      warning: hasMetadataConflict
+        ? resolved.conflictMessage ?? "F4 cited deadline conflicts with structured portal metadata. Showing structured deadline."
+        : null,
     };
   }, [candidate?.bid_due_at, candidate?.crawl_data, linkedProjectBidDueAt, findings, citationsByFinding]);
+
+  const displayedFindingsByCategory = useMemo(() => {
+    const hasStructuredBidDue =
+      Boolean(candidate?.crawl_data?.due_date_raw || candidate?.bid_due_at || linkedProjectBidDueAt);
+    const map = new Map<string, Finding[]>();
+    findingsByCategory.forEach((items, category) => {
+      map.set(category, hasStructuredBidDue ? items.filter((finding) => !isBidDueFinding(finding)) : [...items]);
+    });
+
+    const keyDateFindings = map.get("key_dates") ?? [];
+
+    if (hasStructuredBidDue && safeBidDue.display !== "—") {
+      const structuredBidDueFinding: Finding = {
+        id: "__structured_bid_due__",
+        category: "key_dates",
+        field_key: "bid_due_date",
+        label: "Bid Due Date",
+        value_text: safeBidDue.warning ? safeBidDue.warning : safeBidDue.display,
+        value_jsonb: null,
+        status: safeBidDue.warning ? "conflict" : "found",
+        confidence: safeBidDue.warning ? "low" : "high",
+        is_critical: true,
+        sort_order: -1,
+        notes: safeBidDue.source ? `Source: ${safeBidDue.source}` : null,
+      };
+      map.set("key_dates", [structuredBidDueFinding, ...keyDateFindings]);
+    }
+
+    return map;
+  }, [
+    candidate?.bid_due_at,
+    candidate?.crawl_data?.due_date_raw,
+    findingsByCategory,
+    linkedProjectBidDueAt,
+    safeBidDue.display,
+    safeBidDue.source,
+    safeBidDue.warning,
+  ]);
 
   const crawl = candidate?.crawl_data ?? {};
   const estimatedValue = crawl?.estimated_value as number | undefined;
@@ -687,7 +717,7 @@ const OpportunityReport = () => {
         if (freshCandidate?.converted_project_id) {
           const { data: projectByCandidateLink, error: projectByCandidateLinkError } = await sb
             .from("projects")
-            .select("id, origin, source_opportunity_candidate_id, opportunity_intelligence_report_id")
+            .select("id, origin, source_opportunity_candidate_id, opportunity_intelligence_report_id, bid_due_at")
             .eq("id", freshCandidate.converted_project_id)
             .maybeSingle();
 
@@ -697,7 +727,7 @@ const OpportunityReport = () => {
 
         const { data: projectBySource, error: projectBySourceError } = await sb
           .from("projects")
-          .select("id, origin, source_opportunity_candidate_id, opportunity_intelligence_report_id")
+          .select("id, origin, source_opportunity_candidate_id, opportunity_intelligence_report_id, bid_due_at")
           .eq("origin", "opportunity_intelligence")
           .eq("source_opportunity_candidate_id", candidate.id)
           .maybeSingle();
@@ -718,6 +748,9 @@ const OpportunityReport = () => {
         if (!existingProject.opportunity_intelligence_report_id && report?.id) {
           projectUpdates.opportunity_intelligence_report_id = report.id;
         }
+        if (safeBidDue.value && existingProject.bid_due_at !== safeBidDue.value) {
+          projectUpdates.bid_due_at = safeBidDue.value;
+        }
 
         if (Object.keys(projectUpdates).length > 0) {
           const { error: projectLinkError } = await sb
@@ -737,7 +770,7 @@ const OpportunityReport = () => {
         throw new Error("Project Intelligence report is required before adding this opportunity to the calendar.");
       }
 
-      if (!candidate.bid_due_at) {
+      if (!safeBidDue.value) {
         toast({
           title: "Missing bid due date",
           description:
@@ -753,7 +786,7 @@ const OpportunityReport = () => {
           gc_id: session.user.id,
           name: candidate.raw_title ?? "Untitled Project",
           agency: candidate.agency,
-          bid_due_at: candidate.bid_due_at,
+          bid_due_at: safeBidDue.value,
           source_url: candidate.source_url,
           portal_type: candidate.portal_type,
           scope_text: scopeFinding?.value_text ?? candidate.scope_text,
@@ -1097,7 +1130,7 @@ const OpportunityReport = () => {
               {executiveBullets.map((bullet: any, index: number) => (
                 <li key={`${bullet.text}-${index}`} className="flex gap-2">
                   <span className="mt-2 h-1.5 w-1.5 rounded-full bg-[hsl(var(--bidbox-blue))] shrink-0" />
-                  <span>{normalizeExecutiveBulletText(bullet.text, index)}</span>
+                  <span>{normalizeExecutiveBulletText(bullet.text, index, safeBidDue)}</span>
                 </li>
               ))}
             </ul>
@@ -1146,7 +1179,7 @@ const OpportunityReport = () => {
           return (
             <Section key={section.key} title={section.title} icon={<Icon className="h-4 w-4" />}>
               <FindingsList
-                findings={findingsByCategory.get(section.key) ?? []}
+                findings={displayedFindingsByCategory.get(section.key) ?? []}
                 citationsByFinding={citationsByFinding}
                 pendingMessage={pendingSectionMessage}
                 ready={Boolean(reportReady)}
@@ -1269,10 +1302,15 @@ const FindingsList = ({
                   ? finding.value_text ?? "Value captured in structured data"
                   : finding.notes ?? "Not found in processed documents."}
               </p>
+              {finding.id.startsWith("__structured_") && finding.notes && (
+                <p className="mt-1 text-xs text-muted-foreground">{finding.notes}</p>
+              )}
             </div>
           </div>
 
-          <CitationList citations={citationsByFinding.get(finding.id) ?? []} />
+          {!finding.id.startsWith("__structured_") && (
+            <CitationList citations={citationsByFinding.get(finding.id) ?? []} />
+          )}
         </article>
       ))}
     </div>

@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { resolveAuthoritativeBidDue } from "@/lib/bidDueResolver";
 import { formatProjectDateTime, formatProjectDateTimeOrNull } from "@/lib/timezoneUtils";
 import {
   AlertTriangle,
@@ -165,12 +166,6 @@ const getFindingValue = (finding: IntelligenceFinding | undefined) => {
   return finding.value_text || null;
 };
 
-const getStructuredBidDue = (project: any, sourceOpportunity: SourceOpportunity | null) =>
-  project?.bid_due_at ||
-  sourceOpportunity?.bid_due_at ||
-  sourceOpportunity?.crawl_data?.due_date_raw ||
-  null;
-
 const findFirst = (findings: IntelligenceFinding[], keys: string[], categories?: string[]) =>
   findings.find((finding) => {
     const keyMatches = keys.some((key) =>
@@ -332,9 +327,12 @@ export function OpportunityIntelligenceWorkspace({
         sourceOpportunity?.crawl_data?.liquidated_damages ||
         "Not available",
       bidDue:
-        formatProjectDateTime(getStructuredBidDue(project, sourceOpportunity), { fallback: "" }) ||
-        normalizeDateTimeText(getFindingValue(findFirst(findings, ["bid due", "bid date", "deadline"], ["key_dates"]))) ||
-        "Not available",
+        resolveAuthoritativeBidDue({
+          dueDateRaw: sourceOpportunity?.crawl_data?.due_date_raw,
+          candidateBidDueAt: sourceOpportunity?.bid_due_at,
+          projectBidDueAt: project?.bid_due_at,
+          f4ValueText: getFindingValue(findFirst(findings, ["bid due", "bid date", "deadline"], ["key_dates"])),
+        }).display || "Not available",
       jobWalk:
         normalizeDateTimeText(jobWalkValue) ||
         formatProjectDateTimeOrNull(project.job_walk_at) ||
