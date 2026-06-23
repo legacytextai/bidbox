@@ -61,6 +61,7 @@ interface SourceOpportunity {
   id: string;
   raw_title: string | null;
   agency: string | null;
+  bid_due_at: string | null;
   crawl_data: any | null;
 }
 
@@ -163,6 +164,12 @@ const getFindingValue = (finding: IntelligenceFinding | undefined) => {
   if (finding.status !== "found" && finding.status !== "needs_review" && finding.status !== "conflict") return null;
   return finding.value_text || null;
 };
+
+const getStructuredBidDue = (project: any, sourceOpportunity: SourceOpportunity | null) =>
+  project?.bid_due_at ||
+  sourceOpportunity?.bid_due_at ||
+  sourceOpportunity?.crawl_data?.due_date_raw ||
+  null;
 
 const findFirst = (findings: IntelligenceFinding[], keys: string[], categories?: string[]) =>
   findings.find((finding) => {
@@ -325,8 +332,9 @@ export function OpportunityIntelligenceWorkspace({
         sourceOpportunity?.crawl_data?.liquidated_damages ||
         "Not available",
       bidDue:
+        formatProjectDateTime(getStructuredBidDue(project, sourceOpportunity), { fallback: "" }) ||
         normalizeDateTimeText(getFindingValue(findFirst(findings, ["bid due", "bid date", "deadline"], ["key_dates"]))) ||
-        formatProjectDateTime(project.bid_due_at, { fallback: "Not available" }),
+        "Not available",
       jobWalk:
         normalizeDateTimeText(jobWalkValue) ||
         formatProjectDateTimeOrNull(project.job_walk_at) ||

@@ -64,6 +64,7 @@ interface SourceOpportunity {
   id: string;
   raw_title: string | null;
   agency: string | null;
+  bid_due_at: string | null;
   crawl_data: any | null;
 }
 interface IntelligenceReport {
@@ -185,7 +186,7 @@ const ProjectDetail = () => {
           data: opportunityData
         } = await supabase
           .from("opportunity_candidates")
-          .select("id, raw_title, agency, crawl_data")
+          .select("id, raw_title, agency, bid_due_at, crawl_data")
           .eq("id", projectData.source_opportunity_candidate_id)
           .maybeSingle();
         setSourceOpportunity(opportunityData as SourceOpportunity | null);

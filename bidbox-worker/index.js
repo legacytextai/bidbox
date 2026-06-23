@@ -25,6 +25,23 @@ function ts() {
   return new Date().toISOString();
 }
 
+async function updateTaskStage(task, stage) {
+  if (!task?.id) return;
+  const payload = {
+    ...(task.payload ?? {}),
+    stage,
+    stage_updated_at: new Date().toISOString(),
+  };
+  task.payload = payload;
+  const { error } = await supabase
+    .from('agent_tasks')
+    .update({ payload })
+    .eq('id', task.id);
+  if (error) {
+    console.warn(`[${ts()}] task stage update failed: ${error.message}`);
+  }
+}
+
 async function maybeQualifyCandidates() {
   const qualifyUrl = process.env.QUALIFY_CANDIDATES_URL;
   if (!qualifyUrl) return;
@@ -204,6 +221,8 @@ async function runProjectAnalysisAcquisition(task, supabase) {
     throw new Error('project_analysis task missing candidate_id');
   }
 
+  await updateTaskStage(task, 'metadata_refresh');
+
   const { data: candidate, error: candidateError } = await supabase
     .from('opportunity_candidates')
     .select('id, source_id, source_url, portal_type, raw_title, agency, bid_due_at, crawl_data, document_acquisition_status')
@@ -375,6 +394,7 @@ async function runDocumentProcessingTask(task, supabase) {
   }
 
   try {
+    await updateTaskStage(task, 'metadata_refresh');
     const result = await runDocumentProcessing(task, supabase, log);
     let projectIntelligenceTaskId = null;
     let projectIntelligenceDuplicate = false;

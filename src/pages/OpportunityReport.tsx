@@ -60,7 +60,9 @@ interface Candidate {
   analysis_status: AnalysisStatus;
   analysis_error: string | null;
   document_acquisition_status: string;
+  document_acquisition_error: string | null;
   document_processing_status: string;
+  document_processing_error: string | null;
 }
 
 interface ReportRow {
@@ -129,6 +131,9 @@ const ACTIVE_TASK_STATUSES = ["pending", "running", "retrying"];
 const ACTIVE_ANALYSIS_STATUSES = ["queued", "analyzing"];
 const ACTIVE_DOCUMENT_STATUSES = ["queued", "acquiring"];
 const ACTIVE_PROCESSING_STATUSES = ["queued", "processing"];
+const ANALYSIS_STAGES = ["metadata_refresh", "report_generation", "validation", "complete"] as const;
+
+type AnalysisStage = (typeof ANALYSIS_STAGES)[number];
 
 const formatDate = (value: string | null) =>
   formatProjectDateTime(value, { fallback: "—" });
@@ -136,6 +141,16 @@ const formatDate = (value: string | null) =>
 const isUniqueViolation = (error: any) =>
   error?.code === "23505" ||
   String(error?.message ?? "").toLowerCase().includes("duplicate key");
+
+const reanalysisFailureReason = (candidate: Candidate | null) => {
+  if (!candidate) return null;
+  return (
+    candidate.analysis_error ||
+    candidate.document_acquisition_error ||
+    candidate.document_processing_error ||
+    null
+  );
+};
 
 const TIME_RE = /\b(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?|am|pm)\b/i;
 const MONTH_DATE_RE =
@@ -170,11 +185,19 @@ const extractDateTimeDisplay = (text: string | null | undefined) => {
   return source;
 };
 
-const candidateTimeMinutes = (iso: string | null | undefined) => {
-  if (!iso) return null;
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.getHours() * 60 + date.getMinutes();
+const dateIdentity = (value: string | null | undefined) => {
+  if (!value) return null;
+  const text = String(value).replace(/\s+/g, " ").trim();
+  const slash = text.match(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/);
+  if (slash) {
+    const [, month, day, year] = slash;
+    return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  }
+  const iso = text.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return formatProjectDateTime(parsed.toISOString(), { fallback: "" }).match(/\b[A-Z][a-z]+ \d{1,2}, \d{4}\b/)?.[0] ?? null;
 };
 
 const isBidDueFinding = (finding: Finding) => {
@@ -234,6 +257,7 @@ const OpportunityReport = () => {
   const { toast } = useToast();
 
   const [candidate, setCandidate] = useState<Candidate | null>(null);
+  const [linkedProjectBidDueAt, setLinkedProjectBidDueAt] = useState<string | null>(null);
   const [report, setReport] = useState<ReportRow | null>(null);
   const [findings, setFindings] = useState<Finding[]>([]);
   const [citations, setCitations] = useState<Citation[]>([]);
@@ -242,6 +266,7 @@ const OpportunityReport = () => {
   const [adding, setAdding] = useState(false);
   const [reanalyzing, setReanalyzing] = useState(false);
   const [deletingAnalysis, setDeletingAnalysis] = useState(false);
+  const [reanalysisFailureNotice, setReanalysisFailureNotice] = useState<string | null>(null);
   const [activeAnalysisTask, setActiveAnalysisTask] = useState<ActiveAnalysisTask | null>(null);
   const wasAnalysisActiveRef = useRef(false);
 
@@ -282,6 +307,25 @@ const OpportunityReport = () => {
       .order("document_source_order", { ascending: true, nullsFirst: false })
       .order("created_at", { ascending: true });
 
+    let projectBidDueAt: string | null = null;
+    if (candRes.data?.converted_project_id) {
+      const projectRes = await sb
+        .from("projects")
+        .select("bid_due_at")
+        .eq("id", candRes.data.converted_project_id)
+        .maybeSingle();
+      projectBidDueAt = projectRes.data?.bid_due_at ?? null;
+    }
+    if (!projectBidDueAt) {
+      const projectRes = await sb
+        .from("projects")
+        .select("bid_due_at")
+        .eq("origin", "opportunity_intelligence")
+        .eq("source_opportunity_candidate_id", id)
+        .maybeSingle();
+      projectBidDueAt = projectRes.data?.bid_due_at ?? null;
+    }
+
     const activeTaskRes = await sb
       .from("agent_tasks")
       .select("id, task_type, status, payload")
@@ -313,6 +357,7 @@ const OpportunityReport = () => {
     }
 
     setCandidate(candRes.data as Candidate);
+    setLinkedProjectBidDueAt(projectBidDueAt);
     setReport((reportRes.data ?? null) as ReportRow | null);
     setDocuments((docsRes.data ?? []) as DocumentRow[]);
     setActiveAnalysisTask((activeTaskRes.data ?? null) as ActiveAnalysisTask | null);
@@ -372,19 +417,38 @@ const OpportunityReport = () => {
       ),
     ];
 
-    const candidateDisplay = formatDate(candidate?.bid_due_at ?? null);
-    const candidateTime = candidateTimeMinutes(candidate?.bid_due_at);
+    const structuredValue =
+      linkedProjectBidDueAt ||
+      candidate?.bid_due_at ||
+      (candidate?.crawl_data?.due_date_raw as string | null | undefined) ||
+      null;
+    const structuredDisplay = formatProjectDateTime(structuredValue, { fallback: "" });
+    const structuredDate = dateIdentity(structuredValue);
+    const findingDate = sourceBackedFindings
+      .map((finding) => dateIdentity(finding.value_text))
+      .find(Boolean);
     const hasSourceConflict = sourceTimes.length > 1;
-    const hasMetadataConflict =
-      sourceTimes.length === 1 &&
-      candidateTime !== null &&
-      sourceTimes[0] !== candidateTime;
+    const hasMetadataConflict = Boolean(structuredDate && findingDate && structuredDate !== findingDate);
 
     if (hasSourceConflict) {
       return {
-        display: sourceDisplays[0] ?? candidateDisplay,
+        display: structuredDisplay || sourceDisplays[0] || "—",
         source: "Needs review",
         warning: "Multiple cited bid due times were found. Review the Key Dates citations before relying on this deadline.",
+      };
+    }
+
+    if (structuredDisplay) {
+      return {
+        display: structuredDisplay,
+        source: linkedProjectBidDueAt
+          ? "Project metadata"
+          : candidate?.bid_due_at
+            ? "Candidate metadata"
+            : "Portal metadata",
+        warning: hasMetadataConflict
+          ? `F4 cited deadline conflicts with structured portal metadata. Showing structured deadline.`
+          : null,
       };
     }
 
@@ -392,18 +456,16 @@ const OpportunityReport = () => {
       return {
         display: sourceDisplays[0],
         source: "Source-backed",
-        warning: hasMetadataConflict
-          ? `Candidate metadata shows ${candidateDisplay}, but the cited source says ${sourceDisplays[0]}. Showing the cited source-backed deadline.`
-          : null,
+        warning: null,
       };
     }
 
     return {
-      display: candidateDisplay,
-      source: candidate?.bid_due_at ? "Candidate metadata" : null,
+      display: "—",
+      source: null,
       warning: null,
     };
-  }, [candidate?.bid_due_at, findings, citationsByFinding]);
+  }, [candidate?.bid_due_at, candidate?.crawl_data, linkedProjectBidDueAt, findings, citationsByFinding]);
 
   const crawl = candidate?.crawl_data ?? {};
   const estimatedValue = crawl?.estimated_value as number | undefined;
@@ -422,17 +484,62 @@ const OpportunityReport = () => {
       (candidate && ACTIVE_PROCESSING_STATUSES.includes(candidate.document_processing_status)),
   );
 
-  const activeAnalysisMessage = useMemo(() => {
+  const activeAnalysisStage = useMemo<AnalysisStage | null>(() => {
     if (!analysisWorkActive) return null;
+    const payloadStage = activeAnalysisTask?.payload?.stage;
+    if (ANALYSIS_STAGES.includes(payloadStage)) {
+      return payloadStage;
+    }
     const taskType = activeAnalysisTask?.task_type;
     if (taskType === "project_analysis" || ACTIVE_DOCUMENT_STATUSES.includes(candidate?.document_acquisition_status ?? "")) {
-      return "Refreshing source documents and portal metadata.";
+      return "metadata_refresh";
     }
     if (taskType === "document_processing" || ACTIVE_PROCESSING_STATUSES.includes(candidate?.document_processing_status ?? "")) {
-      return "Processing source documents into cited evidence.";
+      return "metadata_refresh";
     }
-    return "Regenerating Project Intelligence.";
-  }, [activeAnalysisTask?.task_type, analysisWorkActive, candidate?.document_acquisition_status, candidate?.document_processing_status]);
+    if (taskType === "project_intelligence" || candidate?.analysis_status === "analyzing") {
+      return "report_generation";
+    }
+    return "metadata_refresh";
+  }, [
+    activeAnalysisTask?.payload?.stage,
+    activeAnalysisTask?.task_type,
+    analysisWorkActive,
+    candidate?.analysis_status,
+    candidate?.document_acquisition_status,
+    candidate?.document_processing_status,
+  ]);
+
+  const stageProgress = useMemo(() => {
+    const rank: Record<AnalysisStage, number> = {
+      metadata_refresh: 1,
+      report_generation: 2,
+      validation: 3,
+      complete: 4,
+    };
+    const currentRank = activeAnalysisStage ? rank[activeAnalysisStage] : 1;
+    const currentStep = activeAnalysisStage === "metadata_refresh" ? 1 : activeAnalysisStage === "report_generation" ? 2 : 3;
+    return {
+      currentStep,
+      steps: [
+        {
+          key: "metadata_refresh",
+          label: "Refreshing Source Data",
+          state: currentRank > 1 ? "complete" : "active",
+        },
+        {
+          key: "report_generation",
+          label: "Generating Intelligence Report",
+          state: currentRank > 2 ? "complete" : currentRank === 2 ? "active" : "pending",
+        },
+        {
+          key: "validation",
+          label: activeAnalysisStage === "complete" ? "Complete" : "Validating Findings",
+          state: currentRank > 3 ? "complete" : currentRank === 3 ? "active" : "pending",
+        },
+      ],
+    };
+  }, [activeAnalysisStage]);
 
   useEffect(() => {
     if (!candidate || !analysisWorkActive) return;
@@ -443,11 +550,22 @@ const OpportunityReport = () => {
   useEffect(() => {
     if (!candidate || loading) return;
     if (wasAnalysisActiveRef.current && !analysisWorkActive) {
-      toast({
-        title: "Re-analysis complete",
-        description: "Project Intelligence has been refreshed.",
-      });
-      load();
+      const failureReason = reanalysisFailureReason(candidate);
+      if (failureReason) {
+        setReanalysisFailureNotice(failureReason);
+        toast({
+          title: "Re-analysis failed",
+          description: "The previous report is still available.",
+          variant: "destructive",
+        });
+      } else {
+        setReanalysisFailureNotice(null);
+        toast({
+          title: "Re-analysis complete",
+          description: "Project Intelligence has been refreshed.",
+        });
+        load();
+      }
     }
     wasAnalysisActiveRef.current = analysisWorkActive;
   }, [analysisWorkActive, candidate, load, loading, toast]);
@@ -678,6 +796,7 @@ const OpportunityReport = () => {
     if (!candidate) return;
     if (analysisWorkActive) return;
     setReanalyzing(true);
+    setReanalysisFailureNotice(null);
     try {
       const { data, error } = await supabase.functions.invoke("manage-opportunity-intelligence", {
         body: {
@@ -902,17 +1021,55 @@ const OpportunityReport = () => {
         </div>
 
         {analysisWorkActive && (
-          <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-blue-950">
+          <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-4 text-blue-950">
             <div className="flex items-start gap-3">
               <Loader2 className="h-5 w-5 animate-spin mt-0.5 shrink-0" />
-              <div>
+              <div className="min-w-0 flex-1">
                 <p className="font-semibold">Re-Analysis In Progress</p>
-                <p className="text-sm">
-                  {activeAnalysisMessage ?? "Refreshing source documents and regenerating Project Intelligence."}
+                <p className="text-sm text-blue-900">
+                  Step {stageProgress.currentStep} of 3
                 </p>
-                <p className="mt-1 text-xs text-blue-800">
-                  The current report remains available until the new report succeeds.
-                </p>
+                <div className="mt-3 space-y-2">
+                  {stageProgress.steps.map((step) => (
+                    <div key={step.key} className="flex items-center gap-2 text-sm">
+                      {step.state === "complete" ? (
+                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                      ) : step.state === "active" ? (
+                        <Loader2 className="h-4 w-4 animate-spin text-blue-700" />
+                      ) : (
+                        <span className="h-4 w-4 rounded-full border border-blue-300" />
+                      )}
+                      <span className={step.state === "pending" ? "text-blue-700" : "font-medium"}>
+                        {step.label}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-3 space-y-1 text-xs text-blue-800">
+                  <p>This usually takes 2–5 minutes.</p>
+                  <p>You can leave this page and come back later.</p>
+                  <p>The current report will remain available until the new report is ready.</p>
+                  {activeAnalysisStage === "complete" && (
+                    <p className="font-medium">Refreshing report...</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!analysisWorkActive && reanalysisFailureNotice && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-4 text-red-950">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="h-5 w-5 mt-0.5 shrink-0 text-red-700" />
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold">Re-Analysis Failed</p>
+                <p className="mt-1 text-sm">The previous report is still available.</p>
+                <div className="mt-3 rounded-md border border-red-200 bg-white/70 p-3 text-sm">
+                  <p className="font-medium">Reason:</p>
+                  <p className="mt-1 break-words text-red-900">{reanalysisFailureNotice}</p>
+                </div>
+                <p className="mt-3 text-sm text-red-800">You may retry re-analysis at any time.</p>
               </div>
             </div>
           </div>

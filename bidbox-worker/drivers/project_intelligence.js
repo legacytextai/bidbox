@@ -78,12 +78,31 @@ const CATEGORIES = [
 
 const CATEGORY_ORDER = Object.fromEntries(CATEGORIES.map((category, index) => [category.key, index + 1]));
 
+async function updateTaskStage(supabase, task, stage) {
+  if (!task?.id) return;
+  const payload = {
+    ...(task.payload ?? {}),
+    stage,
+    stage_updated_at: new Date().toISOString(),
+  };
+  task.payload = payload;
+  const { error } = await supabase
+    .from('agent_tasks')
+    .update({ payload })
+    .eq('id', task.id);
+  if (error) {
+    console.warn(`[project_intelligence] task stage update failed: ${error.message}`);
+  }
+}
+
 const CRITICAL_FIELD_KEYS = new Set([
   'bid_due_date',
   'required_license',
   'engineer_estimate',
   'bid_bond_requirement',
   'mandatory_job_walk',
+  'questions_due_date',
+  'addendum_due_date',
   'contract_duration',
   'liquidated_damages',
   'insurance_requirements',
@@ -91,6 +110,59 @@ const CRITICAL_FIELD_KEYS = new Set([
 
 function normalizeText(value) {
   return String(value ?? '').replace(/\s+/g, ' ').trim();
+}
+
+function dateIdentity(value) {
+  const text = normalizeText(value);
+  if (!text) return null;
+
+  const slash = text.match(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/);
+  if (slash) {
+    const [, month, day, year] = slash;
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+  }
+
+  const iso = text.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+
+  const monthName = text.match(
+    /\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2}),\s+(\d{4})\b/i
+  );
+  if (monthName) {
+    const months = {
+      january: '01',
+      february: '02',
+      march: '03',
+      april: '04',
+      may: '05',
+      june: '06',
+      july: '07',
+      august: '08',
+      september: '09',
+      october: '10',
+      november: '11',
+      december: '12',
+    };
+    return `${monthName[3]}-${months[monthName[1].toLowerCase()]}-${monthName[2].padStart(2, '0')}`;
+  }
+
+  return null;
+}
+
+function criticalDateReference(candidate, portalMetadata, fieldKey) {
+  if (fieldKey === 'bid_due_date') {
+    return candidate?.bid_due_at || portalMetadata?.due_date_raw || null;
+  }
+  if (fieldKey === 'mandatory_job_walk') {
+    return portalMetadata?.job_walk_at || portalMetadata?.pre_bid_meeting_at || null;
+  }
+  if (fieldKey === 'questions_due_date') {
+    return portalMetadata?.questions_due_at || portalMetadata?.questions_due_date || null;
+  }
+  if (fieldKey === 'addendum_due_date') {
+    return portalMetadata?.addendum_due_at || portalMetadata?.addendum_due_date || null;
+  }
+  return null;
 }
 
 function truncate(value, maxLength) {
@@ -175,6 +247,7 @@ function getPortalMetadata(candidate) {
     liquidated_damages: crawl.liquidated_damages ?? null,
     department: crawl.department ?? null,
     delivery_dates: crawl.delivery_dates ?? null,
+    due_date_raw: crawl.due_date_raw ?? null,
     contract_duration: crawl.contract_duration ?? null,
     bid_validity: crawl.bid_validity ?? null,
     project_address: crawl.project_address ?? null,
@@ -191,6 +264,7 @@ function getPortalMetadata(candidate) {
     county: crawl.county ?? null,
     scope_text: crawl.scope_text ?? candidate.scope_text ?? null,
     source_url: candidate.source_url ?? null,
+    bid_due_at: candidate.bid_due_at ?? null,
   };
 }
 
@@ -210,6 +284,7 @@ Core rule: NO CITATION = NO FACT.
 - F4 answers: what does this project require?
 - F5 later answers: is this a fit for this contractor?
 - Use structured portal_metadata as source-page context when available. Portal metadata takes precedence over document inference in the Executive Summary and report context for matching fields such as estimate, license, department, location, contract duration, bid validity, delivery dates, pre-bid/job-walk details, and liquidated damages. Cited findings still require chunk citations.
+- Structured portal/candidate metadata is authoritative for critical dates. Do not rewrite or contradict candidate.bid_due_at, portal_metadata.bid_due_at, or portal_metadata.due_date_raw. If document evidence conflicts with structured dates, return a conflict/needs_review finding rather than a found high-confidence finding.
 - The Executive Summary must start with project context before bid requirements:
   1. First bullet starts with "Project Overview:" and gives a 1-2 sentence description of what the project is.
   2. Then include one or more bullets starting with "Key Bid Facts:" for bid due date, engineer estimate, contract duration, license requirement, bid bond, performance bond, and job walk when known.
@@ -452,10 +527,12 @@ function buildProjectOverviewBullet(findings) {
   };
 }
 
-function validateReport(raw, chunkMap, pageMap) {
+function validateReport(raw, chunkMap, pageMap, context = {}) {
   const findings = [];
   const citations = [];
   const rejected = [];
+  const candidate = context.candidate ?? null;
+  const portalMetadata = context.portalMetadata ?? {};
 
   for (const item of raw?.findings ?? []) {
     const status = ['found', 'unknown', 'conflict', 'not_applicable', 'needs_review'].includes(item.status)
@@ -503,6 +580,25 @@ function validateReport(raw, chunkMap, pageMap) {
       continue;
     }
 
+    let finalStatus = status;
+    let finalConfidence = ['high', 'medium', 'low'].includes(item.confidence) ? item.confidence : 'low';
+    let finalNotes = item.notes ?? null;
+    const structuredDate = dateIdentity(criticalDateReference(candidate, portalMetadata, fieldKey));
+    const aiDate = dateIdentity(item.value_text);
+    if (structuredDate && aiDate && structuredDate !== aiDate) {
+      finalStatus = 'conflict';
+      finalConfidence = 'low';
+      const message = `AI date conflicts with structured portal/candidate metadata (${structuredDate}).`;
+      finalNotes = finalNotes ? `${finalNotes} ${message}` : message;
+      rejected.push({
+        category,
+        field_key: fieldKey,
+        reason: 'critical_date_conflicts_with_structured_metadata',
+        structured_date: structuredDate,
+        ai_date: aiDate,
+      });
+    }
+
     const finding = {
       finding_key: findingKey,
       category,
@@ -510,10 +606,10 @@ function validateReport(raw, chunkMap, pageMap) {
       label: item.label || fieldKey.replace(/_/g, ' '),
       value_text: item.value_text == null ? null : String(item.value_text),
       value_jsonb: item.value_jsonb ?? null,
-      status,
-      confidence: ['high', 'medium', 'low'].includes(item.confidence) ? item.confidence : 'low',
+      status: finalStatus,
+      confidence: finalConfidence,
       is_critical: Boolean(item.is_critical) || CRITICAL_FIELD_KEYS.has(fieldKey),
-      notes: item.notes ?? null,
+      notes: finalNotes,
     };
     findings.push(finding);
     for (const citation of findingCitations) {
@@ -869,6 +965,7 @@ async function runProjectIntelligence(task, supabase, log) {
   log(`Starting F4 Project Intelligence for candidate ${candidate_id}`);
 
   try {
+    await updateTaskStage(supabase, task, 'report_generation');
     const evidence = await loadEvidence(supabase, candidate_id);
     const chunkMap = new Map(evidence.chunks.map((chunk) => [chunk.id, chunk]));
     const pageMap = new Map(evidence.pages.map((page) => [`${page.opportunity_document_id}:${page.page_number}`, page]));
@@ -883,7 +980,11 @@ async function runProjectIntelligence(task, supabase, log) {
       `parsed_findings=${aiDiagnostics.parsed_findings_count} ` +
       `parsed_citations=${aiDiagnostics.parsed_citations_count}`
     );
-    const validated = validateReport(raw, chunkMap, pageMap);
+    await updateTaskStage(supabase, task, 'validation');
+    const validated = validateReport(raw, chunkMap, pageMap, {
+      candidate: evidence.candidate,
+      portalMetadata,
+    });
     log(
       `F4 validation output: findings=${validated.findings.length} ` +
       `citations=${validated.citations.length} rejected=${validated.rejected.length}`
@@ -903,7 +1004,7 @@ async function runProjectIntelligence(task, supabase, log) {
       ? 'AI returned zero findings before citation validation'
       : null;
     const warningSummary = validated.rejected.length > 0
-      ? `${validated.rejected.length} uncited finding(s) downgraded by citation validator`
+      ? `${validated.rejected.length} finding(s) downgraded or flagged by validation`
       : null;
     const errorSummary = finalStatus === 'failed'
       ? emptyReportError ?? 'Project Intelligence generated no cited factual findings'
@@ -998,6 +1099,7 @@ async function runProjectIntelligence(task, supabase, log) {
     }
 
     log(`F4 Project Intelligence complete: report=${report.id} status=${finalStatus} findings=${persisted.findings_inserted} citations=${persisted.citations_inserted}`);
+    await updateTaskStage(supabase, task, 'complete');
     return {
       candidate_id,
       report_id: report.id,
