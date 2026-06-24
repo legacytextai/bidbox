@@ -242,9 +242,14 @@ function getBucket(iso: string | null): BucketKey {
   const nowPt = toZonedTime(new Date(), PT_TZ);
   const duePt = toZonedTime(d, PT_TZ);
 
-  if (duePt.getTime() < nowPt.getTime()) return "overdue";
+  // Start of today (PT). Anything strictly before today's calendar date is overdue;
+  // anything on today's calendar date is "today" regardless of whether the bid
+  // time has already passed.
+  const startOfToday = new Date(nowPt);
+  startOfToday.setHours(0, 0, 0, 0);
+  if (duePt.getTime() < startOfToday.getTime()) return "overdue";
 
-  const endOfToday = new Date(nowPt);
+  const endOfToday = new Date(startOfToday);
   endOfToday.setHours(23, 59, 59, 999);
   if (duePt.getTime() <= endOfToday.getTime()) return "today";
 
