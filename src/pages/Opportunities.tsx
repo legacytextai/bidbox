@@ -16,12 +16,21 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
 import { ActiveScansPanel } from "@/components/ActiveScansPanel";
 import { formatProjectDateTime, formatInProjectTimezone } from "@/lib/timezoneUtils";
 import {
   OPPORTUNITY_FILTER_REASON_LABELS,
   classifyOpportunityTitle,
 } from "@/lib/opportunityRelevance";
+import { toZonedTime } from "date-fns-tz";
 
 type CandidateStatus = "pending" | "red" | "yellow" | "green" | "converted";
 type AutoStatus = "green" | "yellow" | "red" | null;
@@ -196,11 +205,149 @@ function isBidClosed(iso: string | null): boolean {
   return !isNaN(d.getTime()) && d.getTime() < Date.now();
 }
 
+type SortKey =
+  | "due_asc"
+  | "due_desc"
+  | "added_desc"
+  | "added_asc"
+  | "county_asc"
+  | "agency_asc";
+
+const SORT_OPTIONS: { value: SortKey; label: string }[] = [
+  { value: "due_asc", label: "Bid Due — Soonest first" },
+  { value: "due_desc", label: "Bid Due — Latest first" },
+  { value: "added_desc", label: "Newest added" },
+  { value: "added_asc", label: "Oldest added" },
+  { value: "county_asc", label: "County (A–Z)" },
+  { value: "agency_asc", label: "Agency (A–Z)" },
+];
+
+type BucketKey =
+  | "overdue"
+  | "today"
+  | "this_week"
+  | "next_week"
+  | "later_this_month"
+  | "next_month"
+  | "future"
+  | "no_date";
+
+const BUCKETS: { key: BucketKey; label: string; defaultOpen: boolean }[] = [
+  { key: "overdue", label: "Overdue", defaultOpen: false },
+  { key: "today", label: "Due Today", defaultOpen: true },
+  { key: "this_week", label: "This Week", defaultOpen: true },
+  { key: "next_week", label: "Next Week", defaultOpen: true },
+  { key: "later_this_month", label: "Later This Month", defaultOpen: false },
+  { key: "next_month", label: "Next Month", defaultOpen: false },
+  { key: "future", label: "Future", defaultOpen: false },
+  { key: "no_date", label: "No Bid Date", defaultOpen: false },
+];
+
+const PT_TZ = "America/Los_Angeles";
+
+function getBucket(iso: string | null): BucketKey {
+  if (!iso) return "no_date";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "no_date";
+  const nowPt = toZonedTime(new Date(), PT_TZ);
+  const duePt = toZonedTime(d, PT_TZ);
+
+  if (duePt.getTime() < nowPt.getTime()) return "overdue";
+
+  const endOfToday = new Date(nowPt);
+  endOfToday.setHours(23, 59, 59, 999);
+  if (duePt.getTime() <= endOfToday.getTime()) return "today";
+
+  // End of this week = upcoming Sunday 23:59:59 PT
+  const endOfThisWeek = new Date(endOfToday);
+  const daysUntilSunday = (7 - nowPt.getDay()) % 7; // Sunday = 0
+  endOfThisWeek.setDate(endOfThisWeek.getDate() + daysUntilSunday);
+  if (duePt.getTime() <= endOfThisWeek.getTime()) return "this_week";
+
+  const endOfNextWeek = new Date(endOfThisWeek);
+  endOfNextWeek.setDate(endOfNextWeek.getDate() + 7);
+  if (duePt.getTime() <= endOfNextWeek.getTime()) return "next_week";
+
+  const endOfThisMonth = new Date(
+    nowPt.getFullYear(),
+    nowPt.getMonth() + 1,
+    0,
+    23,
+    59,
+    59,
+    999,
+  );
+  if (duePt.getTime() <= endOfThisMonth.getTime()) return "later_this_month";
+
+  const endOfNextMonth = new Date(
+    nowPt.getFullYear(),
+    nowPt.getMonth() + 2,
+    0,
+    23,
+    59,
+    59,
+    999,
+  );
+  if (duePt.getTime() <= endOfNextMonth.getTime()) return "next_month";
+
+  return "future";
+}
+
+function getCandidateCounty(c: { crawl_data: any | null }): string | null {
+  const v = c.crawl_data?.county;
+  return typeof v === "string" && v.trim() ? v.trim() : null;
+}
+
+function compareCandidates(a: Candidate, b: Candidate, sort: SortKey): number {
+  const aDue = a.bid_due_at ? new Date(a.bid_due_at).getTime() : null;
+  const bDue = b.bid_due_at ? new Date(b.bid_due_at).getTime() : null;
+  const nullsLast = (av: number | null, bv: number | null, dir: 1 | -1) => {
+    if (av === null && bv === null) return 0;
+    if (av === null) return 1;
+    if (bv === null) return -1;
+    return (av - bv) * dir;
+  };
+  switch (sort) {
+    case "due_asc":
+      return nullsLast(aDue, bDue, 1);
+    case "due_desc":
+      return nullsLast(aDue, bDue, -1);
+    case "added_desc":
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    case "added_asc":
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    case "county_asc": {
+      const ca = getCandidateCounty(a);
+      const cb = getCandidateCounty(b);
+      if (!ca && !cb) return 0;
+      if (!ca) return 1;
+      if (!cb) return -1;
+      return ca.localeCompare(cb);
+    }
+    case "agency_asc": {
+      const aa = a.agency ?? "";
+      const ba = b.agency ?? "";
+      if (!aa && !ba) return 0;
+      if (!aa) return 1;
+      if (!ba) return -1;
+      return aa.localeCompare(ba);
+    }
+  }
+}
+
 const Opportunities = () => {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState("all");
   const [scanLoading, setScanLoading] = useState(false);
+  const [sortBy, setSortBy] = useState<SortKey>("due_asc");
+  const [openBuckets, setOpenBuckets] = useState<Record<BucketKey, boolean>>(
+    () =>
+      BUCKETS.reduce(
+        (acc, b) => ({ ...acc, [b.key]: b.defaultOpen }),
+        {} as Record<BucketKey, boolean>,
+      ),
+  );
   
   const [lastScannedAt, setLastScannedAt] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
@@ -560,26 +707,40 @@ const Opportunities = () => {
     [candidates, activeFilter],
   );
 
-  // For "All" view: sort by auto_status (green→yellow→null→red), keep created_at DESC within bucket,
-  // and split out auto-Red into a "Filtered Out" section.
-  const { visibleCards, filteredOutCards } = useMemo(() => {
-    if (activeFilter !== "all") {
-      return { visibleCards: filtered, filteredOutCards: [] as Candidate[] };
-    }
-    const sorted = [...filtered].sort((a, b) => {
-      const ra = AUTO_RANK[String(a.auto_status)] ?? 2;
-      const rb = AUTO_RANK[String(b.auto_status)] ?? 2;
-      if (ra !== rb) return ra - rb;
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-    });
+  // Split candidates into time-bucket sections, sort within each bucket,
+  // and separate auto-Red / low-relevance into a Filtered Out section.
+  const { buckets, filteredOutCards } = useMemo(() => {
     const isFilteredOut = (candidate: Candidate) =>
-      candidate.auto_status === "red" ||
-      classifyOpportunityTitle(candidate.raw_title).relevance === "low";
-    return {
-      visibleCards: sorted.filter((c) => !isFilteredOut(c)),
-      filteredOutCards: sorted.filter(isFilteredOut),
+      activeFilter === "all" &&
+      (candidate.auto_status === "red" ||
+        classifyOpportunityTitle(candidate.raw_title).relevance === "low");
+
+    const visible: Candidate[] = [];
+    const filteredOut: Candidate[] = [];
+    for (const c of filtered) {
+      if (isFilteredOut(c)) filteredOut.push(c);
+      else visible.push(c);
+    }
+
+    const empty: Record<BucketKey, Candidate[]> = {
+      overdue: [], today: [], this_week: [], next_week: [],
+      later_this_month: [], next_month: [], future: [], no_date: [],
     };
-  }, [filtered, activeFilter]);
+    for (const c of visible) {
+      empty[getBucket(c.bid_due_at)].push(c);
+    }
+    for (const key of Object.keys(empty) as BucketKey[]) {
+      empty[key].sort((a, b) => compareCandidates(a, b, sortBy));
+    }
+    filteredOut.sort((a, b) => compareCandidates(a, b, sortBy));
+
+    return { buckets: empty, filteredOutCards: filteredOut };
+  }, [filtered, activeFilter, sortBy]);
+
+  const totalVisible = useMemo(
+    () => (Object.values(buckets) as Candidate[][]).reduce((n, arr) => n + arr.length, 0),
+    [buckets],
+  );
 
   const renderCard = (candidate: Candidate, index: number) => {
     const acquisitionActive = candidate.document_acquisition_status === "queued" || candidate.document_acquisition_status === "acquiring";
@@ -758,26 +919,43 @@ const Opportunities = () => {
             )}
 
 
-            {/* Filter tabs */}
-            <div className="flex gap-2 mb-6 flex-wrap">
-              {FILTERS.map((f) => {
-                const count = f.value === "all"
-                  ? candidates.length
-                  : candidates.filter(isAnalyzedCandidate).length;
-                return (
-                  <button
-                    key={f.value}
-                    onClick={() => setActiveFilter(f.value)}
-                    className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                      activeFilter === f.value
-                        ? "bg-[hsl(var(--bidbox-blue))] text-white"
-                        : "bg-muted text-muted-foreground hover:bg-accent"
-                    }`}
-                  >
-                    {f.label} <span className="ml-1 opacity-70">{count}</span>
-                  </button>
-                );
-              })}
+            {/* Filter tabs + sort */}
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+              <div className="flex gap-2 flex-wrap">
+                {FILTERS.map((f) => {
+                  const count = f.value === "all"
+                    ? candidates.length
+                    : candidates.filter(isAnalyzedCandidate).length;
+                  return (
+                    <button
+                      key={f.value}
+                      onClick={() => setActiveFilter(f.value)}
+                      className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                        activeFilter === f.value
+                          ? "bg-[hsl(var(--bidbox-blue))] text-white"
+                          : "bg-muted text-muted-foreground hover:bg-accent"
+                      }`}
+                    >
+                      {f.label} <span className="ml-1 opacity-70">{count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">Sort:</span>
+                <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortKey)}>
+                  <SelectTrigger className="w-[220px] h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SORT_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             {/* Cards */}
@@ -802,11 +980,46 @@ const Opportunities = () => {
               </div>
             ) : (
               <>
-                {visibleCards.length > 0 && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {visibleCards.map(renderCard)}
+                {totalVisible === 0 && (
+                  <div className="text-sm text-muted-foreground py-12 text-center">
+                    No opportunities match this view.
                   </div>
                 )}
+                {BUCKETS.map((bucket) => {
+                  const items = buckets[bucket.key];
+                  if (!items || items.length === 0) return null;
+                  const open = openBuckets[bucket.key];
+                  return (
+                    <Collapsible
+                      key={bucket.key}
+                      open={open}
+                      onOpenChange={(v) =>
+                        setOpenBuckets((prev) => ({ ...prev, [bucket.key]: v }))
+                      }
+                      className="mb-8"
+                    >
+                      <CollapsibleTrigger className="flex items-center gap-2 w-full text-left group">
+                        <ChevronDown
+                          className={`h-4 w-4 text-muted-foreground transition-transform ${
+                            open ? "rotate-0" : "-rotate-90"
+                          }`}
+                        />
+                        <h2 className="text-base font-semibold text-foreground">
+                          {bucket.label}
+                        </h2>
+                        <span className="text-sm text-muted-foreground">
+                          ({items.length})
+                        </span>
+                        <Separator className="flex-1 ml-3" />
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="mt-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                          {items.map(renderCard)}
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  );
+                })}
 
                 {activeFilter === "all" && filteredOutCards.length > 0 && (
                   <Collapsible
