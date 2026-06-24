@@ -574,7 +574,7 @@ const Opportunities = () => {
     };
   }, [filtered, activeFilter]);
 
-  const renderCard = (candidate: Candidate) => {
+  const renderCard = (candidate: Candidate, index: number) => {
     const acquisitionActive = candidate.document_acquisition_status === "queued" || candidate.document_acquisition_status === "acquiring";
     const acquisitionComplete = candidate.document_acquisition_status === "acquired";
     const bidClosed = isBidClosed(candidate.bid_due_at);
