@@ -89,7 +89,9 @@ F4 Project Intelligence is MVP complete. BidBox now generates document-backed Pr
 F4A Phase 1 deadline hardening adds definitive bid due display, expandable conflict evidence, and lightweight Project Workspace bid due overrides. Full Deadline Resolution Engine tables and resolver history remain deferred Phase 2 work.
 
 **Next Active Task**:
-Task 8 — Phase G: Pursuit Management & Project Workspace. Phase G should harden the transition from Intelligence Report to active pursuit by treating `Add to Calendar` as create/reuse project, preserving Opportunity Intelligence as the source of truth, separating legacy One Link projects from Opportunity Intelligence projects, and building a lightweight Project Workspace for active pursuits.
+Task 9 — Opportunities UX Improvements is implemented locally and ready for Lovable/deployed validation. It includes Analyze Visibility Improvements so queued/in-progress analyzed opportunities appear in the Analyzed tab immediately, and Construction Opportunity Sweeper so obvious non-construction title matches move into the existing Filtered Out section.
+
+Task 8 — Phase G: Pursuit Management & Project Workspace remains the active architecture lane. Phase G should harden the transition from Intelligence Report to active pursuit by treating `Add to Calendar` as create/reuse project, preserving Opportunity Intelligence as the source of truth, separating legacy One Link projects from Opportunity Intelligence projects, and building a lightweight Project Workspace for active pursuits.
 
 **Deferred Active Task**:
 Task 7.5 — F5 Qualification Agent is paused until the Project Workspace bridge is stable. F5 should later evaluate whether the contractor should pursue the analyzed opportunity using Project Intelligence findings and the contractor profile, including licensing, bonding, insurance, experience, labor compliance, self-perform capability, strategic fit, risk profile, and pursuit recommendation.

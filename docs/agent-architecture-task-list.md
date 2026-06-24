@@ -1643,9 +1643,87 @@ Reason outside MVP:
 
 ---
 
+## Task 9 - OPPORTUNITIES UX IMPROVEMENTS ✅ COMPLETE
+
+Purpose: reduce uncertainty in the Opportunities review loop and filter only obvious non-construction noise while preserving broad discovery.
+
+### 9.1. Analyze Visibility Improvements ✅ COMPLETE
+
+Purpose: make the `Analyze Project` action visibly take effect immediately.
+
+#### 9.1.1. Immediate Analyze Tab Placement
+
+Needed:
+- Treat any opportunity with active or requested analysis work as part of the `Analyzed` view.
+- Include opportunities when `analysis_status` is not `not_requested`, `analysis_task_id` exists, document acquisition is queued/acquiring/acquired/failed, or document processing is queued/processing/processed/partial/failed.
+- Do not wait for F4 completion before the opportunity appears in `Analyzed`.
+
+Acceptance criteria:
+- Clicking `Analyze Project` moves the opportunity into the `Analyzed` tab immediately.
+- Refreshing the page keeps the opportunity in `Analyzed` while processing continues.
+- Queued, acquiring, processing, analyzing, ready, and failed states remain visible through existing chips.
+- Ready opportunities continue opening the Intelligence Report exactly as before.
+
+#### 9.1.2. Analysis Lifecycle Visibility
+
+Needed:
+- Preserve existing progress/status labels.
+- Keep `View Analysis Progress` available before the report is ready.
+- Keep `View Intelligence Report` only for ready opportunities.
+
+Acceptance criteria:
+- The user can tell analysis was requested without waiting for F2/F3/F4 completion.
+- No additional backend schema is required.
+
+### 9.2. Construction Opportunity Sweeper ✅ COMPLETE
+
+Purpose: reduce obvious non-construction noise without hiding plausible construction or construction-adjacent opportunities.
+
+#### 9.2.1. Classification Strategy
+
+Needed:
+- Add a lightweight `classifyOpportunityTitle(title)` helper.
+- Use title-only deterministic rules.
+- Return `{ relevance: "high" | "low", reason: string | null }`.
+- Compute in the application layer first; no database migration.
+
+#### 9.2.2. Conservative Exclusion Rules
+
+Needed:
+- Auto-filter only very high-confidence non-construction categories:
+  - Software / IT
+  - Professional Services
+  - Food Services
+  - Staffing / Training
+  - Municipal Operations
+  - Real Estate
+- If construction-adjacent keywords appear, keep the opportunity visible.
+- Explicitly do not filter architectural, engineering, design, CEQA, environmental, inspection, construction management, program management, owner representative, project controls, or specialty inspection services.
+
+Acceptance criteria:
+- False positives are preferred over false negatives.
+- Uncertain opportunities remain visible.
+
+#### 9.2.3. Filtered-Out UX Integration
+
+Needed:
+- Reuse the existing `Filtered Out` section.
+- Add low-relevance title matches to `Filtered Out` in the `All` tab.
+- Show the user-readable sweeper reason on hover.
+- Do not add new page complexity.
+
+#### 9.2.4. Future Enhancements
+
+Deferred:
+- Phase 2 may use Project Intelligence and document context.
+- Phase 2 may introduce confidence scoring.
+- Phase 2 may introduce user-tunable relevance profiles.
+- Phase 2 should remain outside the current title-only sweeper scope.
+
 ## Task 10 - OPEN ITEMS / NEXT PRIORITIES
 
 ### 10.1. Immediate Next
+- Validate Task 9 Opportunities UX Improvements in Lovable after deploy.
 - Start Task 8 — Phase G: Pursuit Management & Project Workspace
 - Add project origin tracking so legacy One Link projects and Opportunity Intelligence projects follow separate workspace paths
 - Harden `Add to Calendar` so it creates/reuses a project, links the originating opportunity and F4 report, and never triggers legacy crawl analysis

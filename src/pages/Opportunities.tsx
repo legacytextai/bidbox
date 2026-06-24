@@ -18,6 +18,10 @@ import {
 } from "@/components/ui/collapsible";
 import { ActiveScansPanel } from "@/components/ActiveScansPanel";
 import { formatProjectDateTime } from "@/lib/timezoneUtils";
+import {
+  OPPORTUNITY_FILTER_REASON_LABELS,
+  classifyOpportunityTitle,
+} from "@/lib/opportunityRelevance";
 
 type CandidateStatus = "pending" | "red" | "yellow" | "green" | "converted";
 type AutoStatus = "green" | "yellow" | "red" | null;
@@ -64,8 +68,16 @@ const FILTERS: { label: string; value: string }[] = [
   { label: "Analyzed", value: "analyzed" },
 ];
 
-const isAnalyzedCandidate = (c: { analysis_status: string }) =>
-  c.analysis_status === "ready";
+const isAnalyzedCandidate = (c: {
+  analysis_status: string;
+  analysis_task_id?: string | null;
+  document_acquisition_status?: string | null;
+  document_processing_status?: string | null;
+}) =>
+  c.analysis_status !== "not_requested" ||
+  Boolean(c.analysis_task_id) ||
+  Boolean(c.document_acquisition_status && c.document_acquisition_status !== "not_requested") ||
+  Boolean(c.document_processing_status && c.document_processing_status !== "not_requested");
 
 const PORTAL_STYLES: Record<string, string> = {
   caltrans: "bg-blue-500/10 text-blue-700",
@@ -531,8 +543,8 @@ const Opportunities = () => {
     }
   };
 
-  // Filter by tab: "all" shows everything; "analyzed" shows only opportunities
-  // with completed F4 Project Intelligence reports.
+  // Filter by tab: "all" shows everything; "analyzed" shows any opportunity
+  // where analysis has been requested, is active, completed, or failed.
   const filtered = useMemo(
     () =>
       candidates.filter((c) =>
@@ -553,9 +565,12 @@ const Opportunities = () => {
       if (ra !== rb) return ra - rb;
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
+    const isFilteredOut = (candidate: Candidate) =>
+      candidate.auto_status === "red" ||
+      classifyOpportunityTitle(candidate.raw_title).relevance === "low";
     return {
-      visibleCards: sorted.filter((c) => c.auto_status !== "red"),
-      filteredOutCards: sorted.filter((c) => c.auto_status === "red"),
+      visibleCards: sorted.filter((c) => !isFilteredOut(c)),
+      filteredOutCards: sorted.filter(isFilteredOut),
     };
   }, [filtered, activeFilter]);
 
@@ -573,6 +588,10 @@ const Opportunities = () => {
       : acquisitionActive
       ? candidate.document_acquisition_status === "acquiring" ? "Acquiring Documents" : "Document Acquisition Queued"
       : "Analyze Project";
+    const titleClassification = classifyOpportunityTitle(candidate.raw_title);
+    const titleFilterLabel = titleClassification.reason
+      ? OPPORTUNITY_FILTER_REASON_LABELS[titleClassification.reason]
+      : null;
 
     return (
     <div
@@ -629,6 +648,22 @@ const Opportunities = () => {
                   Score: {candidate.qualification_score}
                 </p>
               )}
+            </TooltipContent>
+          </Tooltip>
+        )}
+        {!candidate.auto_status && titleFilterLabel && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border border-border bg-background text-muted-foreground cursor-help">
+                <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                Filtered
+              </span>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs">
+              <p className="text-xs">{titleFilterLabel}</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Title-only sweeper. Kept visible here because uncertain projects should not be hidden.
+              </p>
             </TooltipContent>
           </Tooltip>
         )}
