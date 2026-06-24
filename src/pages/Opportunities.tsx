@@ -615,138 +615,35 @@ const Opportunities = () => {
         </a>
       </div>
 
+      {/* Agency — emphasized */}
+      {candidate.agency && (
+        <p className="text-sm font-semibold uppercase tracking-wide text-foreground">
+          {candidate.agency}
+        </p>
+      )}
+
       {/* Badges row */}
-      <div className="flex items-center gap-2 flex-wrap">
-        {candidate.portal_type && (
-          <span
-            className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${
-              PORTAL_STYLES[candidate.portal_type] ?? "bg-gray-500/10 text-gray-600"
-            }`}
-          >
-            {candidate.portal_type}
-          </span>
-        )}
-        {candidate.status === "converted" && (
-          <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600">
-            Converted
-          </span>
-        )}
-        {candidate.auto_status && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border border-border bg-background text-muted-foreground cursor-help">
-                <span className={`h-1.5 w-1.5 rounded-full ${AUTO_STATUS_DOT[candidate.auto_status]}`} />
-                System: {candidate.auto_status}
-              </span>
-            </TooltipTrigger>
-            <TooltipContent className="max-w-xs">
-              <p className="text-xs">
-                {candidate.auto_status_reason ?? "No reason provided"}
-              </p>
-              {candidate.qualification_score !== null && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  Score: {candidate.qualification_score}
-                </p>
-              )}
-            </TooltipContent>
-          </Tooltip>
-        )}
-        {!candidate.auto_status && titleFilterLabel && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border border-border bg-background text-muted-foreground cursor-help">
-                <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
-                Filtered
-              </span>
-            </TooltipTrigger>
-            <TooltipContent className="max-w-xs">
-              <p className="text-xs">{titleFilterLabel}</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Title-only sweeper. Kept visible here because uncertain projects should not be hidden.
-              </p>
-            </TooltipContent>
-          </Tooltip>
-        )}
-        {candidate.analysis_status !== "not_requested" && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className={`inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded cursor-help ${ANALYSIS_STYLES[candidate.analysis_status]}`}>
-                {candidate.analysis_status === "failed" ? (
-                  <RotateCcw className="h-3 w-3" />
-                ) : candidate.analysis_status === "analyzing" ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <Clock className="h-3 w-3" />
-                )}
-                {ANALYSIS_LABELS[candidate.analysis_status]}
-              </span>
-            </TooltipTrigger>
-            <TooltipContent className="max-w-xs">
-              <p className="text-xs">
-                {candidate.analysis_status === "failed"
-                  ? candidate.analysis_error ?? "Analysis failed. Retry when ready."
-                  : "Project Intelligence has not been generated yet."}
-              </p>
-            </TooltipContent>
-          </Tooltip>
-        )}
-        {candidate.document_acquisition_status !== "not_requested" && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className={`inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded cursor-help ${DOCUMENT_ACQUISITION_STYLES[candidate.document_acquisition_status]}`}>
-                {candidate.document_acquisition_status === "failed" ? (
-                  <RotateCcw className="h-3 w-3" />
-                ) : candidate.document_acquisition_status === "acquiring" ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <Clock className="h-3 w-3" />
-                )}
-                {DOCUMENT_ACQUISITION_LABELS[candidate.document_acquisition_status]}
-              </span>
-            </TooltipTrigger>
-            <TooltipContent className="max-w-xs">
-              <p className="text-xs">
-                {candidate.document_acquisition_status === "failed"
-                  ? candidate.document_acquisition_error ?? "Document acquisition failed. Retry when ready."
-                  : candidate.document_acquisition_status === "acquired"
-                  ? "Source documents are stored. Project Intelligence has not been generated yet."
-                  : "The worker is preparing source documents. Project Intelligence has not been generated yet."}
-              </p>
-            </TooltipContent>
-          </Tooltip>
-        )}
-        {candidate.document_processing_status !== "not_requested" && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className={`inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded cursor-help ${DOCUMENT_PROCESSING_STYLES[candidate.document_processing_status]}`}>
-                {candidate.document_processing_status === "failed" ? (
-                  <RotateCcw className="h-3 w-3" />
-                ) : candidate.document_processing_status === "processing" ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <Clock className="h-3 w-3" />
-                )}
-                {DOCUMENT_PROCESSING_LABELS[candidate.document_processing_status]}
-              </span>
-            </TooltipTrigger>
-            <TooltipContent className="max-w-xs">
-              <p className="text-xs">
-                {candidate.document_processing_status === "failed"
-                  ? candidate.document_processing_error ?? "Document processing failed."
-                  : candidate.document_processing_status === "processed"
-                  ? "Evidence extracted. Project Intelligence has not been generated yet."
-                  : candidate.document_processing_status === "partial"
-                  ? "Some evidence was extracted. Project Intelligence has not been generated yet."
-                  : "The worker is extracting document evidence. Project Intelligence has not been generated yet."}
-              </p>
-            </TooltipContent>
-          </Tooltip>
-        )}
-      </div>
+      {(candidate.portal_type || candidate.status === "converted") && (
+        <div className="flex items-center gap-2 flex-wrap">
+          {candidate.portal_type && (
+            <span
+              className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${
+                PORTAL_STYLES[candidate.portal_type] ?? "bg-gray-500/10 text-gray-600"
+              }`}
+            >
+              {candidate.portal_type}
+            </span>
+          )}
+          {candidate.status === "converted" && (
+            <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600">
+              Converted
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Meta */}
       <div className="text-sm text-muted-foreground space-y-0.5">
-        {candidate.agency && <p>{candidate.agency}</p>}
         <p>Bid Due: {formatBidDate(candidate.bid_due_at)}</p>
         {(() => {
           const ev = formatEstimatedValue(candidate.crawl_data?.estimated_value);
@@ -757,26 +654,12 @@ const Opportunities = () => {
         )}
       </div>
 
-      {/* Notes */}
-      {candidate.status !== "converted" && (
-        <input
-          type="text"
-          value={notes[candidate.id] ?? ""}
-          onChange={(e) =>
-            setNotes((prev) => ({ ...prev, [candidate.id]: e.target.value }))
-          }
-          onBlur={() => handleNotesSave(candidate.id)}
-          placeholder="Add review notes..."
-          className="w-full text-sm bg-muted/50 border border-border rounded px-2 py-1.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-[hsl(var(--bidbox-blue))]"
-        />
-      )}
-
       {/* Action: View Intelligence Report (after F4) | View Progress | View Project | Analyze Project */}
       {isAnalyzedCandidate(candidate) ? (
         <Button
           size="sm"
           onClick={() => navigate(`/opportunities/${candidate.id}`)}
-          className="w-full bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90"
+          className="w-full bg-orange-500 text-white hover:bg-orange-600"
         >
           <Sparkles className="h-4 w-4 mr-2" />
           View Intelligence Report
