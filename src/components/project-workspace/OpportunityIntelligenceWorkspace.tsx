@@ -1259,8 +1259,10 @@ export function OpportunityIntelligenceWorkspace({
             </Dialog>
           </div>
           <div className="rounded-md border border-border p-3">
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">Report</p>
-            <p className="font-medium">{intelligenceReport?.status ? normalizeLabel(intelligenceReport.status) : "Not linked"}</p>
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Bid Due In</p>
+            <p className={`font-bold text-lg ${isExpired ? "text-destructive" : "text-primary"}`}>
+              {countdown || "—"}
+            </p>
           </div>
         </div>
       </section>
