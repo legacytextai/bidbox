@@ -949,20 +949,40 @@ const Opportunities = () => {
                   );
                 })}
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">Sort:</span>
-                <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortKey)}>
-                  <SelectTrigger className="w-[220px] h-9">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SORT_OPTIONS.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="flex items-center gap-2 flex-wrap">
+                <FacetMultiSelect
+                  label="County"
+                  icon={<Filter className="h-3.5 w-3.5" />}
+                  options={countyOptions}
+                  hasNone={hasNoCounty}
+                  noneLabel="(No county)"
+                  value={countyFilter}
+                  onChange={setCountyFilter}
+                  searchPlaceholder="Search counties..."
+                />
+                <FacetMultiSelect
+                  label="Agency"
+                  icon={<Building2 className="h-3.5 w-3.5" />}
+                  options={agencyOptions}
+                  hasNone={hasNoAgency}
+                  noneLabel="(No agency)"
+                  value={agencyFilter}
+                  onChange={setAgencyFilter}
+                  searchPlaceholder="Search agencies..."
+                />
+                {hasActiveFacetFilters && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setCountyFilter([]);
+                      setAgencyFilter([]);
+                    }}
+                    className="text-sm text-muted-foreground hover:text-foreground"
+                  >
+                    Clear filters
+                  </Button>
+                )}
               </div>
             </div>
 
