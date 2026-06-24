@@ -915,6 +915,54 @@ export function OpportunityIntelligenceWorkspace({
                 {project.bid_due_override_reason ? `: ${project.bid_due_override_reason}` : ""}
               </p>
             )}
+            {bidDueConflictPanel.shouldRender && (
+              <Collapsible className="mt-3">
+                <div className="flex items-center gap-2 text-xs text-amber-600">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  <span>Conflicting deadline evidence detected</span>
+                </div>
+                <CollapsibleTrigger className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-[hsl(var(--bidbox-blue))] hover:underline data-[state=open]:[&>svg]:rotate-180">
+                  View Conflicting Evidence
+                  <ChevronDown className="h-3.5 w-3.5 transition-transform" />
+                </CollapsibleTrigger>
+                <CollapsibleContent className="mt-2 space-y-3 rounded-md border border-border bg-muted/30 p-3">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      Selected as Authoritative
+                    </p>
+                    <p className="mt-0.5 text-sm font-medium text-foreground">
+                      {bidDueConflictPanel.authoritativeSourceLabel}
+                    </p>
+                    <p className="text-sm text-foreground">{bidDueConflictPanel.authoritativeDisplay}</p>
+                  </div>
+                  {bidDueConflictPanel.competing.length > 0 && (
+                    <div className="border-t border-border pt-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Competing Evidence
+                      </p>
+                      <div className="mt-2 space-y-3">
+                        {bidDueConflictPanel.competing.map((item) => (
+                          <div key={item.id} className="text-sm">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="font-medium text-foreground">{item.label}</p>
+                              {item.matchesAuthoritative && (
+                                <Badge variant="outline" className="border-[hsl(var(--bidbox-blue))] text-[hsl(var(--bidbox-blue))]">
+                                  Currently Authoritative
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-foreground">{item.display}</p>
+                            {item.excerpt && (
+                              <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{item.excerpt}</p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </CollapsibleContent>
+              </Collapsible>
+            )}
             <Dialog open={overrideOpen} onOpenChange={setOverrideOpen}>
               <DialogTrigger asChild>
                 <Button variant="outline" size="sm" className="mt-3">
