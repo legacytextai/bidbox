@@ -417,3 +417,27 @@ They include:
 Those fixes reduce immediate user-facing inconsistency, but they do not create a durable deadline evidence system.
 
 F6A is the future durable solution. It should replace render-time source selection with persistent deadline evidence, deterministic resolution, and an auditable explanation of why one deadline is being displayed.
+
+---
+
+## Phase 1 — Project Workspace Manual Overrides (shipped)
+
+The Project Workspace now supports lightweight manual overrides for two date fields, written directly against the `projects` row:
+
+- **Bid Due Date** — `projects.bid_due_override_at` / `_source` / `_reason` (manual or `deadline_candidate`).
+- **Job Walk Date** — `projects.job_walk_override_at` / `_reason` (manual only; no evidence selection).
+
+Both overrides also mirror to the primary column (`bid_due_at`, `job_walk_at`) so existing consumers — Calendar (`/calendar`), `CalendarGrid`, `HighSignalPanel`, dashboards, and upcoming-events widgets — reflect the override automatically with zero changes.
+
+### Phase 2 — Deadline Resolution Engine (NOT in scope yet)
+
+A future durable resolver will unify, in one engine:
+
+- Bid Due
+- Job Walk
+- Pre-Bid Conference
+- Question Deadline
+- Addendum Deadline
+- Award Timeline
+
+Phase 1 overrides are intentionally lightweight and live only on the project row; they will be migrated into the Phase 2 evidence model when F6A is implemented.
