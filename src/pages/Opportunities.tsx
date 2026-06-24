@@ -1119,7 +1119,8 @@ const Opportunities = () => {
                 )}
                 {BUCKETS.map((bucket) => {
                   const items = buckets[bucket.key];
-                  if (!items || items.length === 0) return null;
+                  const alwaysShow = bucket.key === "today" || bucket.key === "this_week";
+                  if ((!items || items.length === 0) && !alwaysShow) return null;
                   const open = openBuckets[bucket.key];
                   return (
                     <Collapsible
@@ -1145,9 +1146,15 @@ const Opportunities = () => {
                         <Separator className="flex-1 ml-3" />
                       </CollapsibleTrigger>
                       <CollapsibleContent className="mt-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                          {items.map(renderCard)}
-                        </div>
+                        {items.length === 0 ? (
+                          <p className="text-sm text-muted-foreground italic">
+                            Nothing due in this window.
+                          </p>
+                        ) : (
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {items.map(renderCard)}
+                          </div>
+                        )}
                       </CollapsibleContent>
                     </Collapsible>
                   );
