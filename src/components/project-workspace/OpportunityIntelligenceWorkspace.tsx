@@ -150,6 +150,10 @@ interface OpportunityIntelligenceWorkspaceProps {
     source: "manual" | "deadline_candidate";
     reason: string | null;
   }) => Promise<void>;
+  onOverrideJobWalkDate: (override: {
+    jobWalkAt: string;
+    reason: string | null;
+  }) => Promise<void>;
   onEditingTradesChange: (open: boolean) => void;
   onEditedTradeIdsChange: (ids: string[]) => void;
   onSaveTrades: () => void;
