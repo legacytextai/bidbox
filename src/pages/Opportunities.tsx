@@ -305,7 +305,8 @@ const Opportunities = () => {
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState("all");
   const [scanLoading, setScanLoading] = useState(false);
-  const [sortBy, setSortBy] = useState<SortKey>("due_asc");
+  const [countyFilter, setCountyFilter] = useState<string[]>([]);
+  const [agencyFilter, setAgencyFilter] = useState<string[]>([]);
   const [openBuckets, setOpenBuckets] = useState<Record<BucketKey, boolean>>(
     () =>
       BUCKETS.reduce(
