@@ -208,22 +208,9 @@ function isBidClosed(iso: string | null): boolean {
   return !isNaN(d.getTime()) && d.getTime() < Date.now();
 }
 
-type SortKey =
-  | "due_asc"
-  | "due_desc"
-  | "added_desc"
-  | "added_asc"
-  | "county_asc"
-  | "agency_asc";
+const NO_VALUE_SENTINEL = "__none__";
 
-const SORT_OPTIONS: { value: SortKey; label: string }[] = [
-  { value: "due_asc", label: "Bid Due — Soonest first" },
-  { value: "due_desc", label: "Bid Due — Latest first" },
-  { value: "added_desc", label: "Newest added" },
-  { value: "added_asc", label: "Oldest added" },
-  { value: "county_asc", label: "County (A–Z)" },
-  { value: "agency_asc", label: "Agency (A–Z)" },
-];
+
 
 type BucketKey =
   | "overdue"
