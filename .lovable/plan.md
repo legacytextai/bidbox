@@ -1,35 +1,31 @@
+## Preview all 4 agency-separation options live
 
-## Opportunities card cleanup
+Apply each of the 4 proposed agency-separation treatments to the first 4 opportunity cards on `/opportunities`, in order, so you can compare them side-by-side in the real UI. After you pick one, I'll remove the per-card variants and apply the winner universally to all cards.
 
-Single file change: `src/pages/Opportunities.tsx` (card renderer only, ~lines 600–820).
+### Implementation
 
-### Remove
-1. **"System: yellow/green/red" pill** (lines 634–653) — gone.
-2. **"Filtered" pill** (lines 654–669) — gone (same yellow-style noise under title).
-3. **Analysis status pill** ("Generating report", "Ready", "Failed") (lines 670–692) — gone.
-4. **Document acquisition pill** ("Documents acquired", "Acquiring documents", etc.) (lines 693–717) — gone.
-5. **Document processing pill** ("Documents processed", "Documents partially processed", etc.) (lines 718–744) — gone.
-6. **"Add review notes…" input** (lines 761–772) — gone.
+In `src/pages/Opportunities.tsx`, inside the card `.map()` render, use the card's index to switch the agency styling:
 
-Keep in the badge row: portal pill (Caltrans/PlanetBids/etc.) and "Converted" pill only. If the badge row ends up empty, the row collapses (no whitespace gap).
+- **Card 1 (index 0) — Option A: Left Accent Bar**
+  Agency line gets a 3px `bg-[hsl(var(--bidbox-blue))]` left border with `pl-2`, normal-case text, `text-sm font-medium text-foreground`.
 
-Related cleanup (no behavior change elsewhere): drop now-unused imports/constants tied only to the removed pills (`ANALYSIS_STYLES`, `ANALYSIS_LABELS`, `DOCUMENT_ACQUISITION_STYLES/LABELS`, `DOCUMENT_PROCESSING_STYLES/LABELS`, `AUTO_STATUS_DOT`, `RotateCcw`/`Loader2`/`Clock` icons if unused, `Tooltip*` if unused, `classifyOpportunityTitle` + `titleFilterLabel` if only used by the removed Filtered pill, `notes` state + `handleNotesSave` + `setNotes` initialization). Polling/realtime logic stays untouched.
+- **Card 2 (index 1) — Option B: Subtle Background Pill**
+  Agency rendered as an inline-block `bg-muted` rounded pill with `px-2 py-0.5 text-xs font-medium text-foreground`, normal case.
 
-### Emphasize agency
-In the meta block (lines 748–758), promote agency from small muted text to a prominent line directly under the title:
+- **Card 3 (index 2) — Option C: Thin Horizontal Rule**
+  A `border-t border-border` divider between title and agency, with `pt-2 mt-2`. Agency in `text-sm text-muted-foreground`, normal case, no uppercase.
 
-- Move `{candidate.agency}` out of the muted meta block into its own line right under the `<h3>` title.
-- Style: `text-sm font-semibold uppercase tracking-wide text-foreground` (or `text-[hsl(var(--bidbox-blue))]` for color pop — pick foreground bold for now, matches existing design tokens).
-- Bid Due / Estimated Value / Source stay in the muted meta block below.
+- **Card 4 (index 3) — Option D: Icon Prefix + Spacing**
+  `Building2` lucide icon (14px, muted) prefixed before the agency name, with `mt-2 flex items-center gap-1.5`, `text-sm font-medium text-foreground`, normal case.
 
-### Orange "View Intelligence Report" CTA
-For analyzed candidates (lines 775–783), swap the blue classes for an orange tone using existing Tailwind utilities (no new tokens needed):
+- **Cards 5+** keep the current uppercase-bold treatment as a neutral baseline so the 4 options stand out.
 
-```
-className="w-full bg-orange-500 text-white hover:bg-orange-600"
-```
+### Scope
 
-All other action buttons (Analyze Project, View Analysis Progress, View Project) stay as-is.
+- Pure presentational change to `src/pages/Opportunities.tsx`.
+- No data, schema, or logic changes.
+- Temporary — once you pick a winner, I'll strip the index-based switch and apply the chosen style to every card.
 
-### Out of scope
-No data layer, realtime, polling, filters, or backend changes. Pure presentational edit to the card.
+### Step 2 (after your selection)
+
+Replace the per-index variants with the chosen treatment applied uniformly to all opportunity cards.

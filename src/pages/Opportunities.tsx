@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { ExternalLink, RefreshCw, ChevronDown, Clock, Loader2, RotateCcw, Sparkles } from "lucide-react";
+import { ExternalLink, RefreshCw, ChevronDown, Clock, Loader2, RotateCcw, Sparkles, Building2 } from "lucide-react";
 import { Layout } from "@/components/Layout";
 import {
   Tooltip,
@@ -574,7 +574,7 @@ const Opportunities = () => {
     };
   }, [filtered, activeFilter]);
 
-  const renderCard = (candidate: Candidate) => {
+  const renderCard = (candidate: Candidate, index: number) => {
     const acquisitionActive = candidate.document_acquisition_status === "queued" || candidate.document_acquisition_status === "acquiring";
     const acquisitionComplete = candidate.document_acquisition_status === "acquired";
     const bidClosed = isBidClosed(candidate.bid_due_at);
@@ -600,9 +600,40 @@ const Opportunities = () => {
     >
       {/* Title + external link */}
       <div className="flex items-start justify-between gap-2">
-        <h3 className="font-semibold text-base text-foreground leading-snug">
-          {candidate.raw_title ?? "Untitled Opportunity"}
-        </h3>
+        <div className="flex-1 min-w-0">
+          <h3 className="font-semibold text-base text-foreground leading-snug">
+            {candidate.raw_title ?? "Untitled Opportunity"}
+          </h3>
+          {/* Agency — variant by index for A/B/C/D preview */}
+          {candidate.agency && index === 0 && (
+            <p className="mt-1.5 border-l-[3px] border-[hsl(var(--bidbox-blue))] pl-2 text-sm font-medium text-foreground">
+              {candidate.agency}
+            </p>
+          )}
+          {candidate.agency && index === 1 && (
+            <div className="mt-1.5">
+              <span className="inline-block bg-muted rounded px-2 py-0.5 text-xs font-medium text-foreground">
+                {candidate.agency}
+              </span>
+            </div>
+          )}
+          {candidate.agency && index === 2 && (
+            <p className="mt-2 pt-2 border-t border-border text-sm text-muted-foreground">
+              {candidate.agency}
+            </p>
+          )}
+          {candidate.agency && index === 3 && (
+            <p className="mt-2 flex items-center gap-1.5 text-sm font-medium text-foreground">
+              <Building2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              {candidate.agency}
+            </p>
+          )}
+          {candidate.agency && index > 3 && (
+            <p className="mt-1.5 text-sm font-semibold uppercase tracking-wide text-foreground">
+              {candidate.agency}
+            </p>
+          )}
+        </div>
         <a
           href={candidate.source_url}
           target="_blank"
@@ -615,12 +646,6 @@ const Opportunities = () => {
         </a>
       </div>
 
-      {/* Agency — emphasized */}
-      {candidate.agency && (
-        <p className="text-sm font-semibold uppercase tracking-wide text-foreground">
-          {candidate.agency}
-        </p>
-      )}
 
       {/* Badges row */}
       {(candidate.portal_type || candidate.status === "converted") && (
