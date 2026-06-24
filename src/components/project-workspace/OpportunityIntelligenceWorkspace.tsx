@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { resolveAuthoritativeBidDue, dateIdentity } from "@/lib/bidDueResolver";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -493,6 +493,47 @@ export function OpportunityIntelligenceWorkspace({
       sourceOpportunity?.crawl_data?.due_date_raw,
     ],
   );
+
+  const [countdown, setCountdown] = useState("");
+  const [isExpired, setIsExpired] = useState(false);
+
+  useEffect(() => {
+    const bidDueAt = bidDueResolution.value;
+    if (!bidDueAt) {
+      setCountdown("");
+      setIsExpired(false);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      const now = new Date();
+      const dueDate = new Date(bidDueAt);
+      const diff = dueDate.getTime() - now.getTime();
+
+      if (diff <= 0) {
+        setCountdown("EXPIRED");
+        setIsExpired(true);
+        clearInterval(interval);
+        return;
+      }
+
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+      setCountdown(
+        `${days.toString().padStart(2, "0")}d:${hours
+          .toString()
+          .padStart(2, "0")}h:${minutes.toString().padStart(2, "0")}m:${seconds
+          .toString()
+          .padStart(2, "0")}s`,
+      );
+      setIsExpired(false);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [bidDueResolution.value]);
 
   const bidDueEvidenceOptions = useMemo(() => {
     const options: Array<{
@@ -1218,8 +1259,10 @@ export function OpportunityIntelligenceWorkspace({
             </Dialog>
           </div>
           <div className="rounded-md border border-border p-3">
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">Report</p>
-            <p className="font-medium">{intelligenceReport?.status ? normalizeLabel(intelligenceReport.status) : "Not linked"}</p>
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Bid Due In</p>
+            <p className={`font-bold text-lg ${isExpired ? "text-destructive" : "text-primary"}`}>
+              {countdown || "—"}
+            </p>
           </div>
         </div>
       </section>
