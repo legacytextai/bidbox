@@ -1255,6 +1255,8 @@ export type Database = {
           job_walk_details: string | null
           job_walk_exists: boolean | null
           job_walk_mandatory: boolean | null
+          job_walk_override_at: string | null
+          job_walk_override_reason: string | null
           last_crawled_at: string | null
           location: string | null
           name: string
@@ -1292,6 +1294,8 @@ export type Database = {
           job_walk_details?: string | null
           job_walk_exists?: boolean | null
           job_walk_mandatory?: boolean | null
+          job_walk_override_at?: string | null
+          job_walk_override_reason?: string | null
           last_crawled_at?: string | null
           location?: string | null
           name: string
@@ -1329,6 +1333,8 @@ export type Database = {
           job_walk_details?: string | null
           job_walk_exists?: boolean | null
           job_walk_mandatory?: boolean | null
+          job_walk_override_at?: string | null
+          job_walk_override_reason?: string | null
           last_crawled_at?: string | null
           location?: string | null
           name?: string
