@@ -760,6 +760,45 @@ export function OpportunityIntelligenceWorkspace({
     }
   };
 
+  const openJobWalkOverride = () => {
+    const tz = project.timezone || DEFAULT_PROJECT_TIMEZONE;
+    const existing = project.job_walk_at as string | null | undefined;
+    if (existing) {
+      const local = utcToLocalDateTime(existing, tz);
+      const [d, t] = local.split("T");
+      setJobWalkDate(d ?? "");
+      setJobWalkTime(t ?? "");
+    } else {
+      setJobWalkDate("");
+      setJobWalkTime("");
+    }
+    setJobWalkTimezone(tz);
+    setJobWalkReason(project.job_walk_override_reason ?? "");
+    setJobWalkOverrideOpen(true);
+  };
+
+  const saveJobWalkOverride = async () => {
+    if (!jobWalkDate || !jobWalkTime) {
+      toast({
+        title: "Date and time required",
+        description: "Choose both a date and time before saving.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSavingJobWalkOverride(true);
+    try {
+      await onOverrideJobWalkDate({
+        jobWalkAt: localDateTimeToUtc(`${jobWalkDate}T${jobWalkTime}`, jobWalkTimezone || projectTimezone),
+        reason: jobWalkReason.trim() || null,
+      });
+      setJobWalkOverrideOpen(false);
+    } finally {
+      setSavingJobWalkOverride(false);
+    }
+  };
+
   const downloadSourceDocument = async (sourceDocument: OpportunityDocument) => {
     if (!sourceDocument.storage_path) {
       toast({
