@@ -793,7 +793,7 @@ export function OpportunityIntelligenceWorkspace({
             <Dialog open={overrideOpen} onOpenChange={setOverrideOpen}>
               <DialogTrigger asChild>
                 <Button variant="outline" size="sm" className="mt-3">
-                  Override Bid Due Date
+                  Edit Bid Due Date
                 </Button>
               </DialogTrigger>
               <DialogContent className="max-w-2xl">
