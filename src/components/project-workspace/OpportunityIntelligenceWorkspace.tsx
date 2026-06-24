@@ -1057,7 +1057,7 @@ export function OpportunityIntelligenceWorkspace({
             )}
             <Dialog open={overrideOpen} onOpenChange={setOverrideOpen}>
               <DialogTrigger asChild>
-                <Button variant="outline" size="sm" className="mt-3">
+                <Button variant="outline" size="sm" className="mt-3 whitespace-normal h-auto">
                   Edit Bid Due Date
                 </Button>
               </DialogTrigger>
@@ -1188,7 +1188,7 @@ export function OpportunityIntelligenceWorkspace({
             )}
             <Dialog open={jobWalkOverrideOpen} onOpenChange={(open) => (open ? openJobWalkOverride() : setJobWalkOverrideOpen(false))}>
               <DialogTrigger asChild>
-                <Button variant="outline" size="sm" className="mt-3">
+                <Button variant="outline" size="sm" className="mt-3 whitespace-normal h-auto">
                   Edit Job Walk Date
                 </Button>
               </DialogTrigger>
