@@ -300,6 +300,105 @@ function compareByDueAsc(a: Candidate, b: Candidate): number {
   return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
 }
 
+interface FacetMultiSelectProps {
+  label: string;
+  icon?: React.ReactNode;
+  options: string[];
+  hasNone: boolean;
+  noneLabel: string;
+  value: string[];
+  onChange: (next: string[]) => void;
+  searchPlaceholder?: string;
+}
+
+const FacetMultiSelect = ({
+  label,
+  icon,
+  options,
+  hasNone,
+  noneLabel,
+  value,
+  onChange,
+  searchPlaceholder,
+}: FacetMultiSelectProps) => {
+  const [open, setOpen] = useState(false);
+  const toggle = (key: string) => {
+    if (value.includes(key)) onChange(value.filter((v) => v !== key));
+    else onChange([...value, key]);
+  };
+  const count = value.length;
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-9 gap-2"
+        >
+          {icon}
+          <span>{label}</span>
+          {count > 0 && (
+            <Badge variant="secondary" className="ml-1 px-1.5 py-0 h-5 text-xs">
+              {count}
+            </Badge>
+          )}
+          <ChevronDown className="h-3.5 w-3.5 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="p-0 w-[260px]" align="end">
+        <Command>
+          <CommandInput placeholder={searchPlaceholder ?? "Search..."} />
+          <CommandList>
+            <CommandEmpty>No matches.</CommandEmpty>
+            <CommandGroup>
+              {options.map((opt) => {
+                const selected = value.includes(opt);
+                return (
+                  <CommandItem
+                    key={opt}
+                    value={opt}
+                    onSelect={() => toggle(opt)}
+                    className="flex items-center gap-2"
+                  >
+                    <Check
+                      className={`h-4 w-4 ${selected ? "opacity-100" : "opacity-0"}`}
+                    />
+                    <span className="truncate">{opt}</span>
+                  </CommandItem>
+                );
+              })}
+              {hasNone && (
+                <CommandItem
+                  value={noneLabel}
+                  onSelect={() => toggle(NO_VALUE_SENTINEL)}
+                  className="flex items-center gap-2"
+                >
+                  <Check
+                    className={`h-4 w-4 ${value.includes(NO_VALUE_SENTINEL) ? "opacity-100" : "opacity-0"}`}
+                  />
+                  <span className="italic text-muted-foreground">{noneLabel}</span>
+                </CommandItem>
+              )}
+            </CommandGroup>
+            {count > 0 && (
+              <div className="border-t p-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full justify-center text-xs"
+                  onClick={() => onChange([])}
+                >
+                  Clear {label}
+                </Button>
+              </div>
+            )}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+};
+
 const Opportunities = () => {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [loading, setLoading] = useState(true);
