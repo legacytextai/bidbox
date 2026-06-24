@@ -611,24 +611,12 @@ const Opportunities = () => {
             </p>
           )}
           {candidate.agency && index >= 3 && index < 6 && (
-            <div className="mt-1.5">
-              <span className="inline-block bg-muted rounded px-2 py-0.5 text-xs font-medium text-foreground">
-                {candidate.agency}
-              </span>
-            </div>
-          )}
-          {candidate.agency && index >= 6 && index < 9 && (
-            <p className="mt-2 pt-2 border-t border-border text-sm text-muted-foreground">
-              {candidate.agency}
-            </p>
-          )}
-          {candidate.agency && index >= 9 && index < 12 && (
             <p className="mt-2 flex items-center gap-1.5 text-sm font-medium text-foreground">
               <Building2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
               {candidate.agency}
             </p>
           )}
-          {candidate.agency && index >= 12 && (
+          {candidate.agency && index >= 6 && (
             <p className="mt-1.5 text-sm font-semibold uppercase tracking-wide text-foreground">
               {candidate.agency}
             </p>
