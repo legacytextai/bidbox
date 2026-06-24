@@ -86,6 +86,8 @@ Classification accuracy improvements remain a future enhancement. Validation fou
 **F4 Completion Summary**:
 F4 Project Intelligence is MVP complete. BidBox now generates document-backed Project Intelligence reports from acquired and processed bid packages. Delivered capabilities include executive summaries, project snapshot metadata, scope summaries, trade breakdowns, key dates, bid requirements, risk flags, source document references, citation-backed findings, unknown/needs-review/conflict states, portal metadata enrichment, bid due date/time conflict safeguards, and corrected Opportunity → Intelligence Report navigation after calendar conversion.
 
+F4A Phase 1 deadline hardening adds definitive bid due display, expandable conflict evidence, and lightweight Project Workspace bid due overrides. Full Deadline Resolution Engine tables and resolver history remain deferred Phase 2 work.
+
 **Next Active Task**:
 Task 8 — Phase G: Pursuit Management & Project Workspace. Phase G should harden the transition from Intelligence Report to active pursuit by treating `Add to Calendar` as create/reuse project, preserving Opportunity Intelligence as the source of truth, separating legacy One Link projects from Opportunity Intelligence projects, and building a lightweight Project Workspace for active pursuits.
 

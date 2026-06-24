@@ -228,6 +228,16 @@ const normalizeExecutiveBulletText = (
   return value;
 };
 
+const bidDueSourceLabel = (source: string | null | undefined) => {
+  if (source === "manual_override") return "Manual override";
+  if (source === "deadline_candidate_override") return "Selected evidence override";
+  if (source === "portal_metadata") return "Portal metadata";
+  if (source === "candidate_metadata") return "Candidate metadata";
+  if (source === "project_metadata") return "Project metadata";
+  if (source === "f4_fallback") return "F4 fallback";
+  return null;
+};
+
 const ANALYSIS_BADGE: Record<AnalysisStatus, string> = {
   not_requested: "bg-gray-500/10 text-gray-600",
   queued: "bg-blue-500/10 text-blue-700",
@@ -259,6 +269,9 @@ const OpportunityReport = () => {
 
   const [candidate, setCandidate] = useState<Candidate | null>(null);
   const [linkedProjectBidDueAt, setLinkedProjectBidDueAt] = useState<string | null>(null);
+  const [linkedProjectBidDueOverrideAt, setLinkedProjectBidDueOverrideAt] = useState<string | null>(null);
+  const [linkedProjectBidDueOverrideSource, setLinkedProjectBidDueOverrideSource] = useState<string | null>(null);
+  const [linkedProjectBidDueOverrideReason, setLinkedProjectBidDueOverrideReason] = useState<string | null>(null);
   const [report, setReport] = useState<ReportRow | null>(null);
   const [findings, setFindings] = useState<Finding[]>([]);
   const [citations, setCitations] = useState<Citation[]>([]);
@@ -312,19 +325,25 @@ const OpportunityReport = () => {
     if (candRes.data?.converted_project_id) {
       const projectRes = await sb
         .from("projects")
-        .select("bid_due_at")
+        .select("bid_due_at, bid_due_override_at, bid_due_override_source, bid_due_override_reason")
         .eq("id", candRes.data.converted_project_id)
         .maybeSingle();
       projectBidDueAt = projectRes.data?.bid_due_at ?? null;
+      setLinkedProjectBidDueOverrideAt(projectRes.data?.bid_due_override_at ?? null);
+      setLinkedProjectBidDueOverrideSource(projectRes.data?.bid_due_override_source ?? null);
+      setLinkedProjectBidDueOverrideReason(projectRes.data?.bid_due_override_reason ?? null);
     }
     if (!projectBidDueAt) {
       const projectRes = await sb
         .from("projects")
-        .select("bid_due_at")
+        .select("bid_due_at, bid_due_override_at, bid_due_override_source, bid_due_override_reason")
         .eq("origin", "opportunity_intelligence")
         .eq("source_opportunity_candidate_id", id)
         .maybeSingle();
       projectBidDueAt = projectRes.data?.bid_due_at ?? null;
+      setLinkedProjectBidDueOverrideAt(projectRes.data?.bid_due_override_at ?? null);
+      setLinkedProjectBidDueOverrideSource(projectRes.data?.bid_due_override_source ?? null);
+      setLinkedProjectBidDueOverrideReason(projectRes.data?.bid_due_override_reason ?? null);
     }
 
     const activeTaskRes = await sb
@@ -400,32 +419,38 @@ const OpportunityReport = () => {
     return map;
   }, [findings]);
 
-  const safeBidDue = useMemo(() => {
-    const sourceBackedFindings = findings.filter((finding) => {
+  const bidDueFindings = useMemo(
+    () =>
+      findings.filter((finding) => {
       const statusSupportsFact = finding.status === "found" || finding.status === "conflict";
       return statusSupportsFact && isBidDueFinding(finding) && (citationsByFinding.get(finding.id)?.length ?? 0) > 0;
-    });
+      }),
+    [findings, citationsByFinding],
+  );
 
-    const sourceDisplays = sourceBackedFindings
+  const safeBidDue = useMemo(() => {
+    const sourceDisplays = bidDueFindings
       .map((finding) => extractDateTimeDisplay(finding.value_text))
       .filter((value): value is string => Boolean(value));
 
     const sourceTimes = [
       ...new Set(
-        sourceBackedFindings
+        bidDueFindings
           .map((finding) => normalizeTimeToken(finding.value_text))
         .filter((value): value is number => value !== null),
       ),
     ];
 
-    const f4ValueText = sourceBackedFindings[0]?.value_text ?? null;
+    const f4ValueText = bidDueFindings[0]?.value_text ?? null;
     const resolved = resolveAuthoritativeBidDue({
+      overrideBidDueAt: linkedProjectBidDueOverrideAt,
+      overrideSource: linkedProjectBidDueOverrideSource,
       dueDateRaw: candidate?.crawl_data?.due_date_raw as string | null | undefined,
       candidateBidDueAt: candidate?.bid_due_at ?? null,
       projectBidDueAt: linkedProjectBidDueAt,
       f4ValueText,
     });
-    const findingDate = sourceBackedFindings
+    const findingDate = bidDueFindings
       .map((finding) => dateIdentity(finding.value_text))
       .find(Boolean);
     const hasSourceConflict = sourceTimes.length > 1;
@@ -437,27 +462,72 @@ const OpportunityReport = () => {
       return {
         ...resolved,
         display: resolved.display !== "—" ? resolved.display : sourceDisplays[0] || "—",
-        source: "Needs review",
-        warning: "Multiple cited bid due times were found. Review the Key Dates citations before relying on this deadline.",
+        source: bidDueSourceLabel(resolved.source),
+        warning: "Conflicting deadline evidence detected. Showing the authoritative structured deadline.",
       };
     }
 
     return {
       ...resolved,
-      source: resolved.source === "portal_metadata"
-        ? "Portal metadata"
-        : resolved.source === "candidate_metadata"
-          ? "Candidate metadata"
-          : resolved.source === "project_metadata"
-            ? "Project metadata"
-            : resolved.source === "f4_fallback"
-              ? "F4 fallback"
-              : null,
+      source: bidDueSourceLabel(resolved.source),
       warning: hasMetadataConflict
         ? resolved.conflictMessage ?? "F4 cited deadline conflicts with structured portal metadata. Showing structured deadline."
         : null,
     };
-  }, [candidate?.bid_due_at, candidate?.crawl_data, linkedProjectBidDueAt, findings, citationsByFinding]);
+  }, [
+    candidate?.bid_due_at,
+    candidate?.crawl_data,
+    linkedProjectBidDueAt,
+    linkedProjectBidDueOverrideAt,
+    linkedProjectBidDueOverrideSource,
+    bidDueFindings,
+  ]);
+
+  const bidDueEvidence = useMemo(() => {
+    const selectedDetail =
+      linkedProjectBidDueOverrideSource === "manual" && linkedProjectBidDueOverrideReason
+        ? `Reason: ${linkedProjectBidDueOverrideReason}`
+        : linkedProjectBidDueOverrideSource === "deadline_candidate" && linkedProjectBidDueOverrideReason
+          ? linkedProjectBidDueOverrideReason
+          : candidate?.crawl_data?.due_date_raw
+            ? `Raw portal value: ${candidate.crawl_data.due_date_raw}`
+            : null;
+
+    const competing = bidDueFindings.map((finding) => {
+      const findingCitations = citationsByFinding.get(finding.id) ?? [];
+      const firstCitation = findingCitations[0];
+      const label =
+        firstCitation?.citation_label ||
+        (firstCitation
+          ? `${firstCitation.source_document_name}${firstCitation.page_number ? `, p. ${firstCitation.page_number}` : ""}`
+          : finding.label);
+      const display = extractDateTimeDisplay(finding.value_text) || finding.value_text || "Deadline evidence captured";
+      return {
+        id: finding.id,
+        label,
+        display,
+        status: finding.status,
+        citations: findingCitations,
+      };
+    });
+
+    return {
+      selected: {
+        label: safeBidDue.source || "Authoritative deadline",
+        display: safeBidDue.display,
+        detail: selectedDetail,
+      },
+      competing,
+    };
+  }, [
+    bidDueFindings,
+    candidate?.crawl_data,
+    citationsByFinding,
+    linkedProjectBidDueOverrideReason,
+    linkedProjectBidDueOverrideSource,
+    safeBidDue.display,
+    safeBidDue.source,
+  ]);
 
   const displayedFindingsByCategory = useMemo(() => {
     const hasStructuredBidDue =
@@ -475,13 +545,21 @@ const OpportunityReport = () => {
         category: "key_dates",
         field_key: "bid_due_date",
         label: "Bid Due Date",
-        value_text: safeBidDue.warning ? safeBidDue.warning : safeBidDue.display,
+        value_text: safeBidDue.display,
         value_jsonb: null,
-        status: safeBidDue.warning ? "conflict" : "found",
-        confidence: safeBidDue.warning ? "low" : "high",
+        status: "found",
+        confidence: safeBidDue.warning ? "medium" : "high",
         is_critical: true,
         sort_order: -1,
-        notes: safeBidDue.source ? `Source: ${safeBidDue.source}` : null,
+        notes: [
+          safeBidDue.source ? `Source: ${safeBidDue.source}` : null,
+          safeBidDue.warning,
+          linkedProjectBidDueOverrideReason && linkedProjectBidDueOverrideSource
+            ? linkedProjectBidDueOverrideSource === "manual"
+              ? `Manually overridden. Reason: ${linkedProjectBidDueOverrideReason}`
+              : `Selected from evidence: ${linkedProjectBidDueOverrideReason}`
+            : null,
+        ].filter(Boolean).join(" "),
       };
       map.set("key_dates", [structuredBidDueFinding, ...keyDateFindings]);
     }
@@ -1167,10 +1245,49 @@ const OpportunityReport = () => {
             </p>
           )}
           {safeBidDue.warning && (
-            <div className="mt-3 flex items-start gap-2 rounded border border-yellow-300 bg-yellow-50 px-3 py-2 text-sm text-yellow-900">
-              <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
-              <p>{safeBidDue.warning}</p>
-            </div>
+            <details className="mt-3 rounded border border-yellow-300 bg-yellow-50 text-sm text-yellow-950">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 font-medium">
+                <span className="inline-flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  Conflicting deadline evidence detected
+                </span>
+                <span className="text-xs text-yellow-800">
+                  View Conflicting Evidence ({bidDueEvidence.competing.length})
+                </span>
+              </summary>
+              <div className="border-t border-yellow-200 px-3 py-3">
+                <div className="rounded bg-white/70 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-yellow-800">
+                    Selected as Authoritative
+                  </p>
+                  <p className="mt-1 font-medium text-foreground">{bidDueEvidence.selected.label}</p>
+                  <p className="text-sm text-foreground">{bidDueEvidence.selected.display}</p>
+                  {bidDueEvidence.selected.detail && (
+                    <p className="mt-1 text-xs text-muted-foreground">{bidDueEvidence.selected.detail}</p>
+                  )}
+                </div>
+
+                {bidDueEvidence.competing.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-yellow-800">
+                      Competing Evidence
+                    </p>
+                    {bidDueEvidence.competing.map((evidence) => (
+                      <div key={evidence.id} className="rounded bg-white/70 p-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-medium text-foreground">{evidence.label}</p>
+                          <span className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${STATUS_STYLE[evidence.status]}`}>
+                            {evidence.status.replace("_", " ")}
+                          </span>
+                        </div>
+                        <p className="text-sm text-foreground">{evidence.display}</p>
+                        <CitationList citations={evidence.citations} />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </details>
           )}
         </Section>
 

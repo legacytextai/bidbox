@@ -12,6 +12,29 @@ F6A introduces a Deadline Resolution Engine. Its purpose is to collect deadline 
 
 This initiative is future work. It should not block the current Phase G hardening pass, but it should become the durable solution before BidBox relies on deadline automation at scale.
 
+## Current Phase 1 MVP Hardening
+
+Phase G includes an interim estimator-facing deadline workflow before the full F6A engine exists.
+
+Implemented Phase 1 behavior:
+
+- Opportunity Intelligence reports always display one definitive primary bid due date.
+- Structured metadata remains authoritative for primary display when available.
+- Conflicting F4 deadline evidence is surfaced as an expandable warning, not as a replacement for the primary deadline.
+- Bid HQ / Project Workspace supports a lightweight project-level bid due override.
+- Overrides are stored directly on `projects` using `bid_due_at`, `bid_due_override_at`, `bid_due_override_source`, and `bid_due_override_reason`.
+- Overrides may be selected from existing report evidence or entered manually by the user.
+
+Phase 1 deliberately does not introduce:
+
+- `opportunity_deadline_candidates`
+- `opportunity_deadline_resolutions`
+- `project_deadline_overrides`
+- generalized deadline evidence ranking
+- full override history
+
+This gives estimators the immediate workflow they need while preserving F6A as the durable Phase 2 architecture.
+
 ## 1. Problem Statement
 
 Bid deadlines are trust-critical for BidBox. A wrong bid date can cause a contractor to miss a bid, chase a closed opportunity, or lose confidence in the product.
@@ -394,4 +417,3 @@ They include:
 Those fixes reduce immediate user-facing inconsistency, but they do not create a durable deadline evidence system.
 
 F6A is the future durable solution. It should replace render-time source selection with persistent deadline evidence, deterministic resolution, and an auditable explanation of why one deadline is being displayed.
-

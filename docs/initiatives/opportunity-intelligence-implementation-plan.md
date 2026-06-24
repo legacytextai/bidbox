@@ -44,6 +44,8 @@ Current implementation focus: F4 Project Intelligence is complete. Before resumi
 - F4 generates document-backed Project Intelligence reports with executive summaries, project snapshot metadata, scope summaries, trade breakdowns, key dates, bid requirements, addenda summaries, risk flags, source document references, and citation-backed findings.
 - F4 production validation covered multiple real PlanetBids projects across several agencies and confirmed end-to-end F2 → F3 → F4 execution.
 - F4 quality hardening added portal metadata enrichment, engineer-estimate/license propagation, Project Overview executive-summary context, bid due date/time conflict safeguards, and corrected report navigation after calendar conversion.
+- F4A Phase 1 deadline hardening keeps one definitive bid due date visible in reports and Bid HQ, surfaces conflicting evidence in an expandable inspection panel, and supports lightweight project-level deadline overrides.
+- Full Deadline Resolution Engine work remains deferred to Phase 2; see `docs/initiatives/deadline-resolution-engine.md`.
 - Analyzed opportunities can be added to calendar, and converted opportunities retain access to their Intelligence Report.
 - Current conversion creates/reuses `projects` records as the Calendar anchor, but the Project Workspace still needs Phase G hardening so Opportunity Intelligence projects do not re-enter legacy One Link crawl flows.
 - `/opportunities` displays discovered candidates and scan progress.
@@ -381,6 +383,8 @@ Opportunity Intelligence projects should never re-enter legacy One Link crawl fl
 - Track project origin so legacy One Link projects and Opportunity Intelligence projects use different workspace logic.
 - Preserve the Project Intelligence report link and originating opportunity link.
 - Show bid due date and key bid events when available.
+- Show bid due conflict evidence without replacing the primary deadline.
+- Allow a Project Workspace bid due override without introducing full deadline candidate/resolution tables.
 - Build a lightweight Project Workspace for active pursuits.
 - Avoid building a full pursuit CRM before validation.
 

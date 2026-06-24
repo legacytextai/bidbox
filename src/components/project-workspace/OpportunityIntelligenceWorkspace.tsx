@@ -1,7 +1,13 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { resolveAuthoritativeBidDue } from "@/lib/bidDueResolver";
-import { formatProjectDateTime, formatProjectDateTimeOrNull } from "@/lib/timezoneUtils";
+import {
+  DEFAULT_PROJECT_TIMEZONE,
+  TIMEZONE_OPTIONS,
+  formatProjectDateTime,
+  formatProjectDateTimeOrNull,
+  localDateTimeToUtc,
+} from "@/lib/timezoneUtils";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -24,6 +30,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { FileDropzone } from "@/components/FileDropzone";
 import { TradeMultiSelect } from "@/components/TradeMultiSelect";
 import { BidReadinessChecklist } from "@/components/BidReadinessChecklist";
@@ -86,6 +95,16 @@ interface IntelligenceFinding {
   sort_order: number;
 }
 
+interface IntelligenceCitation {
+  id: string;
+  finding_id: string;
+  source_document_name: string;
+  page_number: number | null;
+  page_label: string | null;
+  source_excerpt: string;
+  citation_label: string | null;
+}
+
 interface OpportunityDocument {
   id: string;
   file_name: string;
@@ -105,6 +124,7 @@ interface OpportunityIntelligenceWorkspaceProps {
   sourceOpportunity: SourceOpportunity | null;
   intelligenceReport: IntelligenceReport | null;
   findings: IntelligenceFinding[];
+  citations: IntelligenceCitation[];
   opportunityDocuments: OpportunityDocument[];
   projectFiles: ProjectFile[];
   projectTrades: ProjectTrade[];
@@ -123,6 +143,11 @@ interface OpportunityIntelligenceWorkspaceProps {
   onDeleteInternalFile: (fileId: string, filePath: string) => void;
   onDownloadBid: (filePath: string, fileName: string) => void;
   onDeleteSubmission: (submissionId: string) => void;
+  onOverrideBidDueDate: (override: {
+    bidDueAt: string;
+    source: "manual" | "deadline_candidate";
+    reason: string | null;
+  }) => Promise<void>;
   onEditingTradesChange: (open: boolean) => void;
   onEditedTradeIdsChange: (ids: string[]) => void;
   onSaveTrades: () => void;
@@ -175,6 +200,83 @@ const findFirst = (findings: IntelligenceFinding[], keys: string[], categories?:
     const categoryMatches = !categories || categories.includes(finding.category);
     return keyMatches && categoryMatches;
   });
+
+const isBidDueFinding = (finding: IntelligenceFinding) => {
+  const haystack = `${finding.field_key} ${finding.label}`.toLowerCase();
+  return (
+    /bid.*due/.test(haystack) ||
+    /due.*date/.test(haystack) ||
+    /bid.*opening/.test(haystack) ||
+    /submission.*deadline/.test(haystack)
+  );
+};
+
+const bidDueSourceLabel = (source: string | null | undefined) => {
+  if (source === "manual") return "Manually Overridden";
+  if (source === "deadline_candidate") return "Selected From Evidence";
+  return null;
+};
+
+const MONTH_INDEX: Record<string, number> = {
+  january: 1,
+  february: 2,
+  march: 3,
+  april: 4,
+  may: 5,
+  june: 6,
+  july: 7,
+  august: 8,
+  september: 9,
+  october: 10,
+  november: 11,
+  december: 12,
+};
+
+const normalizeHour = (hour12: string, meridiem: string) => {
+  let hour = Number(hour12);
+  if (!Number.isFinite(hour)) return null;
+  const upper = meridiem.toUpperCase();
+  if (upper === "PM" && hour !== 12) hour += 12;
+  if (upper === "AM" && hour === 12) hour = 0;
+  return hour;
+};
+
+const coerceEvidenceDeadlineToUtc = (value: string | null | undefined, timezone: string) => {
+  const text = String(value ?? "").replace(/\s+/g, " ").trim();
+  if (!text) return null;
+
+  const slash = text.match(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2})(?::(\d{2}))?\s*(AM|PM)\b/i);
+  if (slash) {
+    const [, month, day, year, hourText, minute = "0", meridiem] = slash;
+    const hour = normalizeHour(hourText, meridiem);
+    if (hour !== null) {
+      return localDateTimeToUtc(
+        `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}T${String(hour).padStart(2, "0")}:${minute.padStart(2, "0")}`,
+        timezone,
+      );
+    }
+  }
+
+  const monthName = text.match(
+    /\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2}),\s+(\d{4})(?:\s+at)?\s+(\d{1,2})(?::(\d{2}))?\s*(AM|PM)\b/i,
+  );
+  if (monthName) {
+    const [, monthLabel, day, year, hourText, minute = "0", meridiem] = monthName;
+    const hour = normalizeHour(hourText, meridiem);
+    const month = MONTH_INDEX[monthLabel.toLowerCase()];
+    if (hour !== null && month) {
+      return localDateTimeToUtc(
+        `${year}-${String(month).padStart(2, "0")}-${day.padStart(2, "0")}T${String(hour).padStart(2, "0")}:${minute.padStart(2, "0")}`,
+        timezone,
+      );
+    }
+  }
+
+  const parsed = new Date(text.replace(/\s+at\s+/i, " "));
+  if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
+
+  return null;
+};
 
 const hasDocumentNameEvidence = (documents: OpportunityDocument[], keywords: string[]) =>
   documents.some((document) => {
@@ -238,6 +340,7 @@ export function OpportunityIntelligenceWorkspace({
   sourceOpportunity,
   intelligenceReport,
   findings,
+  citations,
   opportunityDocuments,
   projectFiles,
   projectTrades,
@@ -256,6 +359,7 @@ export function OpportunityIntelligenceWorkspace({
   onDeleteInternalFile,
   onDownloadBid,
   onDeleteSubmission,
+  onOverrideBidDueDate,
   onEditingTradesChange,
   onEditedTradeIdsChange,
   onSaveTrades,
@@ -263,8 +367,115 @@ export function OpportunityIntelligenceWorkspace({
   const navigate = useNavigate();
   const { toast } = useToast();
   const [deletingProject, setDeletingProject] = useState(false);
+  const [overrideOpen, setOverrideOpen] = useState(false);
+  const [selectedEvidenceValue, setSelectedEvidenceValue] = useState<string | null>(null);
+  const [manualDate, setManualDate] = useState("");
+  const [manualTime, setManualTime] = useState("");
+  const [manualTimezone, setManualTimezone] = useState(project.timezone || DEFAULT_PROJECT_TIMEZONE);
+  const [manualReason, setManualReason] = useState("");
+  const [savingBidDueOverride, setSavingBidDueOverride] = useState(false);
   const reportOpportunityId = project.source_opportunity_candidate_id || sourceOpportunity?.id;
   const bidRoomUrl = `${window.location.origin}/bid/${project.public_token}`;
+  const projectTimezone = project.timezone || DEFAULT_PROJECT_TIMEZONE;
+  const citationsByFinding = useMemo(() => {
+    const map = new Map<string, IntelligenceCitation[]>();
+    citations.forEach((citation) => {
+      const list = map.get(citation.finding_id) ?? [];
+      list.push(citation);
+      map.set(citation.finding_id, list);
+    });
+    return map;
+  }, [citations]);
+
+  const bidDueFindings = useMemo(
+    () =>
+      findings.filter((finding) => {
+        const statusSupportsFact = finding.status === "found" || finding.status === "conflict";
+        return statusSupportsFact && isBidDueFinding(finding);
+      }),
+    [findings],
+  );
+
+  const bidDueResolution = useMemo(
+    () =>
+      resolveAuthoritativeBidDue({
+        overrideBidDueAt: project?.bid_due_override_at,
+        overrideSource: project?.bid_due_override_source,
+        dueDateRaw: sourceOpportunity?.crawl_data?.due_date_raw,
+        candidateBidDueAt: sourceOpportunity?.bid_due_at,
+        projectBidDueAt: project?.bid_due_at,
+        f4ValueText: getFindingValue(findFirst(findings, ["bid due", "bid date", "deadline"], ["key_dates"])),
+      }),
+    [
+      findings,
+      project?.bid_due_at,
+      project?.bid_due_override_at,
+      project?.bid_due_override_source,
+      sourceOpportunity?.bid_due_at,
+      sourceOpportunity?.crawl_data?.due_date_raw,
+    ],
+  );
+
+  const bidDueEvidenceOptions = useMemo(() => {
+    const options: Array<{
+      id: string;
+      label: string;
+      display: string;
+      value: string;
+      detail?: string | null;
+    }> = [];
+
+    const addOption = (option: { id: string; label: string; display: string; value: string; detail?: string | null }) => {
+      if (!option.value || options.some((existing) => existing.value === option.value && existing.label === option.label)) return;
+      options.push(option);
+    };
+
+    if (bidDueResolution.value && bidDueResolution.display !== "—") {
+      addOption({
+        id: "authoritative",
+        label: project?.bid_due_override_source === "manual"
+          ? "Current Manual Override"
+          : project?.bid_due_override_source === "deadline_candidate"
+            ? project?.bid_due_override_reason || "Current Selected Evidence"
+            : "Current Authoritative Deadline",
+        display: bidDueResolution.display,
+        value: bidDueResolution.value,
+        detail: sourceOpportunity?.crawl_data?.due_date_raw
+          ? `Raw portal value: ${sourceOpportunity.crawl_data.due_date_raw}`
+          : null,
+      });
+    }
+
+    bidDueFindings.forEach((finding) => {
+      const findingCitations = citationsByFinding.get(finding.id) ?? [];
+      const firstCitation = findingCitations[0];
+      const label =
+        firstCitation?.citation_label ||
+        (firstCitation
+          ? `${firstCitation.source_document_name}${firstCitation.page_number ? `, p. ${firstCitation.page_number}` : ""}`
+          : finding.label);
+      const display = formatProjectDateTimeOrNull(finding.value_text) || finding.value_text;
+      if (display && finding.value_text) {
+        addOption({
+          id: finding.id,
+          label,
+          display,
+          value: finding.value_text,
+          detail: firstCitation?.source_excerpt,
+        });
+      }
+    });
+
+    return options;
+  }, [
+    bidDueFindings,
+    bidDueResolution.display,
+    bidDueResolution.value,
+    citationsByFinding,
+    project?.bid_due_override_reason,
+    project?.bid_due_override_source,
+    sourceOpportunity?.crawl_data,
+  ]);
 
   const snapshot = useMemo(() => {
     const overviewBullet = Array.isArray(intelligenceReport?.executive_summary?.bullets)
@@ -327,18 +538,13 @@ export function OpportunityIntelligenceWorkspace({
         sourceOpportunity?.crawl_data?.liquidated_damages ||
         "Not available",
       bidDue:
-        resolveAuthoritativeBidDue({
-          dueDateRaw: sourceOpportunity?.crawl_data?.due_date_raw,
-          candidateBidDueAt: sourceOpportunity?.bid_due_at,
-          projectBidDueAt: project?.bid_due_at,
-          f4ValueText: getFindingValue(findFirst(findings, ["bid due", "bid date", "deadline"], ["key_dates"])),
-        }).display || "Not available",
+        bidDueResolution.display || "Not available",
       jobWalk:
         normalizeDateTimeText(jobWalkValue) ||
         formatProjectDateTimeOrNull(project.job_walk_at) ||
         (hasJobWalkMetadata || hasJobWalkDocumentEvidence ? "Needs Review" : "Not available"),
     };
-  }, [findings, intelligenceReport, opportunityDocuments, project.bid_due_at, project.job_walk_at, sourceOpportunity]);
+  }, [bidDueResolution.display, findings, intelligenceReport, opportunityDocuments, project.job_walk_at, sourceOpportunity]);
 
   const highlighted = useMemo(() => {
     const found = findings.filter((finding) =>
@@ -357,6 +563,66 @@ export function OpportunityIntelligenceWorkspace({
         .slice(0, 5),
     };
   }, [findings]);
+
+  const overrideBadge = bidDueSourceLabel(project?.bid_due_override_source);
+
+  const saveSelectedEvidenceOverride = async () => {
+    const selected = bidDueEvidenceOptions.find((option) => option.id === selectedEvidenceValue);
+    if (!selected) {
+      toast({
+        title: "Select deadline evidence",
+        description: "Choose an evidence item first, or set the deadline manually.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const utcValue = coerceEvidenceDeadlineToUtc(selected.value, projectTimezone);
+    if (!utcValue) {
+      toast({
+        title: "Could not parse deadline",
+        description: "Use Set Manually for this evidence item.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSavingBidDueOverride(true);
+    try {
+      await onOverrideBidDueDate({
+        bidDueAt: utcValue,
+        source: "deadline_candidate",
+        reason: selected.label,
+      });
+      setOverrideOpen(false);
+    } finally {
+      setSavingBidDueOverride(false);
+    }
+  };
+
+  const saveManualOverride = async () => {
+    if (!manualDate || !manualTime) {
+      toast({
+        title: "Date and time required",
+        description: "Choose both a date and time before saving.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSavingBidDueOverride(true);
+    try {
+      await onOverrideBidDueDate({
+        bidDueAt: localDateTimeToUtc(`${manualDate}T${manualTime}`, manualTimezone || projectTimezone),
+        source: "manual",
+        reason: manualReason.trim() || null,
+      });
+      setOverrideOpen(false);
+      setManualReason("");
+    } finally {
+      setSavingBidDueOverride(false);
+    }
+  };
 
   const downloadSourceDocument = async (sourceDocument: OpportunityDocument) => {
     if (!sourceDocument.storage_path) {
@@ -518,6 +784,133 @@ export function OpportunityIntelligenceWorkspace({
           <div className="rounded-md border border-border p-3">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">Bid Due</p>
             <p className="font-medium">{snapshot.bidDue}</p>
+            {overrideBadge && (
+              <p className="mt-1 text-xs text-[hsl(var(--bidbox-blue))]">
+                {overrideBadge}
+                {project.bid_due_override_reason ? `: ${project.bid_due_override_reason}` : ""}
+              </p>
+            )}
+            <Dialog open={overrideOpen} onOpenChange={setOverrideOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm" className="mt-3">
+                  Override Bid Due Date
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>Override Bid Due Date</DialogTitle>
+                  <DialogDescription>
+                    Select a cited deadline or set the date manually. The project, calendar, and Bid HQ will use the saved value.
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-5">
+                  <div>
+                    <h3 className="text-sm font-semibold">Use Existing Evidence</h3>
+                    {bidDueEvidenceOptions.length === 0 ? (
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        No cited deadline evidence is available. Set the deadline manually instead.
+                      </p>
+                    ) : (
+                      <div className="mt-2 space-y-2">
+                        {bidDueEvidenceOptions.map((option) => (
+                          <label key={option.id} className="flex cursor-pointer gap-3 rounded border border-border p-3">
+                            <input
+                              type="radio"
+                              name="bid-due-evidence"
+                              value={option.id}
+                              checked={selectedEvidenceValue === option.id}
+                              onChange={() => setSelectedEvidenceValue(option.id)}
+                              className="mt-1"
+                            />
+                            <span>
+                              <span className="block text-sm font-medium text-foreground">{option.label}</span>
+                              <span className="block text-sm text-foreground">{option.display}</span>
+                              {option.detail && (
+                                <span className="mt-1 block line-clamp-2 text-xs text-muted-foreground">
+                                  {option.detail}
+                                </span>
+                              )}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                    <Button
+                      type="button"
+                      className="mt-3"
+                      variant="outline"
+                      onClick={saveSelectedEvidenceOverride}
+                      disabled={savingBidDueOverride || !selectedEvidenceValue}
+                    >
+                      {savingBidDueOverride ? "Saving..." : "Use Selected Evidence"}
+                    </Button>
+                  </div>
+
+                  <div className="rounded border border-border p-3">
+                    <h3 className="text-sm font-semibold">Set Manually</h3>
+                    <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+                      <div>
+                        <Label htmlFor="manual-bid-date">Date</Label>
+                        <Input
+                          id="manual-bid-date"
+                          type="date"
+                          value={manualDate}
+                          onChange={(event) => setManualDate(event.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="manual-bid-time">Time</Label>
+                        <Input
+                          id="manual-bid-time"
+                          type="time"
+                          value={manualTime}
+                          onChange={(event) => setManualTime(event.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="manual-bid-timezone">Timezone</Label>
+                        <select
+                          id="manual-bid-timezone"
+                          value={manualTimezone}
+                          onChange={(event) => setManualTimezone(event.target.value)}
+                          className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                        >
+                          {TIMEZONE_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="mt-3">
+                      <Label htmlFor="manual-bid-reason">Reason</Label>
+                      <Textarea
+                        id="manual-bid-reason"
+                        value={manualReason}
+                        onChange={(event) => setManualReason(event.target.value)}
+                        placeholder="Example: Addendum 2 changed the bid deadline."
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      className="mt-3"
+                      onClick={saveManualOverride}
+                      disabled={savingBidDueOverride}
+                    >
+                      {savingBidDueOverride ? "Saving..." : "Save Manual Override"}
+                    </Button>
+                  </div>
+                </div>
+
+                <DialogFooter>
+                  <Button variant="ghost" onClick={() => setOverrideOpen(false)} disabled={savingBidDueOverride}>
+                    Close
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </div>
           <div className="rounded-md border border-border p-3">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">Job Walk</p>

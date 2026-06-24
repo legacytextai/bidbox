@@ -85,6 +85,15 @@ interface IntelligenceFinding {
   is_critical: boolean;
   sort_order: number;
 }
+interface IntelligenceCitation {
+  id: string;
+  finding_id: string;
+  source_document_name: string;
+  page_number: number | null;
+  page_label: string | null;
+  source_excerpt: string;
+  citation_label: string | null;
+}
 interface OpportunityDocument {
   id: string;
   file_name: string;
@@ -112,6 +121,7 @@ const ProjectDetail = () => {
   const [sourceOpportunity, setSourceOpportunity] = useState<SourceOpportunity | null>(null);
   const [intelligenceReport, setIntelligenceReport] = useState<IntelligenceReport | null>(null);
   const [intelligenceFindings, setIntelligenceFindings] = useState<IntelligenceFinding[]>([]);
+  const [intelligenceCitations, setIntelligenceCitations] = useState<IntelligenceCitation[]>([]);
   const [opportunityDocuments, setOpportunityDocuments] = useState<OpportunityDocument[]>([]);
   const [bids, setBids] = useState<Bid[]>([]);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
@@ -177,6 +187,7 @@ const ProjectDetail = () => {
     setSourceOpportunity(null);
     setIntelligenceReport(null);
     setIntelligenceFindings([]);
+    setIntelligenceCitations([]);
     setOpportunityDocuments([]);
 
     if (projectData.origin === "opportunity_intelligence") {
@@ -237,6 +248,15 @@ const ProjectDetail = () => {
           .order("sort_order", { ascending: true })
           .order("created_at", { ascending: true });
         setIntelligenceFindings((findingsData || []) as IntelligenceFinding[]);
+
+        const {
+          data: citationsData
+        } = await supabase
+          .from("opportunity_intelligence_citations")
+          .select("id, finding_id, source_document_name, page_number, page_label, source_excerpt, citation_label")
+          .eq("report_id", reportId)
+          .order("created_at", { ascending: true });
+        setIntelligenceCitations((citationsData || []) as IntelligenceCitation[]);
       }
     }
 
@@ -442,6 +462,46 @@ const ProjectDetail = () => {
     setEditingTrades(false);
     setSavingTrades(false);
     loadProject();
+  };
+  const saveBidDueOverride = async ({
+    bidDueAt,
+    source,
+    reason,
+  }: {
+    bidDueAt: string;
+    source: "manual" | "deadline_candidate";
+    reason: string | null;
+  }) => {
+    if (!project?.id) return;
+
+    const { data, error } = await supabase
+      .from("projects")
+      .update({
+        bid_due_at: bidDueAt,
+        bid_due_override_at: bidDueAt,
+        bid_due_override_source: source,
+        bid_due_override_reason: reason,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", project.id)
+      .select("*")
+      .single();
+
+    if (error) {
+      toast({
+        title: "Override failed",
+        description: "Could not save the bid due date override.",
+        variant: "destructive",
+      });
+      throw error;
+    }
+
+    setProject(data);
+    setEditedBidDueAt(data.bid_due_at ? utcToLocalDateTime(data.bid_due_at, data.timezone || "America/Los_Angeles") : "");
+    toast({
+      title: "Bid due date updated",
+      description: "The project now uses your selected bid due date.",
+    });
   };
   const handleFileUpload = async () => {
     if (newFiles.length === 0) return;
@@ -683,6 +743,7 @@ const ProjectDetail = () => {
           sourceOpportunity={sourceOpportunity}
           intelligenceReport={intelligenceReport}
           findings={intelligenceFindings}
+          citations={intelligenceCitations}
           opportunityDocuments={opportunityDocuments}
           projectFiles={projectFiles}
           projectTrades={projectTrades}
@@ -701,6 +762,7 @@ const ProjectDetail = () => {
           onDeleteInternalFile={deleteFile}
           onDownloadBid={downloadBid}
           onDeleteSubmission={deleteSubmission}
+          onOverrideBidDueDate={saveBidDueOverride}
           onEditingTradesChange={setEditingTrades}
           onEditedTradeIdsChange={setEditedTradeIds}
           onSaveTrades={saveTrades}

@@ -1236,6 +1236,9 @@ export type Database = {
         Row: {
           agency: string | null
           bid_due_at: string
+          bid_due_override_at: string | null
+          bid_due_override_reason: string | null
+          bid_due_override_source: string | null
           county: string | null
           crawl_changes: Json | null
           crawl_snapshot: Json | null
@@ -1270,6 +1273,9 @@ export type Database = {
         Insert: {
           agency?: string | null
           bid_due_at: string
+          bid_due_override_at?: string | null
+          bid_due_override_reason?: string | null
+          bid_due_override_source?: string | null
           county?: string | null
           crawl_changes?: Json | null
           crawl_snapshot?: Json | null
@@ -1304,6 +1310,9 @@ export type Database = {
         Update: {
           agency?: string | null
           bid_due_at?: string
+          bid_due_override_at?: string | null
+          bid_due_override_reason?: string | null
+          bid_due_override_source?: string | null
           county?: string | null
           crawl_changes?: Json | null
           crawl_snapshot?: Json | null

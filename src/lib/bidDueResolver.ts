@@ -8,12 +8,16 @@ const MONTH_DATE_RE =
   /\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2}),\s+(\d{4})\b/i;
 
 export type AuthoritativeBidDueSource =
+  | "manual_override"
+  | "deadline_candidate_override"
   | "portal_metadata"
   | "candidate_metadata"
   | "project_metadata"
   | "f4_fallback";
 
 export interface AuthoritativeBidDueInput {
+  overrideBidDueAt?: string | null;
+  overrideSource?: string | null;
   dueDateRaw?: string | null;
   candidateBidDueAt?: string | null;
   projectBidDueAt?: string | null;
@@ -79,6 +83,8 @@ export function dateIdentity(value: string | null | undefined) {
 }
 
 export function resolveAuthoritativeBidDue({
+  overrideBidDueAt,
+  overrideSource,
   dueDateRaw,
   candidateBidDueAt,
   projectBidDueAt,
@@ -87,13 +93,22 @@ export function resolveAuthoritativeBidDue({
 }: AuthoritativeBidDueInput): AuthoritativeBidDueResult {
   const tz = timezone || DEFAULT_PROJECT_TIMEZONE;
   const rawInstant = parsePacificWallClockRaw(dueDateRaw, tz);
+  const normalizedOverrideSource =
+    overrideSource === "manual"
+      ? "manual_override"
+      : overrideSource === "deadline_candidate"
+        ? "deadline_candidate_override"
+        : null;
 
   const candidates = [
+    { source: normalizedOverrideSource, value: overrideBidDueAt || null },
     { source: "portal_metadata" as const, value: rawInstant || dueDateRaw || null },
     { source: "candidate_metadata" as const, value: candidateBidDueAt || null },
     { source: "project_metadata" as const, value: projectBidDueAt || null },
     { source: "f4_fallback" as const, value: f4ValueText || null },
-  ];
+  ].filter((candidate): candidate is { source: AuthoritativeBidDueSource; value: string | null } =>
+    Boolean(candidate.source),
+  );
 
   const selected = candidates.find((candidate) => candidate.value);
   const display = selected?.value ? formatProjectDateTime(selected.value, { timezone: tz, fallback: "" }) : "";

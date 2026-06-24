@@ -660,6 +660,9 @@ F4 quality hardening completed:
 - Bid due date/time display prefers cited/source-backed deadlines and warns on conflicts.
 - Opportunities preserve access to the Intelligence Report after being added to calendar.
 - Converted project navigation remains available from the report page.
+- Phase 1 deadline hardening keeps one definitive primary bid due date visible, exposes conflicting evidence for inspection, and supports lightweight Project Workspace bid due overrides.
+
+Full Deadline Resolution Engine architecture is deferred to Phase 2. Future work may introduce deadline candidates, deadline resolutions, multi-deadline support, deterministic evidence ranking, override history, audit trails, and addenda-driven deadline change notifications.
 
 Next active task: Phase G Pursuit Management & Project Workspace.
 

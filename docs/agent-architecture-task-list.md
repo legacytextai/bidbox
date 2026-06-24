@@ -1360,6 +1360,13 @@ Delivered:
 - Opportunity card workflow opens the Intelligence Report even after an opportunity is added to calendar.
 - Converted project navigation remains available from the Intelligence Report page.
 - Bid due date/time conflict safeguards prefer cited/source-backed deadlines and warn when candidate metadata disagrees.
+- F4A Phase 1 deadline hardening: primary report/workspace bid due displays always show a definitive authoritative date, conflicting evidence is inspectable, and Project Workspace supports lightweight project-level bid due overrides.
+
+Deferred Phase 2 architecture:
+- Full Deadline Resolution Engine remains future work.
+- Future tables may include `opportunity_deadline_candidates`, `opportunity_deadline_resolutions`, and deadline override history.
+- Future resolver should support multiple deadline types, evidence ranking, deterministic addendum precedence, audit trails, and change notifications.
+- See `docs/initiatives/deadline-resolution-engine.md`.
 
 Production validation:
 - Validated against multiple real PlanetBids projects across several agencies.
@@ -1544,11 +1551,13 @@ Needed:
 - Prevent duplicate intelligence storage where possible.
 - Maintain traceability between workspace and report.
 - Preserve access to citations and source evidence.
+- Keep a definitive bid due date visible in Bid HQ, while allowing a lightweight override from existing evidence or manual entry.
 
 Acceptance criteria:
 - Project Workspace displays F4-derived facts without re-running F4.
 - Users can navigate from workspace to full report.
 - F4 citations remain traceable from the report experience.
+- Bid due overrides update the project/calendar anchor without creating new deadline-engine tables.
 
 ### 8.6. Projects Dashboard Updates ❌ NOT STARTED
 

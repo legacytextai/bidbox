@@ -4,6 +4,17 @@ All notable changes to the BidBox project are documented in this file.
 
 ---
 
+## [F4A Deadline Display & Override Hardening] - 2026-06-23
+
+### Deadline Workflow
+
+- Kept a single definitive bid due date visible in Opportunity Intelligence reports and Bid HQ.
+- Added expandable conflict evidence so estimators can inspect competing cited deadline evidence without replacing the primary deadline.
+- Added lightweight Project Workspace bid due overrides using project-level fields only.
+- Documented the full Deadline Resolution Engine as deferred Phase 2 architecture.
+
+---
+
 ## [Phase G Pursuit Management Planning] - 2026-06-22
 
 ### Phase Objective
