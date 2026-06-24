@@ -707,26 +707,40 @@ const Opportunities = () => {
     [candidates, activeFilter],
   );
 
-  // For "All" view: sort by auto_status (green→yellow→null→red), keep created_at DESC within bucket,
-  // and split out auto-Red into a "Filtered Out" section.
-  const { visibleCards, filteredOutCards } = useMemo(() => {
-    if (activeFilter !== "all") {
-      return { visibleCards: filtered, filteredOutCards: [] as Candidate[] };
-    }
-    const sorted = [...filtered].sort((a, b) => {
-      const ra = AUTO_RANK[String(a.auto_status)] ?? 2;
-      const rb = AUTO_RANK[String(b.auto_status)] ?? 2;
-      if (ra !== rb) return ra - rb;
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-    });
+  // Split candidates into time-bucket sections, sort within each bucket,
+  // and separate auto-Red / low-relevance into a Filtered Out section.
+  const { buckets, filteredOutCards } = useMemo(() => {
     const isFilteredOut = (candidate: Candidate) =>
-      candidate.auto_status === "red" ||
-      classifyOpportunityTitle(candidate.raw_title).relevance === "low";
-    return {
-      visibleCards: sorted.filter((c) => !isFilteredOut(c)),
-      filteredOutCards: sorted.filter(isFilteredOut),
+      activeFilter === "all" &&
+      (candidate.auto_status === "red" ||
+        classifyOpportunityTitle(candidate.raw_title).relevance === "low");
+
+    const visible: Candidate[] = [];
+    const filteredOut: Candidate[] = [];
+    for (const c of filtered) {
+      if (isFilteredOut(c)) filteredOut.push(c);
+      else visible.push(c);
+    }
+
+    const empty: Record<BucketKey, Candidate[]> = {
+      overdue: [], today: [], this_week: [], next_week: [],
+      later_this_month: [], next_month: [], future: [], no_date: [],
     };
-  }, [filtered, activeFilter]);
+    for (const c of visible) {
+      empty[getBucket(c.bid_due_at)].push(c);
+    }
+    for (const key of Object.keys(empty) as BucketKey[]) {
+      empty[key].sort((a, b) => compareCandidates(a, b, sortBy));
+    }
+    filteredOut.sort((a, b) => compareCandidates(a, b, sortBy));
+
+    return { buckets: empty, filteredOutCards: filteredOut };
+  }, [filtered, activeFilter, sortBy]);
+
+  const totalVisible = useMemo(
+    () => (Object.values(buckets) as Candidate[][]).reduce((n, arr) => n + arr.length, 0),
+    [buckets],
+  );
 
   const renderCard = (candidate: Candidate, index: number) => {
     const acquisitionActive = candidate.document_acquisition_status === "queued" || candidate.document_acquisition_status === "acquiring";
