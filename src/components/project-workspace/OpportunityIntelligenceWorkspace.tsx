@@ -452,6 +452,47 @@ export function OpportunityIntelligenceWorkspace({
   const [jobWalkTimezone, setJobWalkTimezone] = useState(project.timezone || DEFAULT_PROJECT_TIMEZONE);
   const [jobWalkReason, setJobWalkReason] = useState("");
   const [savingJobWalkOverride, setSavingJobWalkOverride] = useState(false);
+  const [countdown, setCountdown] = useState("");
+  const [isExpired, setIsExpired] = useState(false);
+
+  useEffect(() => {
+    const bidDueAt = bidDueResolution.value;
+    if (!bidDueAt) {
+      setCountdown("");
+      setIsExpired(false);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      const now = new Date();
+      const dueDate = new Date(bidDueAt);
+      const diff = dueDate.getTime() - now.getTime();
+
+      if (diff <= 0) {
+        setCountdown("EXPIRED");
+        setIsExpired(true);
+        clearInterval(interval);
+        return;
+      }
+
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+      setCountdown(
+        `${days.toString().padStart(2, "0")}d:${hours
+          .toString()
+          .padStart(2, "0")}h:${minutes.toString().padStart(2, "0")}m:${seconds
+          .toString()
+          .padStart(2, "0")}s`,
+      );
+      setIsExpired(false);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [bidDueResolution.value]);
+
   const reportOpportunityId = project.source_opportunity_candidate_id || sourceOpportunity?.id;
   const bidRoomUrl = `${window.location.origin}/bid/${project.public_token}`;
   const projectTimezone = project.timezone || DEFAULT_PROJECT_TIMEZONE;
