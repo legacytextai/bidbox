@@ -663,14 +663,53 @@ const Opportunities = () => {
     }
   };
 
-  // Filter by tab: "all" shows everything; "analyzed" shows any opportunity
-  // where analysis has been requested, is active, completed, or failed.
+  // Distinct county / agency options from loaded candidates.
+  const { countyOptions, agencyOptions, hasNoCounty, hasNoAgency } = useMemo(() => {
+    const counties = new Set<string>();
+    const agencies = new Set<string>();
+    let noCounty = false;
+    let noAgency = false;
+    for (const c of candidates) {
+      const cty = getCandidateCounty(c);
+      if (cty) counties.add(cty);
+      else noCounty = true;
+      const ag = (c.agency ?? "").trim();
+      if (ag) agencies.add(ag);
+      else noAgency = true;
+    }
+    return {
+      countyOptions: Array.from(counties).sort((a, b) => a.localeCompare(b)),
+      agencyOptions: Array.from(agencies).sort((a, b) => a.localeCompare(b)),
+      hasNoCounty: noCounty,
+      hasNoAgency: noAgency,
+    };
+  }, [candidates]);
+
+  const matchesFacets = useCallback(
+    (c: Candidate) => {
+      if (countyFilter.length > 0) {
+        const cty = getCandidateCounty(c);
+        const key = cty ?? NO_VALUE_SENTINEL;
+        if (!countyFilter.includes(key)) return false;
+      }
+      if (agencyFilter.length > 0) {
+        const ag = (c.agency ?? "").trim();
+        const key = ag || NO_VALUE_SENTINEL;
+        if (!agencyFilter.includes(key)) return false;
+      }
+      return true;
+    },
+    [countyFilter, agencyFilter],
+  );
+
+  // Filter by tab + county/agency facets.
   const filtered = useMemo(
     () =>
-      candidates.filter((c) =>
-        activeFilter === "analyzed" ? isAnalyzedCandidate(c) : true,
-      ),
-    [candidates, activeFilter],
+      candidates.filter((c) => {
+        if (activeFilter === "analyzed" && !isAnalyzedCandidate(c)) return false;
+        return matchesFacets(c);
+      }),
+    [candidates, activeFilter, matchesFacets],
   );
 
   // Split candidates into time-bucket sections, sort within each bucket,
@@ -696,17 +735,20 @@ const Opportunities = () => {
       empty[getBucket(c.bid_due_at)].push(c);
     }
     for (const key of Object.keys(empty) as BucketKey[]) {
-      empty[key].sort((a, b) => compareCandidates(a, b, sortBy));
+      empty[key].sort(compareByDueAsc);
     }
-    filteredOut.sort((a, b) => compareCandidates(a, b, sortBy));
+    filteredOut.sort(compareByDueAsc);
 
     return { buckets: empty, filteredOutCards: filteredOut };
-  }, [filtered, activeFilter, sortBy]);
+  }, [filtered, activeFilter]);
 
   const totalVisible = useMemo(
     () => (Object.values(buckets) as Candidate[][]).reduce((n, arr) => n + arr.length, 0),
     [buckets],
   );
+
+  const hasActiveFacetFilters = countyFilter.length > 0 || agencyFilter.length > 0;
+
 
   const renderCard = (candidate: Candidate, index: number) => {
     const acquisitionActive = candidate.document_acquisition_status === "queued" || candidate.document_acquisition_status === "acquiring";
