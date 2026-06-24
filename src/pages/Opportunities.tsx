@@ -205,11 +205,149 @@ function isBidClosed(iso: string | null): boolean {
   return !isNaN(d.getTime()) && d.getTime() < Date.now();
 }
 
+type SortKey =
+  | "due_asc"
+  | "due_desc"
+  | "added_desc"
+  | "added_asc"
+  | "county_asc"
+  | "agency_asc";
+
+const SORT_OPTIONS: { value: SortKey; label: string }[] = [
+  { value: "due_asc", label: "Bid Due — Soonest first" },
+  { value: "due_desc", label: "Bid Due — Latest first" },
+  { value: "added_desc", label: "Newest added" },
+  { value: "added_asc", label: "Oldest added" },
+  { value: "county_asc", label: "County (A–Z)" },
+  { value: "agency_asc", label: "Agency (A–Z)" },
+];
+
+type BucketKey =
+  | "overdue"
+  | "today"
+  | "this_week"
+  | "next_week"
+  | "later_this_month"
+  | "next_month"
+  | "future"
+  | "no_date";
+
+const BUCKETS: { key: BucketKey; label: string; defaultOpen: boolean }[] = [
+  { key: "overdue", label: "Overdue", defaultOpen: false },
+  { key: "today", label: "Due Today", defaultOpen: true },
+  { key: "this_week", label: "This Week", defaultOpen: true },
+  { key: "next_week", label: "Next Week", defaultOpen: true },
+  { key: "later_this_month", label: "Later This Month", defaultOpen: false },
+  { key: "next_month", label: "Next Month", defaultOpen: false },
+  { key: "future", label: "Future", defaultOpen: false },
+  { key: "no_date", label: "No Bid Date", defaultOpen: false },
+];
+
+const PT_TZ = "America/Los_Angeles";
+
+function getBucket(iso: string | null): BucketKey {
+  if (!iso) return "no_date";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "no_date";
+  const nowPt = toZonedTime(new Date(), PT_TZ);
+  const duePt = toZonedTime(d, PT_TZ);
+
+  if (duePt.getTime() < nowPt.getTime()) return "overdue";
+
+  const endOfToday = new Date(nowPt);
+  endOfToday.setHours(23, 59, 59, 999);
+  if (duePt.getTime() <= endOfToday.getTime()) return "today";
+
+  // End of this week = upcoming Sunday 23:59:59 PT
+  const endOfThisWeek = new Date(endOfToday);
+  const daysUntilSunday = (7 - nowPt.getDay()) % 7; // Sunday = 0
+  endOfThisWeek.setDate(endOfThisWeek.getDate() + daysUntilSunday);
+  if (duePt.getTime() <= endOfThisWeek.getTime()) return "this_week";
+
+  const endOfNextWeek = new Date(endOfThisWeek);
+  endOfNextWeek.setDate(endOfNextWeek.getDate() + 7);
+  if (duePt.getTime() <= endOfNextWeek.getTime()) return "next_week";
+
+  const endOfThisMonth = new Date(
+    nowPt.getFullYear(),
+    nowPt.getMonth() + 1,
+    0,
+    23,
+    59,
+    59,
+    999,
+  );
+  if (duePt.getTime() <= endOfThisMonth.getTime()) return "later_this_month";
+
+  const endOfNextMonth = new Date(
+    nowPt.getFullYear(),
+    nowPt.getMonth() + 2,
+    0,
+    23,
+    59,
+    59,
+    999,
+  );
+  if (duePt.getTime() <= endOfNextMonth.getTime()) return "next_month";
+
+  return "future";
+}
+
+function getCandidateCounty(c: { crawl_data: any | null }): string | null {
+  const v = c.crawl_data?.county;
+  return typeof v === "string" && v.trim() ? v.trim() : null;
+}
+
+function compareCandidates(a: Candidate, b: Candidate, sort: SortKey): number {
+  const aDue = a.bid_due_at ? new Date(a.bid_due_at).getTime() : null;
+  const bDue = b.bid_due_at ? new Date(b.bid_due_at).getTime() : null;
+  const nullsLast = (av: number | null, bv: number | null, dir: 1 | -1) => {
+    if (av === null && bv === null) return 0;
+    if (av === null) return 1;
+    if (bv === null) return -1;
+    return (av - bv) * dir;
+  };
+  switch (sort) {
+    case "due_asc":
+      return nullsLast(aDue, bDue, 1);
+    case "due_desc":
+      return nullsLast(aDue, bDue, -1);
+    case "added_desc":
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    case "added_asc":
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    case "county_asc": {
+      const ca = getCandidateCounty(a);
+      const cb = getCandidateCounty(b);
+      if (!ca && !cb) return 0;
+      if (!ca) return 1;
+      if (!cb) return -1;
+      return ca.localeCompare(cb);
+    }
+    case "agency_asc": {
+      const aa = a.agency ?? "";
+      const ba = b.agency ?? "";
+      if (!aa && !ba) return 0;
+      if (!aa) return 1;
+      if (!ba) return -1;
+      return aa.localeCompare(ba);
+    }
+  }
+}
+
 const Opportunities = () => {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState("all");
   const [scanLoading, setScanLoading] = useState(false);
+  const [sortBy, setSortBy] = useState<SortKey>("due_asc");
+  const [openBuckets, setOpenBuckets] = useState<Record<BucketKey, boolean>>(
+    () =>
+      BUCKETS.reduce(
+        (acc, b) => ({ ...acc, [b.key]: b.defaultOpen }),
+        {} as Record<BucketKey, boolean>,
+      ),
+  );
   
   const [lastScannedAt, setLastScannedAt] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
