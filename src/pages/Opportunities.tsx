@@ -604,20 +604,10 @@ const Opportunities = () => {
           <h3 className="font-semibold text-base text-foreground leading-snug">
             {candidate.raw_title ?? "Untitled Opportunity"}
           </h3>
-          {/* Agency — variant by row for A/B/C/D preview (3 per row) */}
-          {candidate.agency && index < 3 && (
-            <p className="mt-1.5 border-l-[3px] border-[hsl(var(--bidbox-blue))] pl-2 text-sm font-medium text-foreground">
-              {candidate.agency}
-            </p>
-          )}
-          {candidate.agency && index >= 3 && index < 6 && (
+          {/* Agency — Option D applied universally */}
+          {candidate.agency && (
             <p className="mt-2 flex items-center gap-1.5 text-sm font-medium text-foreground">
               <Building2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-              {candidate.agency}
-            </p>
-          )}
-          {candidate.agency && index >= 6 && (
-            <p className="mt-1.5 text-sm font-semibold uppercase tracking-wide text-foreground">
               {candidate.agency}
             </p>
           )}
