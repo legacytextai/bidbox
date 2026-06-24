@@ -241,38 +241,102 @@ const normalizeHour = (hour12: string, meridiem: string) => {
   return hour;
 };
 
+const TZ_ABBR_MAP: Record<string, string> = {
+  PT: "America/Los_Angeles",
+  PST: "America/Los_Angeles",
+  PDT: "America/Los_Angeles",
+  PACIFIC: "America/Los_Angeles",
+  MT: "America/Denver",
+  MST: "America/Denver",
+  MDT: "America/Denver",
+  MOUNTAIN: "America/Denver",
+  CT: "America/Chicago",
+  CST: "America/Chicago",
+  CDT: "America/Chicago",
+  CENTRAL: "America/Chicago",
+  ET: "America/New_York",
+  EST: "America/New_York",
+  EDT: "America/New_York",
+  EASTERN: "America/New_York",
+};
+
+const buildLocalDateTime = (
+  year: string | number,
+  month: string | number,
+  day: string | number,
+  hour: number,
+  minute: string | number,
+) =>
+  `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+
 const coerceEvidenceDeadlineToUtc = (value: string | null | undefined, timezone: string) => {
-  const text = String(value ?? "").replace(/\s+/g, " ").trim();
+  let text = String(value ?? "").replace(/\s+/g, " ").trim();
   if (!text) return null;
 
+  // 1. Normalize meridiems: "a.m." / "a m" / "am" → "AM"; same for PM.
+  text = text
+    .replace(/\ba\.?\s*m\.?\b/gi, "AM")
+    .replace(/\bp\.?\s*m\.?\b/gi, "PM");
+
+  // 2. Detect & strip a trailing timezone abbreviation. Map to IANA zone.
+  let resolvedTimezone = timezone;
+  const tzMatch = text.match(
+    /\s+(PT|PST|PDT|Pacific|MT|MST|MDT|Mountain|CT|CST|CDT|Central|ET|EST|EDT|Eastern)\b\.?/i,
+  );
+  if (tzMatch) {
+    const mapped = TZ_ABBR_MAP[tzMatch[1].toUpperCase()];
+    if (mapped) resolvedTimezone = mapped;
+    text = (text.slice(0, tzMatch.index) + text.slice(tzMatch.index! + tzMatch[0].length)).trim();
+  }
+
+  // 3. Normalize " at " separator and collapse whitespace.
+  text = text.replace(/\s+at\s+/gi, " ").replace(/\s+/g, " ").trim();
+
+  // 4. Try patterns in order.
+
+  // ISO date: YYYY-MM-DD[ T]HH:MM(:SS)?( AM|PM)?
+  const iso = text.match(
+    /\b(\d{4})-(\d{2})-(\d{2})[T ](\d{1,2}):(\d{2})(?::\d{2})?(?:\s*(AM|PM))?\b/i,
+  );
+  if (iso) {
+    const [, year, month, day, hourText, minute, meridiem] = iso;
+    let hour: number | null;
+    if (meridiem) {
+      hour = normalizeHour(hourText, meridiem);
+    } else {
+      const h = Number(hourText);
+      hour = Number.isFinite(h) ? h : null;
+    }
+    if (hour !== null) {
+      return localDateTimeToUtc(buildLocalDateTime(year, month, day, hour, minute), resolvedTimezone);
+    }
+  }
+
+  // Slash date: M/D/YYYY H(:MM)? AM|PM
   const slash = text.match(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2})(?::(\d{2}))?\s*(AM|PM)\b/i);
   if (slash) {
     const [, month, day, year, hourText, minute = "0", meridiem] = slash;
     const hour = normalizeHour(hourText, meridiem);
     if (hour !== null) {
-      return localDateTimeToUtc(
-        `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}T${String(hour).padStart(2, "0")}:${minute.padStart(2, "0")}`,
-        timezone,
-      );
+      return localDateTimeToUtc(buildLocalDateTime(year, month, day, hour, minute), resolvedTimezone);
     }
   }
 
+  // Month-name date: January D, YYYY H(:MM)? AM|PM
   const monthName = text.match(
-    /\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2}),\s+(\d{4})(?:\s+at)?\s+(\d{1,2})(?::(\d{2}))?\s*(AM|PM)\b/i,
+    /\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2}),\s+(\d{4})\s+(\d{1,2})(?::(\d{2}))?\s*(AM|PM)\b/i,
   );
   if (monthName) {
     const [, monthLabel, day, year, hourText, minute = "0", meridiem] = monthName;
     const hour = normalizeHour(hourText, meridiem);
     const month = MONTH_INDEX[monthLabel.toLowerCase()];
     if (hour !== null && month) {
-      return localDateTimeToUtc(
-        `${year}-${String(month).padStart(2, "0")}-${day.padStart(2, "0")}T${String(hour).padStart(2, "0")}:${minute.padStart(2, "0")}`,
-        timezone,
-      );
+      return localDateTimeToUtc(buildLocalDateTime(year, month, day, hour, minute), resolvedTimezone);
     }
   }
 
-  const parsed = new Date(text.replace(/\s+at\s+/i, " "));
+  // Last-resort fallback only if everything above failed.
+  const parsed = new Date(text);
   if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
 
   return null;
