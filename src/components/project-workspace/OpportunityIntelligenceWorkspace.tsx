@@ -430,6 +430,7 @@ export function OpportunityIntelligenceWorkspace({
   onDownloadBid,
   onDeleteSubmission,
   onOverrideBidDueDate,
+  onOverrideJobWalkDate,
   onEditingTradesChange,
   onEditedTradeIdsChange,
   onSaveTrades,
