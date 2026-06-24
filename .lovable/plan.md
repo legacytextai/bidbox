@@ -1,50 +1,35 @@
-I'm using knowledge
 
-## Sync Verification Report — phase1-opportunity-intelligence
+## Opportunities card cleanup
 
-### Repo state (already at HEAD)
-The Lovable workspace is synced bidirectionally with GitHub, and `git log` confirms the three target commits are present at the tip:
+Single file change: `src/pages/Opportunities.tsx` (card renderer only, ~lines 600–820).
 
-- `2300180` — Phase G 8.3 Legacy Crawl Separation (HEAD)
-- `75c0904` — Phase G 8.2 Opportunity Conversion Hardening
-- `ea9e374` — Phase G 8.1 Project Origin & Data Model Foundation
+### Remove
+1. **"System: yellow/green/red" pill** (lines 634–653) — gone.
+2. **"Filtered" pill** (lines 654–669) — gone (same yellow-style noise under title).
+3. **Analysis status pill** ("Generating report", "Ready", "Failed") (lines 670–692) — gone.
+4. **Document acquisition pill** ("Documents acquired", "Acquiring documents", etc.) (lines 693–717) — gone.
+5. **Document processing pill** ("Documents processed", "Documents partially processed", etc.) (lines 718–744) — gone.
+6. **"Add review notes…" input** (lines 761–772) — gone.
 
-No pull is needed — Lovable already reflects GitHub HEAD.
+Keep in the badge row: portal pill (Caltrans/PlanetBids/etc.) and "Converted" pill only. If the badge row ends up empty, the row collapses (no whitespace gap).
 
-### Frontend
-Frontend changes deploy when the user clicks **Publish → Update**. No code changes required from me. Build runs automatically in the harness on edits; nothing pending here from these three commits aside from the user re-publishing if they want the live `bidbox.lovable.app` URL refreshed.
+Related cleanup (no behavior change elsewhere): drop now-unused imports/constants tied only to the removed pills (`ANALYSIS_STYLES`, `ANALYSIS_LABELS`, `DOCUMENT_ACQUISITION_STYLES/LABELS`, `DOCUMENT_PROCESSING_STYLES/LABELS`, `AUTO_STATUS_DOT`, `RotateCcw`/`Loader2`/`Clock` icons if unused, `Tooltip*` if unused, `classifyOpportunityTitle` + `titleFilterLabel` if only used by the removed Filtered pill, `notes` state + `handleNotesSave` + `setNotes` initialization). Polling/realtime logic stays untouched.
 
-### Backend / Edge functions
-No edge-function changes are introduced by 8.1–8.3 that require a manual `deploy_edge_functions` step; functions deploy on backend change automatically.
+### Emphasize agency
+In the meta block (lines 748–758), promote agency from small muted text to a prominent line directly under the title:
 
-### Database migrations — ACTION REQUIRED
-Two new migration files exist in the repo but are NOT applied to Lovable Cloud:
+- Move `{candidate.agency}` out of the muted meta block into its own line right under the `<h3>` title.
+- Style: `text-sm font-semibold uppercase tracking-wide text-foreground` (or `text-[hsl(var(--bidbox-blue))]` for color pop — pick foreground bold for now, matches existing design tokens).
+- Bid Due / Estimated Value / Source stay in the muted meta block below.
 
-| File | Applied? |
-|---|---|
-| `20260622000001_add_project_origin_links.sql` (8.1) | ❌ not applied |
-| `20260622000002_harden_opportunity_conversion.sql` (8.2) | ❌ not applied |
+### Orange "View Intelligence Report" CTA
+For analyzed candidates (lines 775–783), swap the blue classes for an orange tone using existing Tailwind utilities (no new tokens needed):
 
-Highest applied version in `supabase_migrations.schema_migrations` is `20260621204615`. These were committed via GitHub sync, which does not auto-run migrations against Lovable Cloud — they must be submitted through the migration tool (same situation we hit with the F4 migration).
+```
+className="w-full bg-orange-500 text-white hover:bg-orange-600"
+```
 
-Until these run:
-- `projects.source_opportunity_candidate_id` / origin columns do not exist
-- The unique-index guard preventing duplicate opportunity→project conversions is missing
-- "View Project" from a converted opportunity, and the "Add To Calendar" conversion path, will fail or produce duplicates
+All other action buttons (Analyze Project, View Analysis Progress, View Project) stay as-is.
 
-### Readiness for manual validation
-- View Intelligence Report — ready (F4 tables already live from prior migration)
-- Add To Calendar (opportunity → project conversion) — BLOCKED on 8.1 + 8.2 migrations
-- View Project from a converted opportunity — BLOCKED on 8.1 migration
-
-### Proposed next step (requires approval to leave plan mode)
-Submit the two pending migrations via the migration tool, in order:
-1. `20260622000001_add_project_origin_links.sql`
-2. `20260622000002_harden_opportunity_conversion.sql`
-
-Then re-verify by:
-- Confirming `schema_migrations` advances to `20260622000002`
-- Spot-checking `projects` has the new origin columns
-- Walking the Opportunity → View Intelligence Report → Add To Calendar → View Project flow against a known-good candidate
-
-No application code changes will be made. Approve and I'll execute the migration submissions.
+### Out of scope
+No data layer, realtime, polling, filters, or backend changes. Pure presentational edit to the card.
