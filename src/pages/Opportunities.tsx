@@ -16,12 +16,21 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
 import { ActiveScansPanel } from "@/components/ActiveScansPanel";
 import { formatProjectDateTime, formatInProjectTimezone } from "@/lib/timezoneUtils";
 import {
   OPPORTUNITY_FILTER_REASON_LABELS,
   classifyOpportunityTitle,
 } from "@/lib/opportunityRelevance";
+import { toZonedTime } from "date-fns-tz";
 
 type CandidateStatus = "pending" | "red" | "yellow" | "green" | "converted";
 type AutoStatus = "green" | "yellow" | "red" | null;
