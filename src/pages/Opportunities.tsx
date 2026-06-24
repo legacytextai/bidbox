@@ -242,9 +242,14 @@ function getBucket(iso: string | null): BucketKey {
   const nowPt = toZonedTime(new Date(), PT_TZ);
   const duePt = toZonedTime(d, PT_TZ);
 
-  if (duePt.getTime() < nowPt.getTime()) return "overdue";
+  // Start of today (PT). Anything strictly before today's calendar date is overdue;
+  // anything on today's calendar date is "today" regardless of whether the bid
+  // time has already passed.
+  const startOfToday = new Date(nowPt);
+  startOfToday.setHours(0, 0, 0, 0);
+  if (duePt.getTime() < startOfToday.getTime()) return "overdue";
 
-  const endOfToday = new Date(nowPt);
+  const endOfToday = new Date(startOfToday);
   endOfToday.setHours(23, 59, 59, 999);
   if (duePt.getTime() <= endOfToday.getTime()) return "today";
 
@@ -1114,7 +1119,8 @@ const Opportunities = () => {
                 )}
                 {BUCKETS.map((bucket) => {
                   const items = buckets[bucket.key];
-                  if (!items || items.length === 0) return null;
+                  const alwaysShow = bucket.key === "today" || bucket.key === "this_week";
+                  if ((!items || items.length === 0) && !alwaysShow) return null;
                   const open = openBuckets[bucket.key];
                   return (
                     <Collapsible
@@ -1140,9 +1146,15 @@ const Opportunities = () => {
                         <Separator className="flex-1 ml-3" />
                       </CollapsibleTrigger>
                       <CollapsibleContent className="mt-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                          {items.map(renderCard)}
-                        </div>
+                        {items.length === 0 ? (
+                          <p className="text-sm text-muted-foreground italic">
+                            Nothing due in this window.
+                          </p>
+                        ) : (
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {items.map(renderCard)}
+                          </div>
+                        )}
                       </CollapsibleContent>
                     </Collapsible>
                   );
