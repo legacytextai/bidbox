@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { resolveAuthoritativeBidDue } from "@/lib/bidDueResolver";
-import { dateIdentity } from "@/lib/bidDueResolver";
+import { resolveAuthoritativeBidDue, dateIdentity } from "@/lib/bidDueResolver";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ChevronDown } from "lucide-react";
 import {
   DEFAULT_PROJECT_TIMEZONE,
   TIMEZONE_OPTIONS,
