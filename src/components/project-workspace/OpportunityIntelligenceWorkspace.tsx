@@ -9,6 +9,7 @@ import {
   formatProjectDateTime,
   formatProjectDateTimeOrNull,
   localDateTimeToUtc,
+  utcToLocalDateTime,
 } from "@/lib/timezoneUtils";
 import {
   AlertTriangle,
@@ -148,6 +149,10 @@ interface OpportunityIntelligenceWorkspaceProps {
   onOverrideBidDueDate: (override: {
     bidDueAt: string;
     source: "manual" | "deadline_candidate";
+    reason: string | null;
+  }) => Promise<void>;
+  onOverrideJobWalkDate: (override: {
+    jobWalkAt: string;
     reason: string | null;
   }) => Promise<void>;
   onEditingTradesChange: (open: boolean) => void;
@@ -426,6 +431,7 @@ export function OpportunityIntelligenceWorkspace({
   onDownloadBid,
   onDeleteSubmission,
   onOverrideBidDueDate,
+  onOverrideJobWalkDate,
   onEditingTradesChange,
   onEditedTradeIdsChange,
   onSaveTrades,
@@ -440,6 +446,12 @@ export function OpportunityIntelligenceWorkspace({
   const [manualTimezone, setManualTimezone] = useState(project.timezone || DEFAULT_PROJECT_TIMEZONE);
   const [manualReason, setManualReason] = useState("");
   const [savingBidDueOverride, setSavingBidDueOverride] = useState(false);
+  const [jobWalkOverrideOpen, setJobWalkOverrideOpen] = useState(false);
+  const [jobWalkDate, setJobWalkDate] = useState("");
+  const [jobWalkTime, setJobWalkTime] = useState("");
+  const [jobWalkTimezone, setJobWalkTimezone] = useState(project.timezone || DEFAULT_PROJECT_TIMEZONE);
+  const [jobWalkReason, setJobWalkReason] = useState("");
+  const [savingJobWalkOverride, setSavingJobWalkOverride] = useState(false);
   const reportOpportunityId = project.source_opportunity_candidate_id || sourceOpportunity?.id;
   const bidRoomUrl = `${window.location.origin}/bid/${project.public_token}`;
   const projectTimezone = project.timezone || DEFAULT_PROJECT_TIMEZONE;
@@ -746,6 +758,45 @@ export function OpportunityIntelligenceWorkspace({
       setManualReason("");
     } finally {
       setSavingBidDueOverride(false);
+    }
+  };
+
+  const openJobWalkOverride = () => {
+    const tz = project.timezone || DEFAULT_PROJECT_TIMEZONE;
+    const existing = project.job_walk_at as string | null | undefined;
+    if (existing) {
+      const local = utcToLocalDateTime(existing, tz);
+      const [d, t] = local.split("T");
+      setJobWalkDate(d ?? "");
+      setJobWalkTime(t ?? "");
+    } else {
+      setJobWalkDate("");
+      setJobWalkTime("");
+    }
+    setJobWalkTimezone(tz);
+    setJobWalkReason(project.job_walk_override_reason ?? "");
+    setJobWalkOverrideOpen(true);
+  };
+
+  const saveJobWalkOverride = async () => {
+    if (!jobWalkDate || !jobWalkTime) {
+      toast({
+        title: "Date and time required",
+        description: "Choose both a date and time before saving.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSavingJobWalkOverride(true);
+    try {
+      await onOverrideJobWalkDate({
+        jobWalkAt: localDateTimeToUtc(`${jobWalkDate}T${jobWalkTime}`, jobWalkTimezone || projectTimezone),
+        reason: jobWalkReason.trim() || null,
+      });
+      setJobWalkOverrideOpen(false);
+    } finally {
+      setSavingJobWalkOverride(false);
     }
   };
 
@@ -1088,6 +1139,83 @@ export function OpportunityIntelligenceWorkspace({
           <div className="rounded-md border border-border p-3">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">Job Walk</p>
             <p className="font-medium">{snapshot.jobWalk}</p>
+            {project.job_walk_override_at && (
+              <p className="mt-1 text-xs text-[hsl(var(--bidbox-blue))]">
+                Manual Override
+                {project.job_walk_override_reason ? `: ${project.job_walk_override_reason}` : ""}
+              </p>
+            )}
+            <Dialog open={jobWalkOverrideOpen} onOpenChange={(open) => (open ? openJobWalkOverride() : setJobWalkOverrideOpen(false))}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm" className="mt-3">
+                  Edit Job Walk Date
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>Edit Job Walk Date</DialogTitle>
+                  <DialogDescription>
+                    Update the job walk date when the agency changes the schedule. The project and calendar will use the saved value.
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                    <div>
+                      <Label htmlFor="job-walk-date">Date</Label>
+                      <Input
+                        id="job-walk-date"
+                        type="date"
+                        value={jobWalkDate}
+                        onChange={(event) => setJobWalkDate(event.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="job-walk-time">Time</Label>
+                      <Input
+                        id="job-walk-time"
+                        type="time"
+                        value={jobWalkTime}
+                        onChange={(event) => setJobWalkTime(event.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="job-walk-timezone">Timezone</Label>
+                      <select
+                        id="job-walk-timezone"
+                        value={jobWalkTimezone}
+                        onChange={(event) => setJobWalkTimezone(event.target.value)}
+                        className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                      >
+                        {TIMEZONE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <Label htmlFor="job-walk-reason">Reason (optional)</Label>
+                    <Textarea
+                      id="job-walk-reason"
+                      value={jobWalkReason}
+                      onChange={(event) => setJobWalkReason(event.target.value)}
+                      placeholder="Example: Agency updated the mandatory job walk date."
+                    />
+                  </div>
+                </div>
+
+                <DialogFooter>
+                  <Button variant="ghost" onClick={() => setJobWalkOverrideOpen(false)} disabled={savingJobWalkOverride}>
+                    Cancel
+                  </Button>
+                  <Button onClick={saveJobWalkOverride} disabled={savingJobWalkOverride}>
+                    {savingJobWalkOverride ? "Saving..." : "Save Job Walk Date"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </div>
           <div className="rounded-md border border-border p-3">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">Report</p>

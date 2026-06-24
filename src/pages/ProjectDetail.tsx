@@ -503,6 +503,43 @@ const ProjectDetail = () => {
       description: "The project now uses your selected bid due date.",
     });
   };
+  const saveJobWalkOverride = async ({
+    jobWalkAt,
+    reason,
+  }: {
+    jobWalkAt: string;
+    reason: string | null;
+  }) => {
+    if (!project?.id) return;
+
+    const { data, error } = await supabase
+      .from("projects")
+      .update({
+        job_walk_at: jobWalkAt,
+        job_walk_override_at: jobWalkAt,
+        job_walk_override_reason: reason,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", project.id)
+      .select("*")
+      .single();
+
+    if (error) {
+      toast({
+        title: "Override failed",
+        description: "Could not save the job walk date override.",
+        variant: "destructive",
+      });
+      throw error;
+    }
+
+    setProject(data);
+    setEditedJobWalkAt(data.job_walk_at ? utcToLocalDateTime(data.job_walk_at, data.timezone || "America/Los_Angeles") : "");
+    toast({
+      title: "Job walk date updated",
+      description: "The project now uses your updated job walk date.",
+    });
+  };
   const handleFileUpload = async () => {
     if (newFiles.length === 0) return;
     const {
@@ -763,6 +800,7 @@ const ProjectDetail = () => {
           onDownloadBid={downloadBid}
           onDeleteSubmission={deleteSubmission}
           onOverrideBidDueDate={saveBidDueOverride}
+          onOverrideJobWalkDate={saveJobWalkOverride}
           onEditingTradesChange={setEditingTrades}
           onEditedTradeIdsChange={setEditedTradeIds}
           onSaveTrades={saveTrades}
