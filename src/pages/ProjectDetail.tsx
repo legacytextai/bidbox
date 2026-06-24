@@ -800,6 +800,7 @@ const ProjectDetail = () => {
           onDownloadBid={downloadBid}
           onDeleteSubmission={deleteSubmission}
           onOverrideBidDueDate={saveBidDueOverride}
+          onOverrideJobWalkDate={saveJobWalkOverride}
           onEditingTradesChange={setEditingTrades}
           onEditedTradeIdsChange={setEditedTradeIds}
           onSaveTrades={saveTrades}
