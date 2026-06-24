@@ -445,6 +445,12 @@ export function OpportunityIntelligenceWorkspace({
   const [manualTimezone, setManualTimezone] = useState(project.timezone || DEFAULT_PROJECT_TIMEZONE);
   const [manualReason, setManualReason] = useState("");
   const [savingBidDueOverride, setSavingBidDueOverride] = useState(false);
+  const [jobWalkOverrideOpen, setJobWalkOverrideOpen] = useState(false);
+  const [jobWalkDate, setJobWalkDate] = useState("");
+  const [jobWalkTime, setJobWalkTime] = useState("");
+  const [jobWalkTimezone, setJobWalkTimezone] = useState(project.timezone || DEFAULT_PROJECT_TIMEZONE);
+  const [jobWalkReason, setJobWalkReason] = useState("");
+  const [savingJobWalkOverride, setSavingJobWalkOverride] = useState(false);
   const reportOpportunityId = project.source_opportunity_candidate_id || sourceOpportunity?.id;
   const bidRoomUrl = `${window.location.origin}/bid/${project.public_token}`;
   const projectTimezone = project.timezone || DEFAULT_PROJECT_TIMEZONE;
