@@ -288,41 +288,16 @@ function getCandidateCounty(c: { crawl_data: any | null }): string | null {
   return typeof v === "string" && v.trim() ? v.trim() : null;
 }
 
-function compareCandidates(a: Candidate, b: Candidate, sort: SortKey): number {
+function compareByDueAsc(a: Candidate, b: Candidate): number {
   const aDue = a.bid_due_at ? new Date(a.bid_due_at).getTime() : null;
   const bDue = b.bid_due_at ? new Date(b.bid_due_at).getTime() : null;
-  const nullsLast = (av: number | null, bv: number | null, dir: 1 | -1) => {
-    if (av === null && bv === null) return 0;
-    if (av === null) return 1;
-    if (bv === null) return -1;
-    return (av - bv) * dir;
-  };
-  switch (sort) {
-    case "due_asc":
-      return nullsLast(aDue, bDue, 1);
-    case "due_desc":
-      return nullsLast(aDue, bDue, -1);
-    case "added_desc":
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-    case "added_asc":
-      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-    case "county_asc": {
-      const ca = getCandidateCounty(a);
-      const cb = getCandidateCounty(b);
-      if (!ca && !cb) return 0;
-      if (!ca) return 1;
-      if (!cb) return -1;
-      return ca.localeCompare(cb);
-    }
-    case "agency_asc": {
-      const aa = a.agency ?? "";
-      const ba = b.agency ?? "";
-      if (!aa && !ba) return 0;
-      if (!aa) return 1;
-      if (!ba) return -1;
-      return aa.localeCompare(ba);
-    }
+  if (aDue === null && bDue === null) {
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
   }
+  if (aDue === null) return 1;
+  if (bDue === null) return -1;
+  if (aDue !== bDue) return aDue - bDue;
+  return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
 }
 
 const Opportunities = () => {
