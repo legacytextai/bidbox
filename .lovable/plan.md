@@ -1,52 +1,35 @@
-I'm using knowledge.
-
 ## Goal
 
-On `/opportunities`, add (1) a simple sort control above the cards and (2) collapsible time-bucket sections that group cards by when the bid is due.
+Replace the Sort dropdown on `/opportunities` with **filter** controls. Time buckets remain; cards inside each bucket sort by Bid Due ascending (soonest first) — which is the natural reading order for a deadline-driven view.
 
-All changes are presentation-only inside `src/pages/Opportunities.tsx`. No DB, RLS, or edge-function work.
+All changes are presentation-only in `src/pages/Opportunities.tsx`.
 
 ---
 
-## 1. Sort control
+## Filter controls (top of cards, where Sort lived)
 
-A single dropdown (shadcn `Select`) placed on the right side of the existing filter-tabs row.
+Two multi-select filter dropdowns + a clear button, on the right side of the filter-tabs row:
 
-Options:
-- **Bid Due — Soonest first** (default)
-- **Bid Due — Latest first**
-- **Newest added** (created_at DESC)
-- **Oldest added** (created_at ASC)
-- **County (A–Z)**
-- **Agency (A–Z)**
+1. **County** — multi-select. Options are the distinct, non-empty `crawl_data.county` values present in the loaded candidates, sorted A–Z. Cards with no county are matched by an explicit "(No county)" option at the bottom of the list.
+2. **Agency** — multi-select. Options are the distinct, non-empty `agency` values present in the loaded candidates, sorted A–Z. Cards with no agency match a "(No agency)" option.
 
-Notes:
-- Candidates with no `bid_due_at` are pushed to the end on Bid-Due sorts.
-- "County" is read from `crawl_data?.county` (One Link metadata). When missing, the card sorts to the end of the County sort. Today's `Candidate` interface has no top-level county field, so we read it from `crawl_data` only — no schema change.
-- Sort applies to every bucket independently and to the Filtered Out section.
+Behavior:
+- If a filter has no selections, it is inactive (everything passes).
+- Filters combine with AND across the two facets; within a facet, selected values combine with OR.
+- The trigger button shows: facet name, plus a count badge when any value is selected (e.g. "County · 2").
+- A small "Clear filters" link appears next to the dropdowns when any filter is active.
+- Filters apply to both the bucketed cards and the "Filtered Out" section.
 
-## 2. Time-bucket dividers
+Implementation uses shadcn `Popover` + `Command` (same pattern as `CountySelect`) with checkbox items, so multi-select fits cleanly. No new dependencies.
 
-Replace the single grid with collapsible sections in this fixed order. Buckets are computed from `bid_due_at` evaluated in America/Los_Angeles (matches `formatBidDate`/`isBidClosed` already used in this file).
+## Sort
 
-1. **Overdue** — bid_due_at is in the past but not yet closed-out / still in list. Collapsed by default.
-2. **Due Today** — due before end of today (PT). Expanded.
-3. **This Week** — due after today and on/before end of Sunday (PT). Expanded.
-4. **Next Week** — due in the following Mon–Sun window. Expanded.
-5. **Later This Month** — due after Next Week's Sunday but on/before the last day of the current month. Collapsed.
-6. **Next Month** — due within the following calendar month. Collapsed.
-7. **Future** — anything beyond Next Month. Collapsed.
-8. **No Bid Date** — `bid_due_at` is null. Collapsed.
+- Remove the Sort `<Select>` and the `sortBy` state / `SORT_OPTIONS` / `compareCandidates` plumbing.
+- Inside each bucket, cards sort by `bid_due_at` ascending; nulls last; `created_at` DESC as tiebreaker.
 
-Week boundary = Sunday 23:59:59 PT (matches public-works convention of Mon–Fri bid days clustering within a week).
+## Time buckets
 
-Each section renders:
-- A header row with chevron, title, count badge, and a thin `<Separator />` line beneath.
-- Click anywhere on the header to collapse/expand (using existing `Collapsible` primitive).
-- Empty buckets are hidden entirely.
-- The "Filtered Out" collapsible at the bottom remains unchanged, but its cards are also bucketed by the same rules inside it (single flat grid, like today — to keep scope tight).
-
-Tabs (`All` / `Analyzed`) still gate which candidates are eligible; bucketing and sorting happen after that filter.
+Unchanged — same 8 buckets, same collapsible behavior, same default open/closed state.
 
 ---
 
@@ -54,41 +37,22 @@ Tabs (`All` / `Analyzed`) still gate which candidates are eligible; bucketing an
 
 File: `src/pages/Opportunities.tsx` only.
 
-1. Add `sortBy` state (`useState<SortKey>("due_asc")`).
-2. Add a `getBucket(bid_due_at: string | null): BucketKey` helper using `date-fns-tz` (`toZonedTime` for PT) — already a project dependency.
-3. Replace the current `visibleCards`/`filteredOutCards` `useMemo` with one that returns:
+1. Replace `sortBy` state with:
    ```ts
-   { buckets: Record<BucketKey, Candidate[]>, filteredOutCards: Candidate[] }
+   const [countyFilter, setCountyFilter] = useState<string[]>([]);
+   const [agencyFilter, setAgencyFilter] = useState<string[]>([]);
    ```
-   Apply `sortBy` comparator inside each bucket.
-4. Add a `<Select>` next to the filter tabs (same row, `justify-between` on the flex wrapper).
-5. Render buckets in fixed order via a `BUCKETS` array of `{ key, label, defaultOpen }`. Each section uses `Collapsible` + `Separator` + count badge. Persist open/closed state in a `Record<BucketKey, boolean>` in component state (not localStorage — scope tight).
-6. Reuse the existing `renderCard` function untouched.
-7. Empty state (no candidates at all) keeps current behavior.
-
-ASCII of the new layout:
-
-```text
-[ All (12) ] [ Analyzed (4) ]            Sort: [ Bid Due — Soonest ▾ ]
-────────────────────────────────────────────────────────────────────
-▾ Due Today (2)
-   ┌────────┐ ┌────────┐
-   │ card   │ │ card   │
-   └────────┘ └────────┘
-▾ This Week (3)
-   ...
-▸ Next Week (1)
-▸ Later This Month (4)
-▸ Next Month (0)   ← hidden
-▸ Future (2)
-▸ No Bid Date (1)
-
-▸ Filtered Out (5)
-```
+2. Derive options from `candidates` via `useMemo`:
+   - `countyOptions`: distinct trimmed `crawl_data?.county` values, sorted; flag for whether any candidate has none.
+   - `agencyOptions`: same shape for `agency`.
+3. Apply filters when computing `filtered` (the existing tab-filtered list) — chain a county+agency predicate after the analyzed-tab check. Use the sentinel string `"__none__"` to mean "(No county)" / "(No agency)".
+4. Replace `compareCandidates(sortBy)` calls with a fixed comparator: bid-due-asc, nulls-last, created_at DESC tiebreaker.
+5. Build a small inline `FacetMultiSelect` component (or two parallel JSX blocks) using `Popover` + `Command` + `CommandInput` + `CommandItem` with a check icon.
+6. Render "Clear filters" as a `Button variant="ghost" size="sm"` that only mounts when either array is non-empty.
+7. Delete the now-unused `SortKey`, `SORT_OPTIONS`, `compareCandidates`, and the `Select`/`SelectContent`/`SelectItem`/`SelectTrigger`/`SelectValue` imports if nothing else uses them.
 
 ## Out of scope
 
-- No new DB columns, migrations, or edge-function changes.
-- No persistence of sort/expand prefs across reloads.
-- County sort uses whatever `crawl_data.county` exists; we won't backfill missing counties.
-- The "Filtered Out" cards stay in a single grid (not bucketed) to limit visual complexity.
+- No persistence of filter selections across reloads.
+- No filter on portal type, analysis status, or other facets — the user asked for county and agency.
+- No change to bucket boundaries or the time-zone math.

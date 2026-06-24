@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { ExternalLink, RefreshCw, ChevronDown, Clock, Loader2, RotateCcw, Sparkles, Building2 } from "lucide-react";
+import { ExternalLink, RefreshCw, ChevronDown, Clock, Loader2, RotateCcw, Sparkles, Building2, Check, Filter } from "lucide-react";
 import { Layout } from "@/components/Layout";
 import {
   Tooltip,
@@ -16,13 +16,16 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ActiveScansPanel } from "@/components/ActiveScansPanel";
 import { formatProjectDateTime, formatInProjectTimezone } from "@/lib/timezoneUtils";
@@ -205,22 +208,9 @@ function isBidClosed(iso: string | null): boolean {
   return !isNaN(d.getTime()) && d.getTime() < Date.now();
 }
 
-type SortKey =
-  | "due_asc"
-  | "due_desc"
-  | "added_desc"
-  | "added_asc"
-  | "county_asc"
-  | "agency_asc";
+const NO_VALUE_SENTINEL = "__none__";
 
-const SORT_OPTIONS: { value: SortKey; label: string }[] = [
-  { value: "due_asc", label: "Bid Due — Soonest first" },
-  { value: "due_desc", label: "Bid Due — Latest first" },
-  { value: "added_desc", label: "Newest added" },
-  { value: "added_asc", label: "Oldest added" },
-  { value: "county_asc", label: "County (A–Z)" },
-  { value: "agency_asc", label: "Agency (A–Z)" },
-];
+
 
 type BucketKey =
   | "overdue"
@@ -298,49 +288,124 @@ function getCandidateCounty(c: { crawl_data: any | null }): string | null {
   return typeof v === "string" && v.trim() ? v.trim() : null;
 }
 
-function compareCandidates(a: Candidate, b: Candidate, sort: SortKey): number {
+function compareByDueAsc(a: Candidate, b: Candidate): number {
   const aDue = a.bid_due_at ? new Date(a.bid_due_at).getTime() : null;
   const bDue = b.bid_due_at ? new Date(b.bid_due_at).getTime() : null;
-  const nullsLast = (av: number | null, bv: number | null, dir: 1 | -1) => {
-    if (av === null && bv === null) return 0;
-    if (av === null) return 1;
-    if (bv === null) return -1;
-    return (av - bv) * dir;
-  };
-  switch (sort) {
-    case "due_asc":
-      return nullsLast(aDue, bDue, 1);
-    case "due_desc":
-      return nullsLast(aDue, bDue, -1);
-    case "added_desc":
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-    case "added_asc":
-      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-    case "county_asc": {
-      const ca = getCandidateCounty(a);
-      const cb = getCandidateCounty(b);
-      if (!ca && !cb) return 0;
-      if (!ca) return 1;
-      if (!cb) return -1;
-      return ca.localeCompare(cb);
-    }
-    case "agency_asc": {
-      const aa = a.agency ?? "";
-      const ba = b.agency ?? "";
-      if (!aa && !ba) return 0;
-      if (!aa) return 1;
-      if (!ba) return -1;
-      return aa.localeCompare(ba);
-    }
+  if (aDue === null && bDue === null) {
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
   }
+  if (aDue === null) return 1;
+  if (bDue === null) return -1;
+  if (aDue !== bDue) return aDue - bDue;
+  return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
 }
+
+interface FacetMultiSelectProps {
+  label: string;
+  icon?: React.ReactNode;
+  options: string[];
+  hasNone: boolean;
+  noneLabel: string;
+  value: string[];
+  onChange: (next: string[]) => void;
+  searchPlaceholder?: string;
+}
+
+const FacetMultiSelect = ({
+  label,
+  icon,
+  options,
+  hasNone,
+  noneLabel,
+  value,
+  onChange,
+  searchPlaceholder,
+}: FacetMultiSelectProps) => {
+  const [open, setOpen] = useState(false);
+  const toggle = (key: string) => {
+    if (value.includes(key)) onChange(value.filter((v) => v !== key));
+    else onChange([...value, key]);
+  };
+  const count = value.length;
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-9 gap-2"
+        >
+          {icon}
+          <span>{label}</span>
+          {count > 0 && (
+            <Badge variant="secondary" className="ml-1 px-1.5 py-0 h-5 text-xs">
+              {count}
+            </Badge>
+          )}
+          <ChevronDown className="h-3.5 w-3.5 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="p-0 w-[260px]" align="end">
+        <Command>
+          <CommandInput placeholder={searchPlaceholder ?? "Search..."} />
+          <CommandList>
+            <CommandEmpty>No matches.</CommandEmpty>
+            <CommandGroup>
+              {options.map((opt) => {
+                const selected = value.includes(opt);
+                return (
+                  <CommandItem
+                    key={opt}
+                    value={opt}
+                    onSelect={() => toggle(opt)}
+                    className="flex items-center gap-2"
+                  >
+                    <Check
+                      className={`h-4 w-4 ${selected ? "opacity-100" : "opacity-0"}`}
+                    />
+                    <span className="truncate">{opt}</span>
+                  </CommandItem>
+                );
+              })}
+              {hasNone && (
+                <CommandItem
+                  value={noneLabel}
+                  onSelect={() => toggle(NO_VALUE_SENTINEL)}
+                  className="flex items-center gap-2"
+                >
+                  <Check
+                    className={`h-4 w-4 ${value.includes(NO_VALUE_SENTINEL) ? "opacity-100" : "opacity-0"}`}
+                  />
+                  <span className="italic text-muted-foreground">{noneLabel}</span>
+                </CommandItem>
+              )}
+            </CommandGroup>
+            {count > 0 && (
+              <div className="border-t p-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full justify-center text-xs"
+                  onClick={() => onChange([])}
+                >
+                  Clear {label}
+                </Button>
+              </div>
+            )}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+};
 
 const Opportunities = () => {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState("all");
   const [scanLoading, setScanLoading] = useState(false);
-  const [sortBy, setSortBy] = useState<SortKey>("due_asc");
+  const [countyFilter, setCountyFilter] = useState<string[]>([]);
+  const [agencyFilter, setAgencyFilter] = useState<string[]>([]);
   const [openBuckets, setOpenBuckets] = useState<Record<BucketKey, boolean>>(
     () =>
       BUCKETS.reduce(
@@ -697,14 +762,53 @@ const Opportunities = () => {
     }
   };
 
-  // Filter by tab: "all" shows everything; "analyzed" shows any opportunity
-  // where analysis has been requested, is active, completed, or failed.
+  // Distinct county / agency options from loaded candidates.
+  const { countyOptions, agencyOptions, hasNoCounty, hasNoAgency } = useMemo(() => {
+    const counties = new Set<string>();
+    const agencies = new Set<string>();
+    let noCounty = false;
+    let noAgency = false;
+    for (const c of candidates) {
+      const cty = getCandidateCounty(c);
+      if (cty) counties.add(cty);
+      else noCounty = true;
+      const ag = (c.agency ?? "").trim();
+      if (ag) agencies.add(ag);
+      else noAgency = true;
+    }
+    return {
+      countyOptions: Array.from(counties).sort((a, b) => a.localeCompare(b)),
+      agencyOptions: Array.from(agencies).sort((a, b) => a.localeCompare(b)),
+      hasNoCounty: noCounty,
+      hasNoAgency: noAgency,
+    };
+  }, [candidates]);
+
+  const matchesFacets = useCallback(
+    (c: Candidate) => {
+      if (countyFilter.length > 0) {
+        const cty = getCandidateCounty(c);
+        const key = cty ?? NO_VALUE_SENTINEL;
+        if (!countyFilter.includes(key)) return false;
+      }
+      if (agencyFilter.length > 0) {
+        const ag = (c.agency ?? "").trim();
+        const key = ag || NO_VALUE_SENTINEL;
+        if (!agencyFilter.includes(key)) return false;
+      }
+      return true;
+    },
+    [countyFilter, agencyFilter],
+  );
+
+  // Filter by tab + county/agency facets.
   const filtered = useMemo(
     () =>
-      candidates.filter((c) =>
-        activeFilter === "analyzed" ? isAnalyzedCandidate(c) : true,
-      ),
-    [candidates, activeFilter],
+      candidates.filter((c) => {
+        if (activeFilter === "analyzed" && !isAnalyzedCandidate(c)) return false;
+        return matchesFacets(c);
+      }),
+    [candidates, activeFilter, matchesFacets],
   );
 
   // Split candidates into time-bucket sections, sort within each bucket,
@@ -730,17 +834,20 @@ const Opportunities = () => {
       empty[getBucket(c.bid_due_at)].push(c);
     }
     for (const key of Object.keys(empty) as BucketKey[]) {
-      empty[key].sort((a, b) => compareCandidates(a, b, sortBy));
+      empty[key].sort(compareByDueAsc);
     }
-    filteredOut.sort((a, b) => compareCandidates(a, b, sortBy));
+    filteredOut.sort(compareByDueAsc);
 
     return { buckets: empty, filteredOutCards: filteredOut };
-  }, [filtered, activeFilter, sortBy]);
+  }, [filtered, activeFilter]);
 
   const totalVisible = useMemo(
     () => (Object.values(buckets) as Candidate[][]).reduce((n, arr) => n + arr.length, 0),
     [buckets],
   );
+
+  const hasActiveFacetFilters = countyFilter.length > 0 || agencyFilter.length > 0;
+
 
   const renderCard = (candidate: Candidate, index: number) => {
     const acquisitionActive = candidate.document_acquisition_status === "queued" || candidate.document_acquisition_status === "acquiring";
@@ -941,20 +1048,40 @@ const Opportunities = () => {
                   );
                 })}
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">Sort:</span>
-                <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortKey)}>
-                  <SelectTrigger className="w-[220px] h-9">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SORT_OPTIONS.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="flex items-center gap-2 flex-wrap">
+                <FacetMultiSelect
+                  label="County"
+                  icon={<Filter className="h-3.5 w-3.5" />}
+                  options={countyOptions}
+                  hasNone={hasNoCounty}
+                  noneLabel="(No county)"
+                  value={countyFilter}
+                  onChange={setCountyFilter}
+                  searchPlaceholder="Search counties..."
+                />
+                <FacetMultiSelect
+                  label="Agency"
+                  icon={<Building2 className="h-3.5 w-3.5" />}
+                  options={agencyOptions}
+                  hasNone={hasNoAgency}
+                  noneLabel="(No agency)"
+                  value={agencyFilter}
+                  onChange={setAgencyFilter}
+                  searchPlaceholder="Search agencies..."
+                />
+                {hasActiveFacetFilters && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setCountyFilter([]);
+                      setAgencyFilter([]);
+                    }}
+                    className="text-sm text-muted-foreground hover:text-foreground"
+                  >
+                    Clear filters
+                  </Button>
+                )}
               </div>
             </div>
 
