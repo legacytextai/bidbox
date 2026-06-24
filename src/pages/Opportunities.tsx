@@ -160,7 +160,15 @@ const ACTIVE_ANALYSIS_STATUSES: AnalysisStatus[] = ["queued", "analyzing"];
 const POLLING_INTERVAL_MS = 7000;
 
 function formatBidDate(iso: string | null): string {
-  return formatProjectDateTime(iso, { fallback: "—" });
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "—";
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Los_Angeles",
+    month: "2-digit",
+    day: "2-digit",
+    year: "numeric",
+  }).format(d);
 }
 
 function formatEstimatedValue(value: number | null | undefined): string | null {
