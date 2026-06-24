@@ -163,12 +163,11 @@ function formatBidDate(iso: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "—";
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/Los_Angeles",
-    month: "2-digit",
-    day: "2-digit",
-    year: "numeric",
-  }).format(d);
+  return formatInProjectTimezone(
+    d.toISOString(),
+    "America/Los_Angeles",
+    "MM/dd/yyyy 'at' h:mm a zzz"
+  );
 }
 
 function formatEstimatedValue(value: number | null | undefined): string | null {
