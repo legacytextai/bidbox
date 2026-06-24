@@ -659,7 +659,7 @@ const Opportunities = () => {
         <Button
           size="sm"
           onClick={() => navigate(`/opportunities/${candidate.id}`)}
-          className="w-full bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90"
+          className="w-full bg-orange-500 text-white hover:bg-orange-600"
         >
           <Sparkles className="h-4 w-4 mr-2" />
           View Intelligence Report
