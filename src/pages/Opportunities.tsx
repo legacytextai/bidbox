@@ -919,26 +919,43 @@ const Opportunities = () => {
             )}
 
 
-            {/* Filter tabs */}
-            <div className="flex gap-2 mb-6 flex-wrap">
-              {FILTERS.map((f) => {
-                const count = f.value === "all"
-                  ? candidates.length
-                  : candidates.filter(isAnalyzedCandidate).length;
-                return (
-                  <button
-                    key={f.value}
-                    onClick={() => setActiveFilter(f.value)}
-                    className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                      activeFilter === f.value
-                        ? "bg-[hsl(var(--bidbox-blue))] text-white"
-                        : "bg-muted text-muted-foreground hover:bg-accent"
-                    }`}
-                  >
-                    {f.label} <span className="ml-1 opacity-70">{count}</span>
-                  </button>
-                );
-              })}
+            {/* Filter tabs + sort */}
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+              <div className="flex gap-2 flex-wrap">
+                {FILTERS.map((f) => {
+                  const count = f.value === "all"
+                    ? candidates.length
+                    : candidates.filter(isAnalyzedCandidate).length;
+                  return (
+                    <button
+                      key={f.value}
+                      onClick={() => setActiveFilter(f.value)}
+                      className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                        activeFilter === f.value
+                          ? "bg-[hsl(var(--bidbox-blue))] text-white"
+                          : "bg-muted text-muted-foreground hover:bg-accent"
+                      }`}
+                    >
+                      {f.label} <span className="ml-1 opacity-70">{count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">Sort:</span>
+                <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortKey)}>
+                  <SelectTrigger className="w-[220px] h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SORT_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             {/* Cards */}
@@ -963,11 +980,46 @@ const Opportunities = () => {
               </div>
             ) : (
               <>
-                {visibleCards.length > 0 && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {visibleCards.map(renderCard)}
+                {totalVisible === 0 && (
+                  <div className="text-sm text-muted-foreground py-12 text-center">
+                    No opportunities match this view.
                   </div>
                 )}
+                {BUCKETS.map((bucket) => {
+                  const items = buckets[bucket.key];
+                  if (!items || items.length === 0) return null;
+                  const open = openBuckets[bucket.key];
+                  return (
+                    <Collapsible
+                      key={bucket.key}
+                      open={open}
+                      onOpenChange={(v) =>
+                        setOpenBuckets((prev) => ({ ...prev, [bucket.key]: v }))
+                      }
+                      className="mb-8"
+                    >
+                      <CollapsibleTrigger className="flex items-center gap-2 w-full text-left group">
+                        <ChevronDown
+                          className={`h-4 w-4 text-muted-foreground transition-transform ${
+                            open ? "rotate-0" : "-rotate-90"
+                          }`}
+                        />
+                        <h2 className="text-base font-semibold text-foreground">
+                          {bucket.label}
+                        </h2>
+                        <span className="text-sm text-muted-foreground">
+                          ({items.length})
+                        </span>
+                        <Separator className="flex-1 ml-3" />
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="mt-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                          {items.map(renderCard)}
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  );
+                })}
 
                 {activeFilter === "all" && filteredOutCards.length > 0 && (
                   <Collapsible
