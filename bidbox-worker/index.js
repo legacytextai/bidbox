@@ -1,6 +1,7 @@
 require('dotenv').config();
 const { createClient } = require('@supabase/supabase-js');
 const { scrapePlanetBids } = require('./drivers/planetbids');
+const { scrapeCaltrans } = require('./drivers/caltrans');
 const { acquirePlanetBidsDocuments } = require('./drivers/planetbids_documents');
 const {
   queueDocumentProcessingForCandidate,
@@ -137,6 +138,107 @@ async function runPlanetBidsScan(task, supabase) {
       } else {
         newCount++;
         log(`[${source_name}] New candidate: ${candidate.raw_title}`);
+      }
+    } catch (e) {
+      log(`[${source_name}] Candidate insert threw: ${e.message}`);
+      errorMessages.push(`Candidate insert threw: ${e.message}`);
+      errors++;
+    }
+  }
+
+  await supabase
+    .from('opportunity_sources')
+    .update({ last_scanned_at: new Date().toISOString() })
+    .eq('id', source_id);
+
+  const errorSummary = errorMessages.length > 0
+    ? [...new Set(errorMessages)].slice(0, 5).join(' | ')
+    : null;
+
+  if (runLogId) {
+    try {
+      await supabase
+        .from('agent_run_logs')
+        .update({
+          status: errors > 0 ? 'complete_with_errors' : 'complete',
+          logs: logs.join('\n'),
+          completed_at: new Date().toISOString(),
+        })
+        .eq('id', runLogId);
+    } catch (e) {
+      console.warn(`[${ts()}] agent_run_logs update threw: ${e.message}`);
+    }
+  }
+
+  return { found, new: newCount, errors, errorSummary, logs };
+}
+
+async function runCaltransScan(task, supabase) {
+  const { source_id, source_name, listing_url, portal_type } = task.payload;
+  const logs = [];
+  const log = (msg) => {
+    const line = `[${ts()}] ${msg}`;
+    logs.push(line);
+    console.log(line);
+  };
+
+  let runLogId = null;
+  try {
+    const { data: runLog, error: runLogError } = await supabase
+      .from('agent_run_logs')
+      .insert({
+        task_id: task.id,
+        status: 'running',
+        logs: logs.join('\n'),
+      })
+      .select('id')
+      .single();
+    if (runLogError) {
+      console.warn(`[${ts()}] agent_run_logs insert failed: ${runLogError.message}`);
+    } else {
+      runLogId = runLog.id;
+    }
+  } catch (e) {
+    console.warn(`[${ts()}] agent_run_logs insert threw: ${e.message}`);
+  }
+
+  const {
+    candidates,
+    errors: driverErrors,
+    errorMessages = [],
+  } = await scrapeCaltrans(
+    { source_id, source_name, listing_url, portal_type },
+    log
+  );
+
+  let errors = driverErrors;
+  const found = candidates.length;
+  let newCount = 0;
+
+  for (const candidate of candidates) {
+    try {
+      const { error: insertError } = await supabase
+        .from('opportunity_candidates')
+        .insert({
+          source_id,
+          source_url: candidate.source_url,
+          portal_type,
+          raw_title: candidate.raw_title,
+          agency: source_name,
+          bid_due_at: candidate.bid_due_at,
+          crawl_data: candidate.crawl_data ?? null,
+        });
+
+      if (insertError) {
+        if (insertError.code === '23505') {
+          log(`[${source_name}] Already known: ${candidate.source_url}`);
+        } else {
+          log(`[${source_name}] Insert error: ${insertError.message}`);
+          errors++;
+        }
+      } else {
+        newCount++;
+        log(`[${source_name}] New Caltrans candidate: ${candidate.raw_title}`);
       }
     } catch (e) {
       log(`[${source_name}] Candidate insert threw: ${e.message}`);
@@ -513,7 +615,7 @@ async function claimNextTask() {
     .from('agent_tasks')
     .select('*')
     .eq('status', 'pending')
-    .in('task_type', ['planetbids_scan', 'project_analysis', 'document_processing', 'project_intelligence'])
+    .in('task_type', ['planetbids_scan', 'caltrans_scan', 'project_analysis', 'document_processing', 'project_intelligence'])
     .order('priority', { ascending: false })
     .order('created_at', { ascending: true })
     .limit(1)
@@ -549,6 +651,8 @@ async function processTask(task) {
     let result;
     if (task.task_type === 'planetbids_scan') {
       result = await runPlanetBidsScan(task, supabase);
+    } else if (task.task_type === 'caltrans_scan') {
+      result = await runCaltransScan(task, supabase);
     } else if (task.task_type === 'project_analysis') {
       result = await runProjectAnalysisAcquisition(task, supabase);
     } else if (task.task_type === 'document_processing') {
@@ -559,12 +663,14 @@ async function processTask(task) {
       throw new Error(`Unsupported task type: ${task.task_type}`);
     }
 
-    const taskResult = task.task_type === 'planetbids_scan'
+    const taskResult = ['planetbids_scan', 'caltrans_scan'].includes(task.task_type)
       ? {
           found: result.found,
           new: result.new,
           errors: result.errors,
           error_summary: result.errorSummary,
+          phase: task.task_type === 'caltrans_scan' ? 'caltrans_discovery_v1' : 'planetbids_discovery',
+          document_acquisition_supported: task.task_type !== 'caltrans_scan',
         }
       : task.task_type === 'document_processing'
       ? {
@@ -625,7 +731,7 @@ async function processTask(task) {
       })
       .eq('id', task.id);
 
-    if (task.task_type === 'planetbids_scan') {
+    if (['planetbids_scan', 'caltrans_scan'].includes(task.task_type)) {
       console.log(`[${ts()}] Task ${task.id} complete: found=${result.found} new=${result.new} errors=${result.errors}`);
       await maybeQualifyCandidates();
     } else if (task.task_type === 'document_processing') {

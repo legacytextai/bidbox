@@ -42,9 +42,11 @@ async function qualifyCandidates(authHeader: string) {
   }
 }
 
-async function queuePlanetBidsSources(
+async function queueWorkerScanSources(
   sources: OpportunitySource[],
   supabase: ReturnType<typeof createClient>,
+  taskType: "planetbids_scan" | "caltrans_scan",
+  label: string,
 ): Promise<SourceRunResult[]> {
   if (sources.length === 0) return [];
 
@@ -53,12 +55,12 @@ async function queuePlanetBidsSources(
   const { data: activeTasks, error: activeTaskError } = await supabase
     .from("agent_tasks")
     .select("id, status, created_at, payload")
-    .eq("task_type", "planetbids_scan")
+    .eq("task_type", taskType)
     .in("status", ["pending", "running", "retrying"])
     .order("created_at", { ascending: false });
 
   if (activeTaskError) {
-    console.error(`Failed to check active PlanetBids tasks: ${activeTaskError.message}`);
+    console.error(`Failed to check active ${label} tasks: ${activeTaskError.message}`);
     return sources.map((source): SourceRunResult => ({
       source_id: source.id,
       source_name: source.name,
@@ -91,7 +93,7 @@ async function queuePlanetBidsSources(
 
   if (sourcesToQueue.length > 0) {
     const rows = sourcesToQueue.map((source) => ({
-      task_type: "planetbids_scan",
+      task_type: taskType,
       status: "pending",
       priority: 0,
       payload: {
@@ -109,7 +111,7 @@ async function queuePlanetBidsSources(
 
     if (queueError) {
       insertErrorMessage = queueError.message;
-      console.error(`Failed to bulk queue PlanetBids tasks: ${queueError.message}`);
+      console.error(`Failed to bulk queue ${label} tasks: ${queueError.message}`);
     } else {
       for (const task of queuedTasks ?? []) {
         const sourceId = task.payload?.source_id;
@@ -341,11 +343,17 @@ serve(async (req) => {
 
     const allSources = sources as OpportunitySource[];
     const planetbidsSources = allSources.filter((source) => source.portal_type === "planetbids");
-    const otherSources = allSources.filter((source) => source.portal_type !== "planetbids");
+    const caltransSources = allSources.filter((source) => source.portal_type === "caltrans");
+    const otherSources = allSources.filter((source) => !["planetbids", "caltrans"].includes(source.portal_type));
 
     const runs: SourceRunResult[] = [];
     if (planetbidsSources.length > 0) {
-      const queuedRuns = await queuePlanetBidsSources(planetbidsSources, supabase);
+      const queuedRuns = await queueWorkerScanSources(planetbidsSources, supabase, "planetbids_scan", "PlanetBids");
+      runs.push(...queuedRuns);
+    }
+
+    if (caltransSources.length > 0) {
+      const queuedRuns = await queueWorkerScanSources(caltransSources, supabase, "caltrans_scan", "Caltrans");
       runs.push(...queuedRuns);
     }
 
