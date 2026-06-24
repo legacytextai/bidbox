@@ -793,12 +793,12 @@ export function OpportunityIntelligenceWorkspace({
             <Dialog open={overrideOpen} onOpenChange={setOverrideOpen}>
               <DialogTrigger asChild>
                 <Button variant="outline" size="sm" className="mt-3">
-                  Override Bid Due Date
+                  Edit Bid Due Date
                 </Button>
               </DialogTrigger>
               <DialogContent className="max-w-2xl">
                 <DialogHeader>
-                  <DialogTitle>Override Bid Due Date</DialogTitle>
+                  <DialogTitle>Edit Bid Due Date</DialogTitle>
                   <DialogDescription>
                     Select a cited deadline or set the date manually. The project, calendar, and Bid HQ will use the saved value.
                   </DialogDescription>
