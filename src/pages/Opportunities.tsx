@@ -17,7 +17,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { ActiveScansPanel } from "@/components/ActiveScansPanel";
-import { formatProjectDateTime } from "@/lib/timezoneUtils";
+import { formatProjectDateTime, formatInProjectTimezone } from "@/lib/timezoneUtils";
 import {
   OPPORTUNITY_FILTER_REASON_LABELS,
   classifyOpportunityTitle,
