@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { ExternalLink, RefreshCw, ChevronDown, Clock, Loader2, RotateCcw, Sparkles } from "lucide-react";
+import { ExternalLink, RefreshCw, ChevronDown, Clock, Loader2, RotateCcw, Sparkles, Building2 } from "lucide-react";
 import { Layout } from "@/components/Layout";
 import {
   Tooltip,
