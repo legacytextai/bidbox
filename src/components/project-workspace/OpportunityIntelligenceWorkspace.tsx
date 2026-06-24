@@ -543,6 +543,65 @@ export function OpportunityIntelligenceWorkspace({
     sourceOpportunity?.crawl_data,
   ]);
 
+  const bidDueConflictPanel = useMemo(() => {
+    const authoritativeSourceLabel = (() => {
+      if (project?.bid_due_override_source === "manual") return "Manual Override";
+      if (project?.bid_due_override_source === "deadline_candidate") {
+        return project?.bid_due_override_reason || "Selected Evidence";
+      }
+      if (sourceOpportunity?.crawl_data?.due_date_raw) return "Portal Metadata";
+      if (sourceOpportunity?.bid_due_at) return "Portal Metadata";
+      return "Project Metadata";
+    })();
+
+    const authoritativeDateId = dateIdentity(bidDueResolution.value);
+
+    const competing = bidDueFindings
+      .map((finding) => {
+        const findingCitations = citationsByFinding.get(finding.id) ?? [];
+        const firstCitation = findingCitations[0];
+        const label =
+          firstCitation?.citation_label ||
+          (firstCitation
+            ? `${firstCitation.source_document_name}${firstCitation.page_number ? `, p. ${firstCitation.page_number}` : ""}`
+            : finding.label);
+        const display = formatProjectDateTimeOrNull(finding.value_text) || finding.value_text || null;
+        const excerpt = firstCitation?.source_excerpt || null;
+        const findingDateId = dateIdentity(finding.value_text);
+        return {
+          id: finding.id,
+          label,
+          display,
+          excerpt,
+          matchesAuthoritative:
+            Boolean(authoritativeDateId && findingDateId && authoritativeDateId === findingDateId),
+        };
+      })
+      .filter((item) => Boolean(item.display));
+
+    const hasDifferingEvidence = competing.some((item) => !item.matchesAuthoritative);
+    const shouldRender = bidDueResolution.conflict || hasDifferingEvidence;
+
+    return {
+      shouldRender,
+      authoritativeSourceLabel,
+      authoritativeDisplay: bidDueResolution.display,
+      competing,
+    };
+  }, [
+    bidDueFindings,
+    bidDueResolution.conflict,
+    bidDueResolution.display,
+    bidDueResolution.value,
+    citationsByFinding,
+    project?.bid_due_override_reason,
+    project?.bid_due_override_source,
+    sourceOpportunity?.bid_due_at,
+    sourceOpportunity?.crawl_data?.due_date_raw,
+  ]);
+
+
+
   const snapshot = useMemo(() => {
     const overviewBullet = Array.isArray(intelligenceReport?.executive_summary?.bullets)
       ? intelligenceReport.executive_summary.bullets
