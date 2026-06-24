@@ -1139,6 +1139,83 @@ export function OpportunityIntelligenceWorkspace({
           <div className="rounded-md border border-border p-3">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">Job Walk</p>
             <p className="font-medium">{snapshot.jobWalk}</p>
+            {project.job_walk_override_at && (
+              <p className="mt-1 text-xs text-[hsl(var(--bidbox-blue))]">
+                Manual Override
+                {project.job_walk_override_reason ? `: ${project.job_walk_override_reason}` : ""}
+              </p>
+            )}
+            <Dialog open={jobWalkOverrideOpen} onOpenChange={(open) => (open ? openJobWalkOverride() : setJobWalkOverrideOpen(false))}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm" className="mt-3">
+                  Edit Job Walk Date
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>Edit Job Walk Date</DialogTitle>
+                  <DialogDescription>
+                    Update the job walk date when the agency changes the schedule. The project and calendar will use the saved value.
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                    <div>
+                      <Label htmlFor="job-walk-date">Date</Label>
+                      <Input
+                        id="job-walk-date"
+                        type="date"
+                        value={jobWalkDate}
+                        onChange={(event) => setJobWalkDate(event.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="job-walk-time">Time</Label>
+                      <Input
+                        id="job-walk-time"
+                        type="time"
+                        value={jobWalkTime}
+                        onChange={(event) => setJobWalkTime(event.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="job-walk-timezone">Timezone</Label>
+                      <select
+                        id="job-walk-timezone"
+                        value={jobWalkTimezone}
+                        onChange={(event) => setJobWalkTimezone(event.target.value)}
+                        className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                      >
+                        {TIMEZONE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <Label htmlFor="job-walk-reason">Reason (optional)</Label>
+                    <Textarea
+                      id="job-walk-reason"
+                      value={jobWalkReason}
+                      onChange={(event) => setJobWalkReason(event.target.value)}
+                      placeholder="Example: Agency updated the mandatory job walk date."
+                    />
+                  </div>
+                </div>
+
+                <DialogFooter>
+                  <Button variant="ghost" onClick={() => setJobWalkOverrideOpen(false)} disabled={savingJobWalkOverride}>
+                    Cancel
+                  </Button>
+                  <Button onClick={saveJobWalkOverride} disabled={savingJobWalkOverride}>
+                    {savingJobWalkOverride ? "Saving..." : "Save Job Walk Date"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </div>
           <div className="rounded-md border border-border p-3">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">Report</p>
