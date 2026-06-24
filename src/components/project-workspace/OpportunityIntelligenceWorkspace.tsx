@@ -1260,7 +1260,7 @@ export function OpportunityIntelligenceWorkspace({
           </div>
           <div className="rounded-md border border-border p-3">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">Bid Due In</p>
-            <p className={`font-bold text-4xl ${isExpired ? "text-destructive" : "text-primary"}`}>
+            <p className={`font-bold text-4xl break-all leading-tight ${isExpired ? "text-destructive" : "text-primary"}`}>
               {countdown || "—"}
             </p>
           </div>
