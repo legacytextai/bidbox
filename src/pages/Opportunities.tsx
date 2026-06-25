@@ -907,24 +907,18 @@ const Opportunities = () => {
 
 
       {/* Badges row */}
-      {(candidate.portal_type || candidate.status === "converted") && (
+      {candidate.portal_type && (
         <div className="flex items-center gap-2 flex-wrap">
-          {candidate.portal_type && (
-            <span
-              className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${
-                PORTAL_STYLES[candidate.portal_type] ?? "bg-gray-500/10 text-gray-600"
-              }`}
-            >
-              {candidate.portal_type}
-            </span>
-          )}
-          {candidate.status === "converted" && (
-            <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600">
-              Converted
-            </span>
-          )}
+          <span
+            className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${
+              PORTAL_STYLES[candidate.portal_type] ?? "bg-gray-500/10 text-gray-600"
+            }`}
+          >
+            {candidate.portal_type}
+          </span>
         </div>
       )}
+
 
       {/* Meta */}
       <div className="text-sm text-muted-foreground space-y-0.5">
