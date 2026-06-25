@@ -646,7 +646,7 @@ const Opportunities = () => {
         { event: "INSERT", schema: "public", table: "agent_tasks" },
         (payload) => {
           const row: any = payload.new;
-          if (row?.task_type !== "planetbids_scan") return;
+          if (!(typeof row?.task_type === "string" && row.task_type.endsWith("_scan"))) return;
           const createdMs = new Date(row.created_at).getTime();
           if (createdMs < startedMs - 1000) return;
           setActiveScanTaskIds((prev) => (prev.includes(row.id) ? prev : [...prev, row.id]));
