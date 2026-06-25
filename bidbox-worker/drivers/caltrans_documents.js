@@ -6,6 +6,8 @@ const CALTRANS_ORIGIN = 'https://ppmoe.dot.ca.gov';
 const CALTRANS_LOGIN_URL = `${CALTRANS_ORIGIN}/cc?id=csm_login`;
 const CALTRANS_NDA_URL = `${CALTRANS_ORIGIN}/cc?id=cc_nda`;
 const BROWSER_USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+const DEFAULT_DOWNLOADS_PER_SESSION = 1;
+const MAX_DOCUMENT_DOWNLOAD_ATTEMPTS = 3;
 
 const SELECTORS = {
   bidDocumentsPanel: '#bidFiles',
@@ -140,12 +142,53 @@ function documentClassForCategory(category) {
   return 'source_document';
 }
 
+function downloadsPerSession() {
+  const raw = Number(process.env.CALTRANS_DOWNLOADS_PER_SESSION);
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : DEFAULT_DOWNLOADS_PER_SESSION;
+}
+
+function isCrashLikeError(error) {
+  const message = String(error?.message ?? error ?? '').toLowerCase();
+  return (
+    message.includes('target crashed') ||
+    message.includes('target closed') ||
+    message.includes('browser has been closed') ||
+    message.includes('page has been closed') ||
+    message.includes('execution context was destroyed') ||
+    message.includes('crash')
+  );
+}
+
 async function launchBrowser() {
   const executablePath = process.env.CALTRANS_CHROME_EXECUTABLE || process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
   if (executablePath) {
     return chromium.launch({ headless: true, executablePath });
   }
   return chromium.launch({ headless: true });
+}
+
+async function closeSession(session) {
+  if (!session) return;
+  await session.page?.close?.().catch(() => {});
+  await session.browser?.close?.().catch(() => {});
+}
+
+async function openCaltransSession(detailUrl, log) {
+  const browser = await launchBrowser();
+  const page = await browser.newPage({
+    viewport: { width: 1440, height: 1600 },
+    acceptDownloads: true,
+  });
+  await page.setExtraHTTPHeaders({ 'User-Agent': BROWSER_USER_AGENT });
+  await page.goto(detailUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await waitForDetailPage(page);
+  await expandBidDocuments(page, log);
+  return { browser, page, downloads: 0 };
+}
+
+async function assertPageHealthy(page) {
+  if (!page || page.isClosed()) return false;
+  return page.evaluate(() => true).then(() => true).catch(() => false);
 }
 
 async function waitForDetailPage(page) {
@@ -591,10 +634,8 @@ async function acquireCaltransDocuments({ supabase, task, candidate, log }) {
   const detailUrl = buildDetailUrl(candidate);
   if (!detailUrl) throw new Error('Caltrans candidate is missing a usable source URL');
 
-  let browser;
-  let page;
-  let loginAttempted = false;
-  let ndaAttempted = false;
+  let session = null;
+  const perSessionLimit = downloadsPerSession();
 
   const acquiredDocuments = [];
   let acquired = 0;
@@ -602,29 +643,43 @@ async function acquireCaltransDocuments({ supabase, task, candidate, log }) {
   let failed = 0;
   const errors = [];
 
+  const resetSession = async (reason) => {
+    if (reason) log(`Refreshing Caltrans browser session: ${reason}`);
+    await closeSession(session);
+    session = await openCaltransSession(detailUrl, log);
+    return session;
+  };
+
+  const ensureSession = async (reason = null) => {
+    if (!session || !(await assertPageHealthy(session.page))) {
+      return resetSession(reason ?? 'browser/page unavailable');
+    }
+    if (session.downloads >= perSessionLimit) {
+      return resetSession(`download session limit reached (${perSessionLimit})`);
+    }
+    return session;
+  };
+
   try {
     log(`Opening Caltrans advertisement detail page: ${detailUrl}`);
-    browser = await launchBrowser();
-    page = await browser.newPage({
-      viewport: { width: 1440, height: 1600 },
-      acceptDownloads: true,
-    });
-    await page.setExtraHTTPHeaders({ 'User-Agent': BROWSER_USER_AGENT });
-    await page.goto(detailUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    await waitForDetailPage(page);
+    session = await openCaltransSession(detailUrl, log);
 
-    const bodyText = await page.locator('body').innerText({ timeout: 10000 });
+    const bodyText = await session.page.locator('body').innerText({ timeout: 10000 });
     const metadata = parseCaltransMetadataFromText(bodyText, candidate);
     await mergeCandidateMetadata(supabase, candidate, metadata, log);
 
-    const manifestDocs = await discoverDocuments(page, candidate, log);
+    const manifestDocs = await discoverDocuments(session.page, candidate, log);
 
     for (const doc of manifestDocs) {
       let attempts = 0;
-      while (attempts < 3) {
+      let completed = false;
+      let loginAttemptedForDoc = false;
+      let ndaAttemptedForDoc = false;
+      while (attempts < MAX_DOCUMENT_DOWNLOAD_ATTEMPTS && !completed) {
         attempts++;
         try {
-          const download = await downloadSelectedFile(page, doc, log);
+          const current = await ensureSession(attempts > 1 ? `retrying ${doc.file_name}` : null);
+          const download = await downloadSelectedFile(current.page, doc, log);
           const stored = await storeDownloadedDocument({
             supabase,
             taskId: task.id,
@@ -636,36 +691,53 @@ async function acquireCaltransDocuments({ supabase, task, candidate, log }) {
           acquiredDocuments.push(stored);
           if (stored.status === 'acquired') acquired++;
           if (stored.status === 'skipped') skipped++;
-          break;
+          current.downloads++;
+          completed = true;
         } catch (e) {
-          if (e.code === 'CALTRANS_LOGIN_REQUIRED' && !loginAttempted) {
-            loginAttempted = true;
+          if (e.code === 'CALTRANS_LOGIN_REQUIRED' && !loginAttemptedForDoc) {
+            loginAttemptedForDoc = true;
             log('Caltrans login required for document download');
             try {
-              await loginToCaltrans(page, log);
-              await page.goto(detailUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
-              await waitForDetailPage(page);
-              await expandBidDocuments(page, log);
+              const current = await ensureSession('login required');
+              await loginToCaltrans(current.page, log);
+              await current.page.goto(detailUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+              await waitForDetailPage(current.page);
+              await expandBidDocuments(current.page, log);
               continue;
             } catch (loginError) {
               e = loginError;
             }
           }
 
-          if (e.code === 'CALTRANS_NDA_REQUIRED' && !ndaAttempted) {
-            ndaAttempted = true;
+          if (e.code === 'CALTRANS_NDA_REQUIRED' && !ndaAttemptedForDoc) {
+            ndaAttemptedForDoc = true;
             try {
-              await acceptCaltransNda(page, detailUrl, log);
+              const current = await ensureSession('NDA required');
+              await acceptCaltransNda(current.page, detailUrl, log);
               continue;
             } catch (ndaError) {
               e = ndaError;
             }
           }
 
+          if (isCrashLikeError(e) && attempts < MAX_DOCUMENT_DOWNLOAD_ATTEMPTS) {
+            log(`Caltrans browser/page crashed while downloading ${doc.file_name}; retrying with a fresh session (attempt ${attempts + 1}/${MAX_DOCUMENT_DOWNLOAD_ATTEMPTS})`);
+            await resetSession(`recovering from ${e.message}`);
+            continue;
+          }
+
+          if (attempts < MAX_DOCUMENT_DOWNLOAD_ATTEMPTS) {
+            log(`Caltrans document attempt failed for ${doc.file_name}: ${e.message}; retrying (attempt ${attempts + 1}/${MAX_DOCUMENT_DOWNLOAD_ATTEMPTS})`);
+            if (isCrashLikeError(e)) {
+              await resetSession(`recovering from ${e.message}`);
+            }
+            continue;
+          }
+
           failed++;
           const message = `${doc.file_name}: ${e.message}`;
           errors.push(message);
-          log(`Caltrans document failed: ${message}`);
+          log(`Caltrans document failed after ${attempts} attempts: ${message}`);
           const { record } = await upsertDocumentRecord(supabase, task.id, candidate.id, doc);
           await supabase
             .from('opportunity_documents')
@@ -674,7 +746,6 @@ async function acquireCaltransDocuments({ supabase, task, candidate, log }) {
               acquisition_error: e.message,
             })
             .eq('id', record.id);
-          break;
         }
       }
     }
@@ -687,12 +758,14 @@ async function acquireCaltransDocuments({ supabase, task, candidate, log }) {
       failed,
       acquiredDocuments,
       stats: { acquired, skipped, failed },
+      warningSummary: failed > 0 && (acquired + skipped) > 0
+        ? `Some source documents could not be acquired. BidBox successfully acquired ${acquired + skipped} of ${manifestDocs.length} available documents.`
+        : null,
       errorSummary: errors.length > 0 ? errors.slice(0, 5).join(' | ') : null,
+      errors,
     };
   } finally {
-    if (browser) {
-      await browser.close().catch(() => {});
-    }
+    await closeSession(session);
   }
 }
 
