@@ -11,11 +11,13 @@ Opportunity Intelligence development is tracked separately from this broad histo
 
 - Product strategy source of truth: `docs/initiatives/opportunity-intelligence-mvp.md`
 - Practical implementation plan: `docs/initiatives/opportunity-intelligence-implementation-plan.md`
+- F5 Opportunity & Project Workspace source of truth: `docs/initiatives/f5-opportunity-project-workspace.md`
+- F5 Opportunity & Project Workspace engineering task list: `docs/initiatives/f5-opportunity-project-workspace-task-list.md`
 - Agency Access Management design decision and future roadmap: `docs/initiatives/agency-access-management.md`
 - Execution roadmap for agent, discovery, Project Intelligence, qualification, and pursuit initiatives: `docs/agent-architecture-task-list.md`
 - Agency Access Management is tracked in the Master Plan and Agent Architecture roadmap as part of the Opportunity Intelligence architecture, not duplicated here.
 
-Keep this `tasks.md` file focused on broad product implementation history and app-wide backlog. Do not duplicate the Opportunity Intelligence roadmap here.
+Keep this `tasks.md` file focused on broad product implementation history and app-wide backlog. Do not duplicate the Opportunity Intelligence or F5 Opportunity & Project Workspace roadmaps here.
 
 ---
 

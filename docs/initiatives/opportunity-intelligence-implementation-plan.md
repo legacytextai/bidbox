@@ -4,6 +4,7 @@ Status: Proposed
 Date: June 2026  
 Strategy source of truth: `docs/initiatives/opportunity-intelligence-mvp.md`  
 Execution roadmap: `docs/agent-architecture-task-list.md`
+Workspace evolution: `docs/initiatives/f5-opportunity-project-workspace.md`
 
 ## Executive Summary
 
@@ -23,6 +24,8 @@ The product should first give contractors broad visibility into public works opp
 This plan intentionally avoids building a full autonomous bidding platform. The MVP should prove that 1-5 beta contractors can use BidBox to find relevant public works opportunities, analyze selected jobs faster, and decide which ones are worth adding to their calendar.
 
 Current implementation focus: F4 Project Intelligence is complete. Before resuming F5 Qualification, Phase G will harden the transition from Intelligence Report to active pursuit by creating a Project Workspace layer that reuses F4 intelligence and avoids legacy One Link crawl behavior.
+
+F5 — Opportunity & Project Workspace builds on this validated pipeline. It is the forward plan for removing the manual `Analyze Project` interaction from the normal discovery experience, generating baseline intelligence automatically, elevating bid line items, and separating Opportunity Discovery from Project Execution.
 
 ## Current State
 

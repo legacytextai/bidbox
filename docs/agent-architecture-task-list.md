@@ -6,6 +6,8 @@
 
 See `docs/initiatives/opportunity-intelligence-mvp.md`.
 
+Forward workspace direction is captured in `docs/initiatives/f5-opportunity-project-workspace.md`, with detailed execution tasks in `docs/initiatives/f5-opportunity-project-workspace-task-list.md`.
+
 The MVP workflow is now:
 
 ```text
@@ -25,6 +27,8 @@ Opportunity Discovery
 ```
 
 Completed history below is preserved. Future phases are reorganized around the new MVP strategy: discovery stays broad, the estimator chooses which opportunities to analyze, Project Intelligence reads the bid package, and qualification happens after document-backed analysis.
+
+F5 — Opportunity & Project Workspace is the next product architecture layer on top of this pipeline. It shifts the user-facing experience from manual `Analyze Project` toward automatic baseline intelligence, a lightweight Opportunity Overview, first-class bid line items, and a tabbed Project Workspace where each agent capability has a clear home.
 
 ---
 

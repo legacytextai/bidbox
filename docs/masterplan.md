@@ -73,6 +73,7 @@ See `docs/gc-control-center-prd.md` for full strategic PRD.
 - **Engagement Tracking**: Views, downloads, submissions per subcontractor
 - **Coverage Intelligence**: Visual indicators showing which trades have coverage
 - **Agency Access Management**: Manage procurement portal registration, agency access status, document-access blockers, and registration memory for public works opportunity intelligence
+- **F5 — Opportunity & Project Workspace**: Separate Opportunity Discovery from Project Execution, replace manual baseline analysis with automatically prepared project overviews, treat bid line items as first-class data, and organize agent capabilities into dedicated workspace tabs. See `docs/initiatives/f5-opportunity-project-workspace.md`.
 
 ---
 
@@ -694,6 +695,44 @@ Architecture direction:
 - Project Workspace becomes a lightweight pursuit-management shell built on top of F4 intelligence.
 
 F5 Qualification Agent remains the next intelligence layer after the workspace bridge is stable. F5 should determine whether the contractor should pursue an analyzed opportunity by evaluating licensing, bonding, insurance, experience, labor compliance, self-perform capability, strategic fit, and risk profile against the Project Intelligence findings and contractor profile.
+
+---
+
+### F5 — Opportunity & Project Workspace
+
+> **Strategic Initiative: Opportunity Discovery → Project Execution**
+>
+> **Status**: Planned
+>
+> Detailed initiative document: `docs/initiatives/f5-opportunity-project-workspace.md`
+> Detailed engineering task list: `docs/initiatives/f5-opportunity-project-workspace-task-list.md`
+
+F5 — Opportunity & Project Workspace is the forward product experience built on top of the validated Opportunity Intelligence pipeline.
+
+The central product shift:
+
+```text
+AI generates reports for projects.
+```
+
+becomes:
+
+```text
+AI quietly prepares workspaces that help users make decisions.
+```
+
+The future workflow separates:
+
+- **Opportunity Discovery**: scan sources, automatically acquire/prepare baseline intelligence, show simple opportunity cards, and open a lightweight Opportunity Overview.
+- **Project Execution**: after `Add to Calendar`, activate the full Project Workspace for bid readiness, documents, intelligence, addenda, activity, subcontractors, estimate, and proposal workflows.
+
+Key architecture decisions:
+
+- Baseline intelligence should be automatic during ingestion, not gated behind a manual `Analyze Project` action.
+- Opportunity pages should use `Overview`, `Documents`, and `Intelligence` tabs.
+- Project Workspace pages should use operational tabs owned by the relevant BidBox layer or future agent.
+- Bid line items should become first-class project data, stored in a normalized `opportunity_bid_items` model when implemented.
+- The Intelligence tab should preserve the full F4 report and citations, while Overview stays concise and scannable.
 
 ---
 

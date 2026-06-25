@@ -2,6 +2,7 @@
 
 Status: Proposed  
 Date: June 2026
+Workspace evolution: `docs/initiatives/f5-opportunity-project-workspace.md`
 
 ## Context
 
@@ -257,3 +258,18 @@ F4 Project Intelligence is complete. The next major development priority is Phas
 Opportunity Discovery -> Project Intelligence -> Qualification -> Add to Calendar -> Project Workspace is the core MVP loop.
 
 Everything else is secondary.
+
+## Forward UX Direction
+
+The next product architecture layer is documented in `docs/initiatives/f5-opportunity-project-workspace.md`.
+
+That initiative keeps the validated Opportunity Intelligence pipeline but changes the user-facing workflow over time:
+
+- Baseline intelligence should be prepared automatically during ingestion.
+- Users should no longer need to click `Analyze Project` to see a useful first project overview.
+- Opportunity Discovery and Project Execution should be clearly separated.
+- Opportunity pages should use `Overview`, `Documents`, and `Intelligence` tabs.
+- Project Workspaces should use operational tabs such as `Overview`, `Bid Readiness`, `Documents`, `Intelligence`, `Addenda`, `Activity`, `Subcontractors`, `Estimate`, and `Proposal`.
+- Bid line items should become first-class project data rather than being buried in narrative intelligence.
+
+The MVP document remains the historical strategy source for the F1-F4 validation loop. F5 — Opportunity & Project Workspace is the forward product experience built on top of that foundation.
