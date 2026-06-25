@@ -677,7 +677,7 @@ const Opportunities = () => {
         const { data: queuedTasks } = await supabase
           .from("agent_tasks")
           .select("id")
-          .eq("task_type", "planetbids_scan")
+          .like("task_type", "%_scan")
           .gte("created_at", startedAt);
         if (queuedTasks && queuedTasks.length > 0) {
           setActiveScanTaskIds((prev) => {
