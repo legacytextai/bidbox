@@ -69,6 +69,7 @@ function parseCaltransCard(card) {
   const bidDueRaw = firstMatch(text, /Bids Open\s+(\d{4}-\d{2}-\d{2})(?:\s+\([^)]+\))?/);
   const bidDueLabel = firstMatch(text, /(Bids Open\s+\d{4}-\d{2}-\d{2}(?:\s+\([^)]+\))?)/);
   const estimateRaw = firstMatch(text, /Estimate:\s*([$0-9,.]+)/);
+  const estimateValue = parseMoney(estimateRaw);
   const location = firstMatch(text, /(^In\s+[^\n]+(?:\n(?!The Contractor|Subs\/Suppliers|Planholders|Bid Book|List of Bid Items|\[\d+\]|Download Files)[^\n]+)*)/m);
   const licenseRequirements = firstMatch(text, /(The Contractor must have[^\n]+)/);
   const contractDuration = firstMatch(text, /(\d[\d,]*\s+Working Days)/);
@@ -96,7 +97,9 @@ function parseCaltransCard(card) {
       bid_due_time_available: false,
       bid_due_time_note: bidDueRaw ? 'Caltrans advertised listing exposes bid opening date but not time in the list card.' : null,
       engineer_estimate_raw: estimateRaw,
-      engineer_estimate: parseMoney(estimateRaw),
+      engineer_estimate: estimateValue,
+      estimated_value_raw: estimateRaw,
+      estimated_value: estimateValue,
       county: parseCounty(location, routeLine),
       location,
       license_requirements: licenseRequirements,

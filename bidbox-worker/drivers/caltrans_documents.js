@@ -174,7 +174,9 @@ function parseCaltransMetadataFromText(text, candidate) {
     ?? null;
   const estimateRaw = firstMatch(body, /Estimate:\s*([$0-9,.]+)/i)
     ?? candidate.crawl_data?.engineer_estimate_raw
+    ?? candidate.crawl_data?.estimated_value_raw
     ?? null;
+  const estimateValue = parseMoney(estimateRaw);
   const location = firstMatch(body, /(^In\s+[^\n]+(?:\n(?!The Contractor|Subs\/Suppliers|Planholders|Bid Book|Expand All|Bid Documents|Post Bid Documents|Bid items|Bidder Inquiries|Subcontractor Opt-Ins|Prime:|Back to Top)[^\n]+)*)/im)
     ?? candidate.crawl_data?.location
     ?? null;
@@ -200,7 +202,9 @@ function parseCaltransMetadataFromText(text, candidate) {
     date_advertised_raw: dateAdvertisedRaw,
     bid_due_raw: bidDueRaw,
     engineer_estimate_raw: estimateRaw,
-    engineer_estimate: parseMoney(estimateRaw),
+    engineer_estimate: estimateValue,
+    estimated_value_raw: estimateRaw,
+    estimated_value: estimateValue,
     working_days: workingDays,
     contract_duration: workingDays,
     license_requirements: licenseRequirements,
