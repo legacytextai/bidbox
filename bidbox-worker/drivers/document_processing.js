@@ -17,6 +17,10 @@ function inferFileType(fileName, detectedMimeType) {
   return null;
 }
 
+function isF2ExtractedArchiveParent(document) {
+  return Boolean(document?.manifest_data?.archive_extraction);
+}
+
 function detectMimeType(fileName, bytes) {
   const lower = String(fileName ?? '').toLowerCase();
   if (bytes?.subarray?.(0, 4)?.toString?.() === '%PDF' || lower.endsWith('.pdf')) {
@@ -319,6 +323,34 @@ async function downloadStoredDocument(supabase, document) {
 
 async function processDocument({ supabase, document, sourceOrder, retryFailed, log }) {
   const startedAt = new Date().toISOString();
+  if (isF2ExtractedArchiveParent(document)) {
+    const extraction = document.manifest_data.archive_extraction;
+    const status = extraction?.status === 'processed' ? 'processed' : 'partial';
+    await supabase
+      .from('opportunity_documents')
+      .update({
+        processing_status: status,
+        processing_completed_at: new Date().toISOString(),
+        processing_error: status === 'partial'
+          ? (document.processing_error ?? 'Archive was partially extracted during acquisition')
+          : null,
+        detected_file_type: 'zip',
+        detected_mime_type: 'application/zip',
+        text_extraction_method: null,
+        text_page_count: null,
+        text_char_count: 0,
+        has_text: false,
+        needs_ocr: false,
+        processing_metadata: {
+          reason: 'archive_extracted_in_f2',
+          stats: extraction?.stats ?? null,
+        },
+      })
+      .eq('id', document.id);
+    log(`Skipping F3 text extraction for archive parent already extracted in F2: ${document.file_name}`);
+    return { status: 'skipped' };
+  }
+
   const skippedStatuses = retryFailed
     ? ['processing']
     : ['processing', 'processed'];

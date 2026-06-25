@@ -1,4 +1,8 @@
 const { chromium } = require('playwright');
+const {
+  extractSupportedArchiveEntries,
+  isArchiveFile,
+} = require('./archive_extraction');
 
 const DOCUMENT_BUCKET = 'opportunity-documents';
 const API_HOST = 'api-external.prod.planetbids.com';
@@ -41,6 +45,22 @@ function extensionToContentType(fileName) {
 function inferFileType(fileName) {
   const m = String(fileName ?? '').toLowerCase().match(/\.([a-z0-9]+)$/);
   return m ? m[1] : null;
+}
+
+function archiveParentProcessingStatus(extraction) {
+  if (!extraction) return null;
+  if (extraction.stats.rejected) return 'partial';
+  if (extraction.stats.failed > 0) return 'partial';
+  if (extraction.stats.extracted === 0) return 'partial';
+  return 'processed';
+}
+
+function archiveParentProcessingError(extraction) {
+  if (!extraction) return null;
+  if (extraction.stats.rejected) return `Archive skipped: ${extraction.stats.reason}`;
+  if (extraction.stats.extracted === 0) return 'Archive contained no supported files for extraction';
+  if (extraction.stats.failed > 0) return `${extraction.stats.failed} archive file(s) failed to extract`;
+  return null;
 }
 
 function parseMoneyToken(token) {
@@ -1102,6 +1122,26 @@ async function downloadAndStoreDocument(supabase, taskId, candidateId, doc, log)
       throw new Error('Download returned an empty file');
     }
 
+    let archiveExtraction = null;
+    let extractedDocuments = [];
+    if (isArchiveFile(doc.file_name)) {
+      log(`Extracting archive contents: ${doc.file_name}`);
+      archiveExtraction = await extractSupportedArchiveEntries(bytes, log);
+      log(`Archive extraction summary for ${doc.file_name}: entries=${archiveExtraction.stats.total_entries} extracted=${archiveExtraction.stats.extracted} skipped=${archiveExtraction.stats.skipped} failed=${archiveExtraction.stats.failed}`);
+      extractedDocuments = await storeExtractedArchiveDocuments({
+        supabase,
+        taskId,
+        candidateId,
+        parentDoc: {
+          ...doc,
+          id: record.id,
+          document_source_order: doc.document_source_order,
+        },
+        entries: archiveExtraction.entries,
+        log,
+      });
+    }
+
     const { error: uploadError } = await supabase.storage
       .from(DOCUMENT_BUCKET)
       .upload(storagePath, bytes, {
@@ -1111,6 +1151,21 @@ async function downloadAndStoreDocument(supabase, taskId, candidateId, doc, log)
 
     if (uploadError) throw new Error(`Storage upload failed: ${uploadError.message}`);
 
+    const mergedManifestData = {
+      ...(doc.manifest_data ?? {}),
+      ...(archiveExtraction
+        ? {
+            archive_extraction: {
+              status: archiveParentProcessingStatus(archiveExtraction),
+              stats: archiveExtraction.stats,
+              skipped: archiveExtraction.skipped.slice(0, 50),
+              failures: archiveExtraction.failures.slice(0, 25),
+              extracted_document_ids: extractedDocuments.map((item) => item.id).filter(Boolean),
+            },
+          }
+        : {}),
+    };
+
     await supabase
       .from('opportunity_documents')
       .update({
@@ -1119,11 +1174,37 @@ async function downloadAndStoreDocument(supabase, taskId, candidateId, doc, log)
         storage_bucket: DOCUMENT_BUCKET,
         storage_path: storagePath,
         file_size: bytes.byteLength,
+        manifest_data: mergedManifestData,
+        ...(archiveExtraction
+          ? {
+              processing_status: archiveParentProcessingStatus(archiveExtraction),
+              processing_error: archiveParentProcessingError(archiveExtraction),
+              processing_completed_at: new Date().toISOString(),
+              processing_metadata: {
+                reason: 'archive_extracted_in_f2',
+                stats: archiveExtraction.stats,
+              },
+              detected_file_type: 'zip',
+              detected_mime_type: extensionToContentType(doc.file_name),
+              has_text: false,
+              needs_ocr: false,
+            }
+          : {}),
       })
       .eq('id', record.id);
 
     log(`Stored document: ${doc.file_name} (${bytes.byteLength} bytes)`);
-    return { status: 'acquired', id: record.id, size: bytes.byteLength };
+    return {
+      status: 'acquired',
+      id: record.id,
+      size: bytes.byteLength,
+      archiveExtraction: archiveExtraction
+        ? {
+            stats: archiveExtraction.stats,
+            extractedDocuments,
+          }
+        : null,
+    };
   } catch (e) {
     await supabase
       .from('opportunity_documents')
@@ -1134,6 +1215,88 @@ async function downloadAndStoreDocument(supabase, taskId, candidateId, doc, log)
       .eq('id', record.id);
     throw e;
   }
+}
+
+async function storeExtractedArchiveDocuments({ supabase, taskId, candidateId, parentDoc, entries, log }) {
+  const stored = [];
+  let index = 0;
+  for (const entry of entries) {
+    index++;
+    const fileName = sanitizeFileName(entry.file_name);
+    let record = null;
+    const childDoc = {
+      file_name: fileName,
+      file_type: inferFileType(fileName),
+      file_size: entry.file_size,
+      source_url: `${parentDoc.source_url || `archive://${parentDoc.id}`}#archive-entry=${encodeURIComponent(entry.entry_path)}`,
+      document_source_order: (parentDoc.document_source_order ?? 0) * 1000 + index,
+      manifest_data: {
+        ...(parentDoc.manifest_data ?? {}),
+        source: 'archive_extraction',
+        archive_parent_document_id: parentDoc.id,
+        archive_parent_file_name: parentDoc.file_name,
+        archive_entry_path: entry.entry_path,
+        archive_entry_compressed_size: entry.compressed_size,
+        archive_entry_uncompressed_size: entry.uncompressed_size,
+        acquisition_method: 'f2_archive_extraction',
+      },
+    };
+
+    try {
+      const upserted = await upsertDocumentRecord(supabase, taskId, candidateId, childDoc);
+      record = upserted.record;
+      const { skipped } = upserted;
+      if (skipped) {
+        log(`Skipping already acquired archive entry: ${entry.entry_path}`);
+        stored.push({ status: 'skipped', id: record.id, filename: fileName });
+        continue;
+      }
+
+      await supabase
+        .from('opportunity_documents')
+        .update({ acquisition_status: 'acquiring', acquisition_error: null })
+        .eq('id', record.id);
+
+      const storagePath = `opportunity-candidates/${candidateId}/${parentDoc.id}/extracted/${record.id}/${fileName}`;
+      const { error: uploadError } = await supabase.storage
+        .from(DOCUMENT_BUCKET)
+        .upload(storagePath, entry.bytes, {
+          contentType: extensionToContentType(fileName),
+          upsert: true,
+        });
+      if (uploadError) throw new Error(`Storage upload failed: ${uploadError.message}`);
+
+      await supabase
+        .from('opportunity_documents')
+        .update({
+          acquisition_status: 'acquired',
+          acquisition_error: null,
+          storage_bucket: DOCUMENT_BUCKET,
+          storage_path: storagePath,
+          file_name: fileName,
+          file_size: entry.file_size,
+          file_type: inferFileType(fileName),
+          manifest_data: childDoc.manifest_data,
+        })
+        .eq('id', record.id);
+
+      log(`Uploaded extracted archive document: ${entry.entry_path} (${entry.file_size} bytes)`);
+      stored.push({ status: 'acquired', id: record.id, filename: fileName, bytes: entry.file_size });
+    } catch (e) {
+      if (record?.id) {
+        await supabase
+          .from('opportunity_documents')
+          .update({
+            acquisition_status: 'failed',
+            acquisition_error: e.message,
+          })
+          .eq('id', record.id);
+      }
+      log(`Extracted archive document failed: ${entry.entry_path}: ${e.message}`);
+      stored.push({ status: 'failed', filename: fileName, error: e.message });
+    }
+  }
+  return stored;
 }
 
 async function acquirePlanetBidsDocuments({ supabase, task, candidate, log }) {
@@ -1149,6 +1312,13 @@ async function acquirePlanetBidsDocuments({ supabase, task, candidate, log }) {
       const result = await downloadAndStoreDocument(supabase, task.id, candidate.id, doc, log);
       if (result.status === 'acquired') acquired++;
       if (result.status === 'skipped') skipped++;
+      if (result.archiveExtraction?.extractedDocuments?.length) {
+        for (const extracted of result.archiveExtraction.extractedDocuments) {
+          if (extracted.status === 'acquired') acquired++;
+          else if (extracted.status === 'skipped') skipped++;
+          else if (extracted.status === 'failed') failed++;
+        }
+      }
     } catch (e) {
       failed++;
       errors.push(`${doc.file_name}: ${e.message}`);
@@ -1156,11 +1326,15 @@ async function acquirePlanetBidsDocuments({ supabase, task, candidate, log }) {
     }
   }
 
+  const documentsFound = Math.max(manifestDocs.length, acquired + skipped + failed);
   return {
-    found: manifestDocs.length,
+    found: documentsFound,
     acquired,
     skipped,
     failed,
+    warningSummary: failed > 0 && (acquired + skipped) > 0
+      ? `Some source documents could not be acquired. BidBox successfully acquired ${acquired + skipped} of ${documentsFound} available documents.`
+      : null,
     errorSummary: errors.length > 0 ? errors.slice(0, 5).join(' | ') : null,
   };
 }

@@ -238,6 +238,17 @@ Caltrans F2 implementation:
 
 Future Caltrans account-state tracking should record whether the automation account is logged in, NDA accepted, profile complete, email verified, last successful login, last NDA acceptance, and any account-level blockers. This is intentionally deferred and should not block the first F2 validation path.
 
+F2A archive and compound document support:
+
+- ZIP archives are now treated as first-class acquisition artifacts.
+- F2 stores the original ZIP as an acquired parent `opportunity_documents` row.
+- F2 safely extracts supported child files and creates separate child `opportunity_documents` rows.
+- Parent-child linkage is stored in `manifest_data` rather than a new schema column for the MVP.
+- V1 extracts PDF children only, because F3 currently processes text-native PDFs.
+- Archive guardrails include maximum extracted file count, maximum extracted total size, maximum single extracted file size, maximum archive size, unsafe file filtering, nested-ZIP skipping, and per-entry failure isolation.
+- F3 recognizes archive parent rows already extracted in F2 and avoids marking those ZIP parent artifacts as unsupported.
+- Live Caltrans validation against `11-431854supplemental_Info.zip` extracted 2 PDFs and produced 0 extraction failures.
+
 ### 2. Document Processing
 
 Status: complete for the validated PlanetBids/text-native PDF processing path.

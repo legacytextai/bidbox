@@ -1,5 +1,9 @@
 const fs = require('fs/promises');
 const { chromium } = require('playwright');
+const {
+  extractSupportedArchiveEntries,
+  isArchiveFile,
+} = require('./archive_extraction');
 
 const DOCUMENT_BUCKET = 'opportunity-documents';
 const CALTRANS_ORIGIN = 'https://ppmoe.dot.ca.gov';
@@ -51,6 +55,22 @@ function extensionToContentType(fileName) {
   if (lower.endsWith('.zip')) return 'application/zip';
   if (lower.endsWith('.dwg')) return 'image/vnd.dwg';
   return 'application/octet-stream';
+}
+
+function archiveParentProcessingStatus(extraction) {
+  if (!extraction) return null;
+  if (extraction.stats.rejected) return 'partial';
+  if (extraction.stats.failed > 0) return 'partial';
+  if (extraction.stats.extracted === 0) return 'partial';
+  return 'processed';
+}
+
+function archiveParentProcessingError(extraction) {
+  if (!extraction) return null;
+  if (extraction.stats.rejected) return `Archive skipped: ${extraction.stats.reason}`;
+  if (extraction.stats.extracted === 0) return 'Archive contained no supported files for extraction';
+  if (extraction.stats.failed > 0) return `${extraction.stats.failed} archive file(s) failed to extract`;
+  return null;
 }
 
 function firstMatch(text, regex) {
@@ -590,6 +610,43 @@ async function storeDownloadedDocument({ supabase, taskId, candidateId, doc, dow
       });
     if (uploadError) throw new Error(`Storage upload failed: ${uploadError.message}`);
 
+    let archiveExtraction = null;
+    let extractedDocuments = [];
+    if (isArchiveFile(finalFileName)) {
+      log(`Extracting archive contents: ${finalFileName}`);
+      archiveExtraction = await extractSupportedArchiveEntries(bytes, log);
+      log(`Archive extraction summary for ${finalFileName}: entries=${archiveExtraction.stats.total_entries} extracted=${archiveExtraction.stats.extracted} skipped=${archiveExtraction.stats.skipped} failed=${archiveExtraction.stats.failed}`);
+      extractedDocuments = await storeExtractedArchiveDocuments({
+        supabase,
+        taskId,
+        candidateId,
+        parentDoc: {
+          ...doc,
+          id: record.id,
+          file_name: finalFileName,
+          source_url: doc.source_url,
+          document_source_order: doc.document_source_order,
+        },
+        entries: archiveExtraction.entries,
+        log,
+      });
+    }
+
+    const mergedManifestData = {
+      ...(doc.manifest_data ?? {}),
+      ...(archiveExtraction
+        ? {
+            archive_extraction: {
+              status: archiveParentProcessingStatus(archiveExtraction),
+              stats: archiveExtraction.stats,
+              skipped: archiveExtraction.skipped.slice(0, 50),
+              failures: archiveExtraction.failures.slice(0, 25),
+              extracted_document_ids: extractedDocuments.map((item) => item.id).filter(Boolean),
+            },
+          }
+        : {}),
+    };
+
     await supabase
       .from('opportunity_documents')
       .update({
@@ -600,6 +657,22 @@ async function storeDownloadedDocument({ supabase, taskId, candidateId, doc, dow
         file_name: finalFileName,
         file_size: bytes.byteLength,
         file_type: inferFileType(finalFileName),
+        manifest_data: mergedManifestData,
+        ...(archiveExtraction
+          ? {
+              processing_status: archiveParentProcessingStatus(archiveExtraction),
+              processing_error: archiveParentProcessingError(archiveExtraction),
+              processing_completed_at: new Date().toISOString(),
+              processing_metadata: {
+                reason: 'archive_extracted_in_f2',
+                stats: archiveExtraction.stats,
+              },
+              detected_file_type: 'zip',
+              detected_mime_type: mimeType,
+              has_text: false,
+              needs_ocr: false,
+            }
+          : {}),
       })
       .eq('id', record.id);
 
@@ -612,7 +685,13 @@ async function storeDownloadedDocument({ supabase, taskId, candidateId, doc, dow
       mimeType,
       bytes: bytes.byteLength,
       uploadedPath: storagePath,
-      manifestData: doc.manifest_data,
+      manifestData: mergedManifestData,
+      archiveExtraction: archiveExtraction
+        ? {
+            stats: archiveExtraction.stats,
+            extractedDocuments,
+          }
+        : null,
     };
   } catch (e) {
     await supabase
@@ -624,6 +703,115 @@ async function storeDownloadedDocument({ supabase, taskId, candidateId, doc, dow
       .eq('id', record.id);
     throw e;
   }
+}
+
+async function storeExtractedArchiveDocuments({ supabase, taskId, candidateId, parentDoc, entries, log }) {
+  const stored = [];
+  let index = 0;
+  for (const entry of entries) {
+    index++;
+    const fileName = sanitizeFileName(entry.file_name);
+    let record = null;
+    const childDoc = {
+      file_name: fileName,
+      file_type: inferFileType(fileName),
+      file_size: entry.file_size,
+      source_url: `${parentDoc.source_url || `archive://${parentDoc.id}`}#archive-entry=${encodeURIComponent(entry.entry_path)}`,
+      category: parentDoc.category,
+      document_source_order: (parentDoc.document_source_order ?? 0) * 1000 + index,
+      document_family: documentFamilyForCategory(parentDoc.category),
+      document_class: documentClassForCategory(parentDoc.category),
+      manifest_data: {
+        ...(parentDoc.manifest_data ?? {}),
+        source: 'archive_extraction',
+        archive_parent_document_id: parentDoc.id,
+        archive_parent_file_name: parentDoc.file_name,
+        archive_entry_path: entry.entry_path,
+        archive_entry_compressed_size: entry.compressed_size,
+        archive_entry_uncompressed_size: entry.uncompressed_size,
+        acquisition_method: 'f2_archive_extraction',
+      },
+    };
+
+    try {
+      const upserted = await upsertDocumentRecord(supabase, taskId, candidateId, childDoc);
+      record = upserted.record;
+      const { skipped } = upserted;
+      if (skipped) {
+        log(`Skipping already acquired archive entry: ${entry.entry_path}`);
+        stored.push({
+          status: 'skipped',
+          id: record.id,
+          filename: fileName,
+          category: childDoc.category,
+          mimeType: extensionToContentType(fileName),
+          uploadedPath: record.storage_path,
+          manifestData: childDoc.manifest_data,
+        });
+        continue;
+      }
+
+      await supabase
+        .from('opportunity_documents')
+        .update({ acquisition_status: 'acquiring', acquisition_error: null })
+        .eq('id', record.id);
+
+      const storagePath = `opportunity-candidates/${candidateId}/${parentDoc.id}/extracted/${record.id}/${fileName}`;
+      const mimeType = extensionToContentType(fileName);
+      const { error: uploadError } = await supabase.storage
+        .from(DOCUMENT_BUCKET)
+        .upload(storagePath, entry.bytes, {
+          contentType: mimeType,
+          upsert: true,
+        });
+      if (uploadError) throw new Error(`Storage upload failed: ${uploadError.message}`);
+
+      await supabase
+        .from('opportunity_documents')
+        .update({
+          acquisition_status: 'acquired',
+          acquisition_error: null,
+          storage_bucket: DOCUMENT_BUCKET,
+          storage_path: storagePath,
+          file_name: fileName,
+          file_size: entry.file_size,
+          file_type: inferFileType(fileName),
+          manifest_data: childDoc.manifest_data,
+        })
+        .eq('id', record.id);
+
+      log(`Uploaded extracted archive document: ${entry.entry_path} (${entry.file_size} bytes)`);
+      stored.push({
+        status: 'acquired',
+        id: record.id,
+        filename: fileName,
+        category: childDoc.category,
+        mimeType,
+        bytes: entry.file_size,
+        uploadedPath: storagePath,
+        manifestData: childDoc.manifest_data,
+      });
+    } catch (e) {
+      if (record?.id) {
+        await supabase
+          .from('opportunity_documents')
+          .update({
+            acquisition_status: 'failed',
+            acquisition_error: e.message,
+          })
+          .eq('id', record.id);
+      }
+      log(`Extracted archive document failed: ${entry.entry_path}: ${e.message}`);
+      stored.push({
+        status: 'failed',
+        filename: fileName,
+        category: childDoc.category,
+        error: e.message,
+        manifestData: childDoc.manifest_data,
+      });
+    }
+  }
+  return stored;
 }
 
 async function acquireCaltransDocuments({ supabase, task, candidate, log }) {
@@ -691,6 +879,14 @@ async function acquireCaltransDocuments({ supabase, task, candidate, log }) {
           acquiredDocuments.push(stored);
           if (stored.status === 'acquired') acquired++;
           if (stored.status === 'skipped') skipped++;
+          if (stored.archiveExtraction?.extractedDocuments?.length) {
+            for (const extracted of stored.archiveExtraction.extractedDocuments) {
+              acquiredDocuments.push(extracted);
+              if (extracted.status === 'acquired') acquired++;
+              else if (extracted.status === 'skipped') skipped++;
+              else if (extracted.status === 'failed') failed++;
+            }
+          }
           current.downloads++;
           completed = true;
         } catch (e) {
@@ -750,16 +946,17 @@ async function acquireCaltransDocuments({ supabase, task, candidate, log }) {
       }
     }
 
-    log(`Caltrans acquisition complete: found=${manifestDocs.length} acquired=${acquired} skipped=${skipped} failed=${failed}`);
+    const documentsFound = Math.max(manifestDocs.length, acquired + skipped + failed);
+    log(`Caltrans acquisition complete: found=${documentsFound} acquired=${acquired} skipped=${skipped} failed=${failed}`);
     return {
-      found: manifestDocs.length,
+      found: documentsFound,
       acquired,
       skipped,
       failed,
       acquiredDocuments,
       stats: { acquired, skipped, failed },
       warningSummary: failed > 0 && (acquired + skipped) > 0
-        ? `Some source documents could not be acquired. BidBox successfully acquired ${acquired + skipped} of ${manifestDocs.length} available documents.`
+        ? `Some source documents could not be acquired. BidBox successfully acquired ${acquired + skipped} of ${documentsFound} available documents.`
         : null,
       errorSummary: errors.length > 0 ? errors.slice(0, 5).join(' | ') : null,
       errors,

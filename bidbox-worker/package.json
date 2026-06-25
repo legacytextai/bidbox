@@ -6,7 +6,8 @@
     "dotenv": "^16.4.0",
     "pdfjs-dist": "6.0.227",
     "playwright": "^1.40.0",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "yauzl": "^3.4.0"
   },
   "scripts": {
     "start": "node index.js"

@@ -519,7 +519,44 @@ Future Caltrans work:
 - District/county filtering improvements.
 - Source health monitoring.
 
-### 7.2A. F2A — Agency Access Management 📋 PLANNED
+### 7.2A. F2A — Archive & Compound Document Support ✅ COMPLETE
+
+Purpose: make ZIP archives first-class acquisition artifacts instead of letting F3 mark them as unsupported.
+
+Implemented:
+- Added worker-side archive extraction during F2 document acquisition.
+- Preserves the original ZIP as an acquired parent `opportunity_documents` row.
+- Extracts supported child files from the ZIP and creates separate acquired `opportunity_documents` rows for each child.
+- Stores parent-child linkage in `manifest_data`:
+  - parent ZIP rows include `manifest_data.archive_extraction`.
+  - extracted child rows include `manifest_data.archive_parent_document_id`, `archive_parent_file_name`, and `archive_entry_path`.
+- Uploads extracted files to the private `opportunity-documents` bucket.
+- Allows extracted child PDFs to continue through the normal F3/F4 pipeline.
+- F3 recognizes ZIP parent rows already extracted in F2 and does not mark them as unsupported.
+
+Guardrails:
+- Ignores `__MACOSX` and `.DS_Store`.
+- Ignores executables and unsafe file types.
+- Ignores nested ZIPs for V1.
+- Extracts only supported V1 child types. Current supported extracted type: PDF.
+- Configurable limits:
+  - `ARCHIVE_MAX_EXTRACTED_FILES`
+  - `ARCHIVE_MAX_EXTRACTED_BYTES`
+  - `ARCHIVE_MAX_SINGLE_FILE_BYTES`
+  - `ARCHIVE_MAX_BYTES`
+- Continues processing remaining files if one archive entry fails.
+
+Validation:
+- Local archive smoke test extracted a PDF and skipped `.DS_Store`, an executable, and a nested ZIP.
+- Live Caltrans validation against `11-431854supplemental_Info.zip` downloaded a real Caltrans supplemental ZIP, extracted 2 PDFs, skipped 1 directory entry, and produced 0 extraction failures.
+
+Known limitations:
+- V1 does not process nested ZIP archives.
+- V1 only extracts PDFs because F3 currently supports text-native PDF processing.
+- Parent-child relationships are stored in `manifest_data`; no hard foreign-key column exists yet.
+- Large scanned PDFs may still require OCR later in F3/Future OCR work.
+
+### 7.2B. Agency Access Management 📋 PLANNED
 
 Purpose: establish and maintain the agency registration state required for reliable document acquisition.
 
