@@ -14,6 +14,7 @@ type TaskStatus = "pending" | "running" | "complete" | "failed" | "retrying";
 interface ScanTask {
   id: string;
   source_name: string;
+  portal_type: string;
   status: TaskStatus;
   error: string | null;
 }
@@ -31,6 +32,23 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
   complete: "Complete",
   failed: "Failed",
 };
+
+// Pretty label for known portals; fallback derives one from the slug so new
+// drivers automatically render with a readable name and no UI change.
+const PORTAL_LABEL_OVERRIDES: Record<string, string> = {
+  planetbids: "PlanetBids",
+  caltrans: "Caltrans",
+};
+
+function portalLabel(portalType: string): string {
+  if (!portalType) return "Other";
+  if (PORTAL_LABEL_OVERRIDES[portalType]) return PORTAL_LABEL_OVERRIDES[portalType];
+  return portalType
+    .split(/[_\-\s]+/)
+    .filter(Boolean)
+    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+    .join(" ");
+}
 
 function StatusIcon({ status }: { status: TaskStatus }) {
   switch (status) {
@@ -56,7 +74,7 @@ export function ActiveScansPanel({ taskIds, onDismiss, isQueuing = false }: Prop
     (async () => {
       const { data, error } = await supabase
         .from("agent_tasks")
-        .select("id, status, error, payload")
+        .select("id, status, error, payload, task_type")
         .in("id", taskIds);
       if (cancelled || error || !data) return;
       setTasks(
@@ -65,6 +83,9 @@ export function ActiveScansPanel({ taskIds, onDismiss, isQueuing = false }: Prop
           status: t.status as TaskStatus,
           error: t.error ?? null,
           source_name: t.payload?.source_name ?? "Unknown source",
+          portal_type:
+            t.payload?.portal_type ??
+            (typeof t.task_type === "string" ? t.task_type.replace(/_scan$/, "") : ""),
         })),
       );
     })();
@@ -109,6 +130,26 @@ export function ActiveScansPanel({ taskIds, onDismiss, isQueuing = false }: Prop
     return { completed, total, percent, allDone: total > 0 && completed === total };
   }, [tasks]);
 
+  // Group tasks by portal so each driver renders in its own section. Future
+  // drivers appear automatically — no UI change required.
+  const groups = useMemo(() => {
+    const byPortal = new Map<string, ScanTask[]>();
+    for (const t of tasks) {
+      const key = t.portal_type || "other";
+      if (!byPortal.has(key)) byPortal.set(key, []);
+      byPortal.get(key)!.push(t);
+    }
+    const rank = (s: TaskStatus) =>
+      s === "running" || s === "retrying" ? 0 : s === "pending" ? 1 : 2;
+    return Array.from(byPortal.entries())
+      .map(([portal, items]) => ({
+        portal,
+        label: portalLabel(portal),
+        items: items.slice().sort((a, b) => rank(a.status) - rank(b.status)),
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [tasks]);
+
   // Auto-dismiss when done (but not while still queuing)
   useEffect(() => {
     if (!allDone || isQueuing) return;
@@ -142,52 +183,59 @@ export function ActiveScansPanel({ taskIds, onDismiss, isQueuing = false }: Prop
 
       <Progress value={percent} className="h-2 mb-4" />
 
-      <div className="max-h-32 overflow-y-auto space-y-1.5">
+      <div className="max-h-48 overflow-y-auto space-y-3">
         {tasks.length === 0 ? (
           <p className="text-sm text-muted-foreground">Queuing tasks…</p>
         ) : (
-          tasks
-            .slice()
-            .sort((a, b) => {
-              const rank = (s: TaskStatus) =>
-                s === "running" || s === "retrying" ? 0 : s === "pending" ? 1 : 2;
-              return rank(a.status) - rank(b.status);
-            })
-            .map((t) => (
-              <div
-                key={t.id}
-                className="flex items-center justify-between text-sm py-1 px-2 rounded hover:bg-muted/50"
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <StatusIcon status={t.status} />
-                  <span className="truncate text-foreground">{t.source_name}</span>
-                </div>
-                {t.status === "failed" && t.error ? (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="text-xs font-medium text-red-600 cursor-help">
+          groups.map((group) => (
+            <div key={group.portal}>
+              <div className="flex items-center gap-2 px-2 py-1">
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {group.label}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {group.items.length} {group.items.length === 1 ? "source" : "sources"}
+                </span>
+              </div>
+              <div className="space-y-1.5">
+                {group.items.map((t) => (
+                  <div
+                    key={t.id}
+                    className="flex items-center justify-between text-sm py-1 px-2 rounded hover:bg-muted/50"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <StatusIcon status={t.status} />
+                      <span className="truncate text-foreground">{t.source_name}</span>
+                    </div>
+                    {t.status === "failed" && t.error ? (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="text-xs font-medium text-red-600 cursor-help">
+                            {STATUS_LABEL[t.status]}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                          <p className="text-xs">{t.error}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    ) : (
+                      <span
+                        className={`text-xs font-medium ${
+                          t.status === "complete"
+                            ? "text-green-600"
+                            : t.status === "running" || t.status === "retrying"
+                            ? "text-[hsl(var(--bidbox-blue))]"
+                            : "text-muted-foreground"
+                        }`}
+                      >
                         {STATUS_LABEL[t.status]}
                       </span>
-                    </TooltipTrigger>
-                    <TooltipContent className="max-w-xs">
-                      <p className="text-xs">{t.error}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                ) : (
-                  <span
-                    className={`text-xs font-medium ${
-                      t.status === "complete"
-                        ? "text-green-600"
-                        : t.status === "running" || t.status === "retrying"
-                        ? "text-[hsl(var(--bidbox-blue))]"
-                        : "text-muted-foreground"
-                    }`}
-                  >
-                    {STATUS_LABEL[t.status]}
-                  </span>
-                )}
+                    )}
+                  </div>
+                ))}
               </div>
-            ))
+            </div>
+          ))
         )}
       </div>
     </div>

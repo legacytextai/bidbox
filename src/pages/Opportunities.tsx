@@ -528,13 +528,14 @@ const Opportunities = () => {
       if (!session) { navigate("/auth"); return; }
       loadCandidates();
 
-      // Rehydrate active scan panel if there are non-terminal planetbids_scan
+      // Rehydrate active scan panel if there are non-terminal portal scan
       // tasks still running in the background (survives reloads/navigation).
+      // Portal-agnostic: matches any "<portal>_scan" task type.
       const sinceIso = new Date(Date.now() - 60 * 60 * 1000).toISOString();
       const { data: activeTasks } = await supabase
         .from("agent_tasks")
         .select("id, created_at")
-        .eq("task_type", "planetbids_scan")
+        .like("task_type", "%_scan")
         .in("status", ["pending", "running", "retrying"])
         .gte("created_at", sinceIso);
       if (activeTasks && activeTasks.length > 0) {
@@ -645,7 +646,7 @@ const Opportunities = () => {
         { event: "INSERT", schema: "public", table: "agent_tasks" },
         (payload) => {
           const row: any = payload.new;
-          if (row?.task_type !== "planetbids_scan") return;
+          if (!(typeof row?.task_type === "string" && row.task_type.endsWith("_scan"))) return;
           const createdMs = new Date(row.created_at).getTime();
           if (createdMs < startedMs - 1000) return;
           setActiveScanTaskIds((prev) => (prev.includes(row.id) ? prev : [...prev, row.id]));
@@ -676,7 +677,7 @@ const Opportunities = () => {
         const { data: queuedTasks } = await supabase
           .from("agent_tasks")
           .select("id")
-          .eq("task_type", "planetbids_scan")
+          .like("task_type", "%_scan")
           .gte("created_at", startedAt);
         if (queuedTasks && queuedTasks.length > 0) {
           setActiveScanTaskIds((prev) => {
