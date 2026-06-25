@@ -27,6 +27,10 @@ function ts() {
   return new Date().toISOString();
 }
 
+function userFacingDocumentAcquisitionFailureMessage() {
+  return 'Document acquisition failed. BidBox could not acquire source documents for this opportunity.';
+}
+
 async function updateTaskStage(task, stage) {
   if (!task?.id) return;
   const payload = {
@@ -365,7 +369,7 @@ async function runProjectAnalysisAcquisition(task, supabase) {
       .update({
         document_acquisition_status: 'failed',
         document_acquisition_completed_at: completedAt,
-        document_acquisition_error: e.message,
+        document_acquisition_error: userFacingDocumentAcquisitionFailureMessage(),
       })
       .eq('id', candidate.id);
 
@@ -388,9 +392,24 @@ async function runProjectAnalysisAcquisition(task, supabase) {
   const acquisitionStatus = result.found === 0 || (result.found > 0 && result.acquired === 0 && result.skipped === 0)
     ? 'failed'
     : 'acquired';
-  const errorSummary = acquisitionStatus === 'failed'
+  const technicalErrorSummary = acquisitionStatus === 'failed'
     ? result.errorSummary ?? (result.found === 0 ? 'No documents found' : 'No documents were acquired')
     : result.errorSummary;
+  const warningSummary = acquisitionStatus === 'acquired' && result.failed > 0
+    ? result.warningSummary ?? `Some source documents could not be acquired. BidBox successfully acquired ${result.acquired + result.skipped} of ${result.found} available documents.`
+    : null;
+  const userFacingAcquisitionError = acquisitionStatus === 'failed'
+    ? userFacingDocumentAcquisitionFailureMessage()
+    : null;
+  const acquisitionSummary = {
+    status: acquisitionStatus,
+    documents_found: result.found,
+    documents_acquired: result.acquired,
+    documents_skipped: result.skipped,
+    documents_failed: result.failed,
+    warning_message: warningSummary,
+    completed_at: completedAt,
+  };
 
   await supabase
     .from('opportunity_candidates')
@@ -399,7 +418,11 @@ async function runProjectAnalysisAcquisition(task, supabase) {
       analysis_error: null,
       document_acquisition_status: acquisitionStatus,
       document_acquisition_completed_at: completedAt,
-      document_acquisition_error: errorSummary,
+      document_acquisition_error: userFacingAcquisitionError,
+      crawl_data: {
+        ...(candidate.crawl_data ?? {}),
+        acquisition_summary: acquisitionSummary,
+      },
     })
     .eq('id', candidate.id);
 
@@ -444,7 +467,7 @@ async function runProjectAnalysisAcquisition(task, supabase) {
       await supabase
         .from('agent_run_logs')
         .update({
-          status: errorSummary ? 'complete_with_errors' : 'complete',
+          status: technicalErrorSummary ? 'complete_with_errors' : 'complete',
           logs: logs.join('\n'),
           screenshots,
           completed_at: completedAt,
@@ -466,7 +489,9 @@ async function runProjectAnalysisAcquisition(task, supabase) {
     project_intelligence_task_id: projectIntelligenceTaskId,
     project_intelligence_duplicate: projectIntelligenceDuplicate,
     project_intelligence_skipped: projectIntelligenceSkipped,
-    errorSummary,
+    acquisition_status: acquisitionStatus,
+    warningSummary,
+    errorSummary: technicalErrorSummary,
   };
 }
 
@@ -714,22 +739,28 @@ async function processTask(task) {
           documents_acquired: result.documents_acquired,
           documents_skipped: result.documents_skipped,
           documents_failed: result.documents_failed,
+          acquisition_status: result.acquisition_status,
           document_processing_task_id: result.document_processing_task_id,
           document_processing_duplicate: result.document_processing_duplicate,
           project_intelligence_task_id: result.project_intelligence_task_id,
           project_intelligence_duplicate: result.project_intelligence_duplicate,
           project_intelligence_skipped: result.project_intelligence_skipped,
+          warning_summary: result.warningSummary,
           error_summary: result.errorSummary,
           phase: 'f2_document_acquisition',
           intelligence_status: result.project_intelligence_task_id ? 'queued' : 'not_generated',
         };
+
+    const taskError = task.task_type === 'project_analysis'
+      ? (result.acquisition_status === 'failed' ? result.errorSummary : null)
+      : result.errorSummary;
 
     await supabase
       .from('agent_tasks')
       .update({
         status: 'complete',
         result: taskResult,
-        error: result.errorSummary,
+        error: taskError,
         completed_at: new Date().toISOString(),
       })
       .eq('id', task.id);
@@ -752,7 +783,7 @@ async function processTask(task) {
         .update({
           document_acquisition_status: 'failed',
           document_acquisition_completed_at: new Date().toISOString(),
-          document_acquisition_error: e.message,
+          document_acquisition_error: userFacingDocumentAcquisitionFailureMessage(),
         })
         .eq('id', task.payload.candidate_id);
     }

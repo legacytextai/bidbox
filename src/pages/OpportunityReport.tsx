@@ -577,6 +577,16 @@ const OpportunityReport = () => {
 
   const crawl = candidate?.crawl_data ?? {};
   const estimatedValue = crawl?.estimated_value as number | undefined;
+  const acquisitionSummary = crawl?.acquisition_summary as
+    | {
+        status?: string;
+        documents_found?: number;
+        documents_acquired?: number;
+        documents_skipped?: number;
+        documents_failed?: number;
+        warning_message?: string | null;
+      }
+    | undefined;
   const jobWalkAt = crawl?.job_walk_at as string | undefined;
   const preBidMeetingAt = crawl?.pre_bid_meeting_at as string | undefined;
   const licenseRequirements = crawl?.license_requirements as string | undefined;
@@ -585,6 +595,21 @@ const OpportunityReport = () => {
   const department = crawl?.department as string | undefined;
   const projectAddress = crawl?.project_address as string | undefined;
   const reportReady = candidate?.analysis_status === "ready" && report;
+  const partialAcquisitionNotice = useMemo(() => {
+    if (!reportReady || !acquisitionSummary || acquisitionSummary.status !== "acquired") return null;
+    const found = Number(acquisitionSummary.documents_found ?? 0);
+    const acquired = Number(acquisitionSummary.documents_acquired ?? 0);
+    const skipped = Number(acquisitionSummary.documents_skipped ?? 0);
+    const failed = Number(acquisitionSummary.documents_failed ?? 0);
+    if (!found || failed <= 0 || acquired + skipped <= 0) return null;
+    return {
+      analyzed: acquired + skipped,
+      total: found,
+      message:
+        acquisitionSummary.warning_message ||
+        `BidBox successfully analyzed ${acquired + skipped} of ${found} available documents.`,
+    };
+  }, [acquisitionSummary, reportReady]);
   const analysisWorkActive = Boolean(
     activeAnalysisTask ||
       (candidate && ACTIVE_ANALYSIS_STATUSES.includes(candidate.analysis_status)) ||
@@ -1186,6 +1211,23 @@ const OpportunityReport = () => {
                   <p className="mt-1 break-words text-red-900">{displayedReanalysisFailure}</p>
                 </div>
                 <p className="mt-3 text-sm text-red-800">You may retry re-analysis at any time.</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {partialAcquisitionNotice && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-4 text-amber-950">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="h-5 w-5 mt-0.5 shrink-0 text-amber-700" />
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold">Some source documents could not be acquired.</p>
+                <p className="mt-1 text-sm">
+                  BidBox successfully analyzed {partialAcquisitionNotice.analyzed} of {partialAcquisitionNotice.total} available documents.
+                </p>
+                <p className="mt-1 text-sm">
+                  This report was generated using the successfully acquired documents. Missing supporting documents may be retried later.
+                </p>
               </div>
             </div>
           </div>
