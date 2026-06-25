@@ -135,7 +135,7 @@ const Projects = () => {
       ) : (
         <div className="p-8">
           <div className="flex items-center justify-between mb-8">
-            <h1 className="text-3xl font-bold text-foreground">Projects</h1>
+            <h1 className="text-3xl font-bold text-foreground">My Projects</h1>
             {ENFORCE_FREE_PROJECT_LIMIT && !isSubscribed && (
               <p className="text-sm text-muted-foreground">
                 {projects.length}/{FREE_PROJECT_LIMIT} free projects used
