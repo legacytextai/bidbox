@@ -528,13 +528,14 @@ const Opportunities = () => {
       if (!session) { navigate("/auth"); return; }
       loadCandidates();
 
-      // Rehydrate active scan panel if there are non-terminal planetbids_scan
+      // Rehydrate active scan panel if there are non-terminal portal scan
       // tasks still running in the background (survives reloads/navigation).
+      // Portal-agnostic: matches any "<portal>_scan" task type.
       const sinceIso = new Date(Date.now() - 60 * 60 * 1000).toISOString();
       const { data: activeTasks } = await supabase
         .from("agent_tasks")
         .select("id, created_at")
-        .eq("task_type", "planetbids_scan")
+        .like("task_type", "%_scan")
         .in("status", ["pending", "running", "retrying"])
         .gte("created_at", sinceIso);
       if (activeTasks && activeTasks.length > 0) {
