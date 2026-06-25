@@ -403,11 +403,11 @@ Status tracking:
 - `analysis_status` remains separate. F2 acquired documents do not mean Project Intelligence has been generated.
 
 Known limitations:
-- Production validation is PlanetBids-specific.
-- Document acquisition depends on the shared BidBox PlanetBids automation account and existing Railway secrets.
-- Some agencies may still require agency-level vendor registration, prospective bidder registration, or other portal-specific authorization before documents are available.
+- Production validation was originally PlanetBids-specific.
+- Document acquisition depends on shared BidBox automation accounts and existing Railway secrets.
+- Some agencies may still require agency-level vendor registration, prospective bidder registration, NDA acceptance, or other portal-specific authorization before documents are available.
 - The worker stores source files and metadata only; it does not parse, OCR, summarize, classify, or qualify documents.
-- Non-PlanetBids portals still need their own acquisition drivers.
+- Each portal still needs its own acquisition driver.
 
 Lessons learned from PlanetBids authorization:
 - A PlanetBids login alone is not always sufficient for document access.
@@ -460,6 +460,64 @@ MVP boundary:
 - F2 is complete for the validated PlanetBids acquisition path.
 - Do not build every portal's document acquisition flow before validating with beta contractors.
 - This phase does not parse documents, generate AI reports, run post-analysis qualification, create projects, or add opportunities to the calendar.
+
+#### 7.2.1. Caltrans F2 — Document Acquisition 🚧 IMPLEMENTED FOR VALIDATION
+
+Purpose: acquire bid-package source documents for Caltrans opportunities discovered through Contractors Corner.
+
+Driver:
+- `bidbox-worker/drivers/caltrans_documents.js`
+
+Current scope:
+- Routes Caltrans `project_analysis` tasks through a portal-specific acquisition driver.
+- Uses Railway worker secrets:
+  - `CALTRANS_EMAIL`
+  - `CALTRANS_PASSWORD`
+- Opens the Caltrans advertisement detail page from the candidate source URL.
+- Captures structured project metadata from the detail page, including contract number, district, county, route/postmile, engineer estimate, advertised date, bid opening date, working days, license requirements, project location, project title, and goal requirement when available.
+- Expands the `Bid Documents` section.
+- Enumerates available files by category.
+- Downloads documents individually through the browser download flow.
+- Handles login-required and NDA-required download prompts when encountered.
+- Uploads acquired files to the private `opportunity-documents` Supabase Storage bucket.
+- Writes file metadata to `opportunity_documents`.
+- Preserves Caltrans-specific document metadata in `manifest_data`.
+- Reuses the existing F3/F4 handoff after acquisition.
+
+Storage and persistence:
+- Bucket remains private: `opportunity-documents`
+- Path pattern remains:
+
+```text
+opportunity-candidates/{opportunity_candidate_id}/{opportunity_document_id}/{file_name}
+```
+
+Known limitations:
+- Caltrans document acquisition is portal-specific and separate from PlanetBids.
+- The driver does not yet manage customer-owned Caltrans credentials.
+- The worker does not yet persist Caltrans account state across runs.
+- File download uses the Contractors Corner browser workflow because direct durable file URLs are not guaranteed.
+- F3 may still mark large/scanned PDFs as unsupported or OCR-required; that is a processing limitation, not an acquisition limitation.
+- Public Bid Room exposure of Caltrans NDA-controlled source documents requires future review before enabling.
+
+Future Caltrans account-state tracking:
+- `logged_in`
+- `nda_accepted`
+- `profile_complete`
+- `email_verified`
+- `last_successful_login`
+- `last_nda_acceptance`
+- `last_login_error`
+
+Future Caltrans work:
+- Bid item extraction.
+- Plan holder intelligence.
+- Prime advertising intelligence.
+- Subcontractor opt-in intelligence.
+- Bidder inquiries.
+- Caltrans login/account management UI.
+- District/county filtering improvements.
+- Source health monitoring.
 
 ### 7.2A. F2A — Agency Access Management 📋 PLANNED
 

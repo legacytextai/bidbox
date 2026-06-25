@@ -3,6 +3,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { scrapePlanetBids } = require('./drivers/planetbids');
 const { scrapeCaltrans } = require('./drivers/caltrans');
 const { acquirePlanetBidsDocuments } = require('./drivers/planetbids_documents');
+const { acquireCaltransDocuments } = require('./drivers/caltrans_documents');
 const {
   queueDocumentProcessingForCandidate,
   runDocumentProcessing,
@@ -334,10 +335,6 @@ async function runProjectAnalysisAcquisition(task, supabase) {
   if (candidateError) throw new Error(`Candidate lookup failed: ${candidateError.message}`);
   if (!candidate) throw new Error(`Candidate not found: ${candidate_id}`);
 
-  if (candidate.portal_type !== 'planetbids') {
-    throw new Error(`Document acquisition is only implemented for planetbids candidates; got ${candidate.portal_type ?? 'unknown'}`);
-  }
-
   const startedAt = new Date().toISOString();
   await supabase
     .from('opportunity_candidates')
@@ -354,7 +351,13 @@ async function runProjectAnalysisAcquisition(task, supabase) {
 
   let result;
   try {
-    result = await acquirePlanetBidsDocuments({ supabase, task, candidate, log });
+    if (candidate.portal_type === 'planetbids') {
+      result = await acquirePlanetBidsDocuments({ supabase, task, candidate, log });
+    } else if (candidate.portal_type === 'caltrans') {
+      result = await acquireCaltransDocuments({ supabase, task, candidate, log });
+    } else {
+      throw new Error(`Document acquisition is not implemented for ${candidate.portal_type ?? 'unknown'} candidates`);
+    }
   } catch (e) {
     const completedAt = new Date().toISOString();
     await supabase

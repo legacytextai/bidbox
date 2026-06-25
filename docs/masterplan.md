@@ -664,6 +664,14 @@ F4 quality hardening completed:
 
 Full Deadline Resolution Engine architecture is deferred to Phase 2. Future work may introduce deadline candidates, deadline resolutions, multi-deadline support, deterministic evidence ranking, override history, audit trails, and addenda-driven deadline change notifications.
 
+Caltrans acquisition expansion:
+
+- Caltrans Discovery V1 discovers active Contractors Corner advertisements and creates `opportunity_candidates`.
+- Caltrans F2 adds a worker-side document acquisition path for analyzed Caltrans opportunities.
+- The Caltrans acquisition driver uses `CALTRANS_EMAIL` and `CALTRANS_PASSWORD`, opens advertisement detail pages, captures structured project metadata, expands Bid Documents, downloads files individually, stores them in the private `opportunity-documents` bucket, and writes `opportunity_documents` records.
+- Existing F3/F4 processing remains the downstream path after Caltrans documents are acquired.
+- Future Caltrans account-state tracking is deferred and should eventually track login status, NDA acceptance, profile completeness, email verification, last successful login, and account-level blockers.
+
 Next active task: Phase G Pursuit Management & Project Workspace.
 
 Phase G establishes the operational bridge after F4:

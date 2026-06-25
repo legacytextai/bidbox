@@ -223,10 +223,20 @@ Validated projects:
 
 Known limitations:
 
-- This is validated for PlanetBids only.
-- Non-PlanetBids portals need separate drivers.
+- PlanetBids and Caltrans use separate portal-specific document acquisition drivers.
 - Some agencies may still require additional agency-specific registration behavior.
 - F2 stores documents but does not parse, OCR, summarize, qualify, or generate Project Intelligence.
+
+Caltrans F2 implementation:
+
+- Adds a Caltrans-specific worker acquisition driver for Contractors Corner.
+- Uses `CALTRANS_EMAIL` and `CALTRANS_PASSWORD` Railway variables.
+- Opens Caltrans advertisement detail pages, refreshes structured metadata, expands Bid Documents, downloads files individually, uploads them to the private `opportunity-documents` bucket, and writes `opportunity_documents` records.
+- Handles login and NDA prompts when encountered.
+- Continues into existing F3/F4 processing after acquisition.
+- Does not implement customer credential management, Bid Items extraction, plan holder intelligence, bidder inquiries, or public sharing of NDA-controlled source documents.
+
+Future Caltrans account-state tracking should record whether the automation account is logged in, NDA accepted, profile complete, email verified, last successful login, last NDA acceptance, and any account-level blockers. This is intentionally deferred and should not block the first F2 validation path.
 
 ### 2. Document Processing
 
