@@ -75,9 +75,9 @@ Once a project enters this stage, deeper intelligence, readiness, subcontractor,
 ## New End-to-End Workflow
 
 ```text
-Scan Sources
+Nightly Refresh / Refresh Now
 -> Automatic Acquisition
--> Automatic Baseline AI Analysis
+-> Automatic Opportunity Intelligence
 -> Opportunity Cards
 -> User Clicks Project Card
 -> Project Overview
@@ -89,6 +89,99 @@ Scan Sources
 -> Bid Preparation
 -> Proposal Submission
 ```
+
+## Automated Opportunity Refresh
+
+F5 should move BidBox from user-triggered discovery toward an automatically prepared opportunity pipeline.
+
+Long-term default workflow:
+
+```text
+Nightly scheduled scan
+-> Agency/source refresh
+-> New opportunities discovered
+-> Documents acquired
+-> Bid items extracted
+-> Opportunity Intelligence generated
+-> Opportunities tab updated before the user starts work
+```
+
+The Opportunities page should feel like:
+
+```text
+Here are today's prepared opportunities.
+```
+
+not:
+
+```text
+Click Scan to begin finding work.
+```
+
+Manual scanning should become a secondary action such as `Refresh Now` or `Check For New Opportunities`. It should run the same refresh pipeline immediately instead of waiting for the next scheduled run.
+
+## Opportunity Intelligence vs Project Intelligence
+
+F5 separates intelligence into two tiers.
+
+### Tier 1: Opportunity Intelligence
+
+Opportunity Intelligence runs automatically for newly discovered or materially changed opportunities.
+
+Purpose:
+
+```text
+Support Opportunity Discovery.
+```
+
+Core question:
+
+```text
+Is this project worth putting on the bid calendar?
+```
+
+Outputs:
+
+- Project Snapshot
+- Executive Summary
+- Key Dates
+- Bid Items / Line Items
+- Important Requirements
+- Quick Facts
+- Document readiness
+- Opportunity readiness status
+
+This tier should be lightweight, uniform, and suitable for the Opportunities page and Opportunity Overview.
+
+### Tier 2: Project Intelligence
+
+Project Intelligence runs after the estimator adds an opportunity to the calendar.
+
+Purpose:
+
+```text
+Support Project Execution.
+```
+
+Core question:
+
+```text
+How do we win this project?
+```
+
+Outputs:
+
+- Full detailed intelligence report
+- Deeper risk analysis
+- Contract highlights
+- Procurement notes
+- Bid readiness extraction
+- Compliance requirements
+- Proposal preparation inputs
+- Estimate preparation inputs
+- Subcontractor / coverage inputs where applicable
+
+`Add to Calendar` activates or enables this deeper project-level intelligence. Opportunity Intelligence prepares the opportunity for review. Project Intelligence prepares the project for pursuit.
 
 ## Product Area 1: Opportunity Discovery
 
@@ -366,15 +459,15 @@ Open Project
 Future:
 
 ```text
-Scan
--> Automatic Analysis
+Nightly refresh or Refresh Now
+-> Automatic Opportunity Intelligence
 -> Open Project
 -> Immediate Overview
 ```
 
-Users should not need to wait for the first useful project summary. Baseline intelligence should be generated during project ingestion.
+Users should not need to wait for the first useful project summary. Opportunity Intelligence should be generated during automated refresh and ingestion.
 
-## Automatic Baseline Intelligence
+## Automatic Opportunity Intelligence
 
 When a project is scanned and acquired, BidBox should automatically generate:
 
@@ -386,9 +479,9 @@ When a project is scanned and acquired, BidBox should automatically generate:
 - Basic scope classification
 - Initial NAICS/trade classification where possible
 - Document availability status
-- Baseline Intelligence status
+- Opportunity Intelligence status
 
-This becomes the minimum viable project intelligence package.
+This becomes the minimum viable opportunity review package. The deeper Project Intelligence package should activate after Add to Calendar.
 
 ## Add to Calendar
 
@@ -662,8 +755,9 @@ Suggested conceptual states:
 
 ```text
 discovered
-baseline_analyzed
+opportunity_intelligence_ready
 added_to_calendar
+project_intelligence_ready
 reviewing
 pursuing
 passed
@@ -673,8 +767,10 @@ submitted
 Potential fields:
 
 ```text
-baseline_analysis_status
-baseline_analyzed_at
+opportunity_intelligence_status
+opportunity_intelligence_ready_at
+project_intelligence_status
+project_intelligence_ready_at
 added_to_calendar_at
 added_to_calendar_by
 pursuit_status
@@ -686,9 +782,9 @@ bid_items_extracted_at
 
 These may live on existing opportunity/project tables or new related tables depending on final implementation.
 
-## Baseline Analysis vs Deep Intelligence
+## Opportunity Intelligence vs Project Intelligence
 
-### Baseline Analysis
+### Opportunity Intelligence
 
 Required before the user opens the project.
 
@@ -707,9 +803,9 @@ Includes:
 - Requirements
 - Quick facts
 
-### Deep Intelligence
+### Project Intelligence
 
-Can be more thorough and may take longer.
+Runs after Add to Calendar and can be more thorough.
 
 Supports:
 
@@ -751,7 +847,7 @@ This initiative should be referenced, not duplicated, from:
 - `docs/initiatives/opportunity-intelligence-mvp.md`
 - `docs/initiatives/opportunity-intelligence-implementation-plan.md`
 
-Future data model documentation should include `opportunity_bid_items`, lifecycle fields, baseline analysis status, pursuit status, and calendar transition metadata. Until a formal schema document exists, those concepts are documented here.
+Future data model documentation should include `opportunity_bid_items`, lifecycle fields, Opportunity Intelligence status, Project Intelligence status, pursuit status, and calendar transition metadata. Until a formal schema document exists, those concepts are documented here.
 
 ## Future Design System Document
 
@@ -778,7 +874,7 @@ Purpose:
 This initiative is successful when:
 
 - A first-time user can understand any project within 30 seconds.
-- Users never need to click `Analyze Project` to get baseline intelligence.
+- Users never need to click `Analyze Project` to get Opportunity Intelligence.
 - Opportunity Discovery and Project Execution are clearly separated.
 - The Overview page remains concise regardless of project complexity.
 - Bid items are extracted and displayed as first-class project data.
