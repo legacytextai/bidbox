@@ -4,6 +4,8 @@ Status: Planned
 Document type: Engineering task list
 Source initiative: `docs/initiatives/f5-opportunity-project-workspace.md`
 
+# Pre-Implementation Preparation
+
 ## Task 1 - ESTABLISH F5 ENGINEERING BASELINE
 Subtasks:
 ### 1.1. Confirm Source Documents
@@ -24,6 +26,10 @@ Subtasks:
 - Do not rebuild F3 document processing.
 - Do not redesign F4 report generation prompts unless explicitly required by later tasks.
 - Do not implement automated estimating, proposal generation, outreach automation, or full F5 qualification in this initiative.
+
+# Phase 1 — Foundation
+
+Purpose: Establish the underlying lifecycle model and automated preparation pipeline that everything else depends on.
 
 ## Task 2 - NORMALIZE OPPORTUNITY AND PROJECT LIFECYCLE MODEL
 Subtasks:
@@ -125,6 +131,10 @@ Subtasks:
 - Confirm new opportunities receive Tier 1 Opportunity Intelligence automatically.
 - Confirm Add to Calendar triggers or enables Tier 2 Project Intelligence.
 - Confirm failures are isolated and do not break the Opportunities page.
+
+# Foundational Systems
+
+Purpose: Build the shared models, data access, worker handoffs, and bid item infrastructure that support the user-facing implementation phases.
 
 ## Task 4 - DEFINE SHARED DOMAIN TYPES AND RESOLVERS
 Subtasks:
@@ -348,6 +358,10 @@ Subtasks:
 - Confirm missing bid item data produces a clean empty state.
 - Confirm inferred rows are labeled clearly in UI.
 
+# Phase 2 — Opportunity Experience
+
+Purpose: Replace the existing Opportunity experience with the simplified discovery workflow: cards, Opportunity Overview, Documents, Intelligence, bid items, estimator-friendly states, and removal of manual Analyze Project as the primary path.
+
 ## Task 15 - BUILD OPPORTUNITY CARD DATA MODEL
 Subtasks:
 ### 15.1. Define Card Fields
@@ -511,6 +525,30 @@ Subtasks:
 - Keep the current report visible during re-analysis.
 - Keep failure banner behavior intact.
 
+## Task 38 - APPLY VISUAL SIMPLIFICATION PASS
+Subtasks:
+### 38.1. Reduce Density
+
+- Increase whitespace.
+- Reduce unnecessary badges.
+- Remove nested containers where they do not clarify hierarchy.
+
+### 38.2. Standardize Information Hierarchy
+
+- Use consistent section ordering.
+- Use compact headings for workflow surfaces.
+- Keep long report text out of Overview.
+
+### 38.3. Normalize Empty And Partial States
+
+- Use `N/A`, `Not identified`, `Needs Review`, `Preparing`, and `Unavailable` consistently.
+- Keep developer errors out of estimator-facing text.
+- Preserve detailed diagnostics internally.
+
+# Phase 3 — Project Workspace
+
+Purpose: Introduce the new Project Workspace and transition from Opportunity Discovery into Project Execution.
+
 ## Task 23 - HARDEN ADD TO CALENDAR ACTIVATION
 Subtasks:
 ### 23.1. Preserve Idempotent Project Creation
@@ -644,6 +682,10 @@ Subtasks:
 - Confirm status changes reflect in My Projects and Calendar.
 - Keep destructive status changes confirmable where needed.
 
+# Phase 4 — Workspace Capabilities
+
+Purpose: Populate the Project Workspace with execution-oriented functionality after the shell and activation flow are established.
+
 ## Task 29 - IMPLEMENT BID READINESS FOUNDATION
 Subtasks:
 ### 29.1. Define Readiness Item Model
@@ -765,6 +807,10 @@ Subtasks:
 - Reserve Activity for status changes, notes, and timeline history.
 - Keep both minimal until supporting systems exist.
 
+# Phase 5 — Polish, Compatibility & Rollout
+
+Purpose: Finalize compatibility, shared components, documentation, QA, and rollout after the core Opportunity and Project Workspace flows are in place.
+
 ## Task 35 - UPDATE MY PROJECTS EXPERIENCE
 Subtasks:
 ### 35.1. Separate Opportunity Intelligence Projects
@@ -824,26 +870,6 @@ Subtasks:
 - Centralize date/time, money, quantity, unit, status, and unknown-value formatting.
 - Reuse existing timezone and bid due authority utilities.
 - Remove duplicate formatting logic from pages as they are migrated.
-
-## Task 38 - APPLY VISUAL SIMPLIFICATION PASS
-Subtasks:
-### 38.1. Reduce Density
-
-- Increase whitespace.
-- Reduce unnecessary badges.
-- Remove nested containers where they do not clarify hierarchy.
-
-### 38.2. Standardize Information Hierarchy
-
-- Use consistent section ordering.
-- Use compact headings for workflow surfaces.
-- Keep long report text out of Overview.
-
-### 38.3. Normalize Empty And Partial States
-
-- Use `N/A`, `Not identified`, `Needs Review`, `Preparing`, and `Unavailable` consistently.
-- Keep developer errors out of estimator-facing text.
-- Preserve detailed diagnostics internally.
 
 ## Task 39 - IMPLEMENT BACKWARD COMPATIBILITY AND DATA REPAIR
 Subtasks:
