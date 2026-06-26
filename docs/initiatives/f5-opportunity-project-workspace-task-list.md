@@ -152,6 +152,13 @@ Subtasks:
 Purpose: Build the shared models, data access, worker handoffs, and bid item infrastructure that support the user-facing implementation phases.
 
 ## Task 4 - DEFINE SHARED DOMAIN TYPES AND RESOLVERS
+Status: ✅ COMPLETE
+
+Implementation notes:
+- Created `src/lib/opportunityDomain.ts` with centralized display resolvers consumed by all card and dossier surfaces.
+- Exports: `resolveTitle`, `resolveAgency`, `resolvePortalLabel`, `resolvePortalStyle`, `resolveEstimatedValue`, `resolveEstimatedValueRaw`, `resolveLocation`, `resolveSolicitationId`, `resolveDepartment`, `OI_STATUS_LABELS`, `OI_STATUS_STYLES`, `resolveOIStatus`, `resolveOILabel`, `resolveOIStyle`, `isOIActive`, `isOIReady`.
+- `resolveOIStatus` falls back to legacy `analysis_status`/`document_acquisition_status`/`document_processing_status` for backwards compatibility with pre-Phase-1 opportunities.
+
 Subtasks:
 ### 4.1. Create Opportunity Workspace Domain Helpers
 
@@ -172,6 +179,15 @@ Subtasks:
 - Make unknown and partial states explicit.
 
 ## Task 5 - BUILD TIER 1 OPPORTUNITY INTELLIGENCE CONTRACT
+Status: ✅ COMPLETE
+
+Implementation notes:
+- Created `src/lib/opportunityView.ts` with the `OpportunityOverviewData` stable presentation contract — a single unified model the Overview tab consumes.
+- The adapter `buildOpportunityOverviewData(input: AdapterInput)` composes fields from candidate, crawl_data, report, findings, citations, documents, and linked project. The UI never knows which source a field came from.
+- Bid due resolution reuses `resolveAuthoritativeBidDue` from `bidDueResolver.ts`. Job walk resolution checks findings, then crawl metadata, then document evidence.
+- `bidItemsAvailable: false` is a literal type — ensures Bid Items section always renders the clean placeholder without the UI needing to branch.
+- Executive summary limited to 3 bullets max; key dates from `key_dates` findings excluding bid due; important requirements from critical `bid_requirements` findings, up to 5.
+
 Subtasks:
 ### 5.1. Define Opportunity Intelligence Data Shape
 
@@ -194,6 +210,15 @@ Subtasks:
 - Do not block Opportunity visibility on missing Opportunity Intelligence fields.
 
 ## Task 6 - IMPLEMENT OPPORTUNITY INTELLIGENCE DATA ACCESS LAYER
+Status: ✅ COMPLETE
+
+Implementation notes:
+- Created `src/hooks/useOpportunityDossier.ts` — replaces all inline query logic from OpportunityReport.tsx.
+- Loads candidate, report, documents, and activeTask in parallel. Resolves linked project for bid due overrides via two-pass (converted_project_id first, then source_opportunity_candidate_id).
+- Loads findings+citations after report is known to avoid over-fetching when no report exists.
+- Computes `citationsByFinding` Map, `findingsByCategory` Map, and `overview: OpportunityOverviewData | null` via `buildOpportunityOverviewData`.
+- Polls every 5 seconds when `analysisWorkActive`. Returns `reload` callback and `setCandidate` setter for optimistic updates.
+
 Subtasks:
 ### 6.1. Build Read Queries
 
@@ -214,6 +239,14 @@ Subtasks:
 - Avoid introducing duplicate in-flight poll loops.
 
 ## Task 7 - REPLACE MANUAL ANALYZE PROJECT AS PRIMARY USER FLOW
+Status: ✅ COMPLETE
+
+Implementation notes:
+- Removed `handleAnalyzeProject`, `analyzingId` state, and the Analyze Project button from Opportunities.tsx.
+- Removed dead constants `PORTAL_STYLES`, `ANALYSIS_STYLES`, `ANALYSIS_LABELS`, `DOCUMENT_ACQUISITION_*`, `DOCUMENT_PROCESSING_*`, `AUTO_STATUS_DOT`, local `formatEstimatedValue`.
+- Cards now navigate to `/opportunities/:id` on click. OI status is shown as a read-only badge with animated spinner when active.
+- Re-Analyze and Delete Analysis controls preserved as secondary actions inside the Intelligence tab.
+
 Subtasks:
 ### 7.1. Identify Analyze Project Entrypoints
 
@@ -378,6 +411,12 @@ Subtasks:
 Purpose: Replace the existing Opportunity experience with the simplified discovery workflow: cards, Opportunity Overview, Documents, Intelligence, bid items, estimator-friendly states, and removal of manual Analyze Project as the primary path.
 
 ## Task 15 - BUILD OPPORTUNITY CARD DATA MODEL
+Status: ✅ COMPLETE
+
+Implementation notes:
+- `mapRow` in Opportunities.tsx updated to map all Phase 1 lifecycle fields: `opportunity_lifecycle_status`, `opportunity_intelligence_status`, `opportunity_intelligence_task_id`, `opportunity_intelligence_ready_at`, `opportunity_intelligence_error`.
+- Card data fetched from `opportunity_candidates` with all necessary fields for OI status badge and navigation.
+
 Subtasks:
 ### 15.1. Define Card Fields
 
@@ -399,6 +438,14 @@ Subtasks:
 - Test opportunities already added to calendar.
 
 ## Task 16 - IMPLEMENT OPPORTUNITY CARD UX
+Status: ✅ COMPLETE
+
+Implementation notes:
+- Full card is `role="button"` clickable — navigates to `/opportunities/:id`.
+- Shows title, agency, bid date (red if closed), estimated value.
+- Footer: portal type badge (left) + OI status badge with animated spinner if active (right).
+- No Analyze Project button. OI status displayed in estimator-friendly labels via `resolveOILabel`.
+
 Subtasks:
 ### 16.1. Replace Primary Card Actions
 
@@ -419,6 +466,14 @@ Subtasks:
 - Keep `View Project` available only in context where it is clearly a Project Workspace action.
 
 ## Task 17 - BUILD OPPORTUNITY DOSSIER ROUTING
+Status: ✅ COMPLETE
+
+Implementation notes:
+- OpportunityReport.tsx rewritten as the tabbed dossier shell at `/opportunities/:id`.
+- Tab state lives in `?tab=` URL search param (default: `overview`). Tabs: Overview | Documents | Intelligence.
+- `useOpportunityDossier(id)` provides all data. Page header shows title, agency, OI status badge, source link, Add to Calendar CTA.
+- Route is distinct from `/projects/:id` (Project Workspace). No project route collision.
+
 Subtasks:
 ### 17.1. Define Opportunity Route Contract
 
@@ -440,6 +495,12 @@ Subtasks:
 - Provide retry paths only where they are safe.
 
 ## Task 18 - BUILD OPPORTUNITY OVERVIEW COMPOSITION LAYER
+Status: ✅ COMPLETE
+
+Implementation notes:
+- `buildOpportunityOverviewData` in `opportunityView.ts` is the composition layer. Resolves snapshot, bid due (with conflict detection), job walk, executive summary (3 bullets max), key dates from findings, important requirements (critical bid_requirements findings, up to 5), and quick facts from crawl_data.
+- Shared helpers `resolveAuthoritativeBidDue`, `resolveEstimatedValue`, `resolveLocation`, etc. used throughout.
+
 Subtasks:
 ### 18.1. Compose Snapshot Data
 
@@ -460,6 +521,14 @@ Subtasks:
 - Avoid allowing AI findings to override structured metadata.
 
 ## Task 19 - IMPLEMENT OPPORTUNITY OVERVIEW UI
+Status: ✅ COMPLETE
+
+Implementation notes:
+- Created `src/components/OpportunityOverviewTab.tsx`. Always renders 6 sections: Project Snapshot, Executive Summary, Key Dates, Bid Items, Important Requirements, Quick Facts.
+- Missing fields show N/A (SnapshotField) or "Not identified." Sections never removed or conditionally skipped.
+- Bid Due warning banner shown when `data.bidDue.warning` is set. Executive Summary shows spinner when OI active, static message when not started.
+- Bid Items section renders "Structured bid items coming soon." placeholder until Tasks 10-14 are implemented.
+
 Subtasks:
 ### 19.1. Render Stable Overview Template
 
@@ -500,6 +569,14 @@ Subtasks:
 - Preserve portal-native versus document-derived labels.
 
 ## Task 21 - IMPLEMENT OPPORTUNITY DOCUMENTS TAB
+Status: ✅ COMPLETE
+
+Implementation notes:
+- Created `src/components/OpportunityDocumentsTab.tsx`. Groups documents by `document_family` in preferred order (Plans, Specifications, Addenda, Bid Forms, Insurance, Bonds, Labor Compliance, Bidder Communications, Supporting Documents), then alphabetical for unknowns.
+- Shows file name, document class, page count, and processing status (color-coded: green=processed, red=failed, blue=processing/queued).
+- Empty state: "Documents have not been acquired yet."
+- Documents tab label shows count in parentheses when docs exist.
+
 Subtasks:
 ### 21.1. Build Document List Model
 
@@ -520,6 +597,14 @@ Subtasks:
 - Avoid building a full document viewer unless scoped separately.
 
 ## Task 22 - IMPLEMENT OPPORTUNITY INTELLIGENCE TAB
+Status: ✅ COMPLETE
+
+Implementation notes:
+- Intelligence tab rendered as inline `IntelligenceTab` component inside OpportunityReport.tsx.
+- Preserves all F4 functionality: executive summary, 7 REPORT_SECTIONS with FindingsList + CitationList, bid due conflict evidence panel, partial acquisition notice, analysis progress steps (3-step progress indicator), re-analysis failure banner.
+- Re-Analyze and Delete Analysis secondary buttons (with AlertDialog confirmation) placed at top of tab.
+- All handlers (`handleReanalyze`, `handleDeleteAnalysis`, `handleAddToCalendar`) preserved with identical logic.
+
 Subtasks:
 ### 22.1. Render Tier 1 Opportunity Intelligence
 
@@ -541,6 +626,15 @@ Subtasks:
 - Keep failure banner behavior intact.
 
 ## Task 38 - APPLY VISUAL SIMPLIFICATION PASS
+Status: ✅ COMPLETE
+
+Implementation notes:
+- Removed Analyze Project button and all associated action density from Opportunity Cards.
+- Opportunity dossier uses consistent `OverviewSection` / `IntelSection` card pattern with unified spacing (p-6 / p-5).
+- OI status uses calm estimator labels from `OI_STATUS_LABELS` (e.g., "Intelligence Ready", "Preparing"). Raw task statuses never shown.
+- Empty/partial states normalized: `N/A` for missing snapshot fields, "Not identified." for no requirements, "Documents have not been acquired yet.", "Structured bid items coming soon."
+- Removed nested action rows and unnecessary badges from card footers.
+
 Subtasks:
 ### 38.1. Reduce Density
 

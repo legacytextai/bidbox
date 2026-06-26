@@ -1,6 +1,6 @@
 # F5 — Opportunity & Project Workspace
 
-Status: Planned
+Status: Phase 1 Complete, Phase 2 Complete, Phase 3 Planned
 Date: June 2026
 Execution task list: `docs/initiatives/f5-opportunity-project-workspace-task-list.md`
 
@@ -897,6 +897,41 @@ Includes:
 8. UI Polish and Visual Simplification.
 
 The detailed engineering task list lives in `docs/initiatives/f5-opportunity-project-workspace-task-list.md`.
+
+## Phase 2 Architecture — Opportunity Experience (Implemented June 2026)
+
+### Routing
+
+- `/opportunities` — Opportunity Cards (Opportunities.tsx)
+- `/opportunities/:id` — Opportunity Dossier (OpportunityReport.tsx) with `?tab=overview|documents|intelligence`
+- `/projects/:id` — Project Workspace (ProjectDetail.tsx, not changed in Phase 2)
+
+### Stable Presentation Contract
+
+`OpportunityOverviewData` (in `src/lib/opportunityView.ts`) is the single model the Overview tab consumes. The adapter `buildOpportunityOverviewData` composes from multiple underlying sources — candidate, crawl_data, report, findings, citations, documents, linked project — without exposing source identity to the UI.
+
+Rules:
+- Fields are never removed from the contract. Missing data uses `null`, not field absence.
+- `bidItemsAvailable: false` is a literal type until Tasks 10–14 are implemented.
+- Bid due is resolved by `resolveAuthoritativeBidDue` with full conflict detection.
+
+### Domain Resolvers
+
+`src/lib/opportunityDomain.ts` provides centralized display resolvers (`resolveTitle`, `resolveOIStatus`, `resolveOILabel`, `resolveOIStyle`, `isOIActive`, `isOIReady`, etc.) consumed by all card and dossier surfaces. `resolveOIStatus` falls back to legacy `analysis_status` fields for opportunities that predate Phase 1.
+
+### Data Access Hook
+
+`useOpportunityDossier(id)` (in `src/hooks/useOpportunityDossier.ts`) is the single data access layer for the dossier. Returns `overview: OpportunityOverviewData | null`, `findings`, `citations`, `documents`, `activeTask`, `linkedProject`, `reportReady`, `analysisWorkActive`, `reload`, and `setCandidate`. Polls every 5 seconds when analysis is active.
+
+### Tab Architecture
+
+- **Overview tab** — `OpportunityOverviewTab` renders 6 always-present sections: Project Snapshot, Executive Summary, Key Dates, Bid Items (placeholder), Important Requirements, Quick Facts.
+- **Documents tab** — `OpportunityDocumentsTab` groups documents by `document_family` in preferred order.
+- **Intelligence tab** — Inline `IntelligenceTab` component preserves all F4 functionality: executive summary, 7 report sections with citations, bid due conflict evidence, analysis progress, re-analysis and delete controls.
+
+### Backwards Compatibility
+
+All F4 functionality preserved. `resolveOIStatus` handles legacy `analysis_status` fields. `mapRow` in Opportunities.tsx maps both old and new lifecycle fields. No migrations added in Phase 2.
 
 ## Documentation Updates
 
