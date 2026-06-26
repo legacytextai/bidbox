@@ -4,6 +4,18 @@ All notable changes to the BidBox project are documented in this file.
 
 ---
 
+## [F5 Opportunity Overview Simplification] - 2026-06-25
+
+### Overview Tab
+
+- Reduced Opportunity Overview from 6 sections to 3: Project Snapshot, Executive Summary, Bid Items.
+- Executive Summary is now the complete intelligence briefing — AI prose paragraphs followed by license requirements and critical bid requirements within one section, separated by a subtle rule. No sub-headers, no separate "Key Requirements" card.
+- Removed Key Dates, Key Requirements, Documents sections from Overview. Documents live in the Documents tab; additional dates and requirements evidence live in the Intelligence tab.
+- Removed `documents` prop from `OpportunityOverviewTab` — the component now accepts only `data: OpportunityOverviewData`.
+- Updated `docs/design-guidelines.md` §Opportunity Overview from 6-section to 3-section canonical definition.
+
+---
+
 ## [F4A Deadline Display & Override Hardening] - 2026-06-23
 
 ### Deadline Workflow

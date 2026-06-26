@@ -265,13 +265,10 @@ Cards should feel quiet. Whitespace is more valuable than additional information
 **Required sections — always rendered, never removed:**
 
 1. **Project Snapshot** — Agency, Department, Solicitation Number, Bid Due, Job Walk, Engineer Estimate, County, Location, Portal, Contract Duration, Liquidated Damages. Nothing else. Contract Duration and Liquidated Damages belong here because they are project-level facts used in go/no-go evaluation, not dates or bidding requirements.
-2. **Executive Summary** — 1–3 paragraphs maximum. No bullets longer than two lines. No citations. No technical reasoning.
-3. **Key Requirements** — License requirements (from portal metadata) followed by critical bidding requirements from intelligence: Bond, Insurance, DIR, Prequalification. Not general project facts. License Requirements appear here, not in a separate "Quick Facts" section.
-4. **Bid Items** — Scope summary table. Every portal renders the same columns: Qty, Unit, Item Description. The extraction pipeline may vary; the presentation must not.
-5. **Documents Summary** — Simple inventory only. Example: *Plans (4), Specifications (2), Addenda (1)*. No previews, no AI, no document analysis. The full document list lives in the Documents tab.
-6. **Key Dates** — Additional dates from intelligence findings beyond what is already in Project Snapshot. Bid Due and Job Walk are not repeated here — they are canonical Project Snapshot fields.
+2. **Executive Summary** — The complete intelligence briefing for go/no-go evaluation. One section, no sub-divisions. Content reads in order: AI-generated prose paragraphs (scope, what's being built, major risks) followed by a requirements list (license requirements from portal metadata, then critical bid requirements from intelligence: Bond, Insurance, DIR, Prequalification). The requirements list appears within the same section container, separated by a subtle rule — not in a separate card. Do not concatenate or mechanically append; the section should read as one coherent briefing prepared by a senior estimator.
+3. **Bid Items** — Scope summary table. Every portal renders the same columns: Qty, Unit, Item Description. The extraction pipeline may vary; the presentation must not.
 
-Do not create miscellaneous sections. "Quick Facts" is not a canonical section — it is an anti-pattern that accumulates fields without a clear ownership rule. If content does not belong in one of these six sections, it does not belong on the Overview.
+Do not create miscellaneous sections. "Quick Facts", "Key Dates", and "Key Requirements" are not canonical sections — they are anti-patterns. If content does not belong in one of these three sections, it does not belong on the Overview. Documents belong in the Documents tab, not the Overview. Additional dates from intelligence (beyond Bid Due and Job Walk) are surfaced in the Intelligence tab, not the Overview.
 
 When data is unavailable, sections display N/A, Not identified, or Preparing. Sections are never removed because data is missing.
 
