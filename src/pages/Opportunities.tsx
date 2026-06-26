@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { ExternalLink, RefreshCw, ChevronDown, Loader2, Check, Filter } from "lucide-react";
+import { Building2, ExternalLink, RefreshCw, ChevronDown, Loader2, Check, Filter } from "lucide-react";
 import { resolveOIStatus, resolveOILabel, isOIActive, isOIReady, resolveEstimatedValue } from "@/lib/opportunityDomain";
 import { Layout } from "@/components/Layout";
 import {
