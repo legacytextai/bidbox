@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { ExternalLink, RefreshCw, ChevronDown, Clock, Loader2, RotateCcw, Sparkles, Building2, Check, Filter } from "lucide-react";
+import { ExternalLink, RefreshCw, ChevronDown, Loader2, Building2, Check, Filter } from "lucide-react";
+import { resolveOIStatus, resolveOILabel, resolveOIStyle, isOIActive, resolveEstimatedValue, resolvePortalStyle } from "@/lib/opportunityDomain";
 import { Layout } from "@/components/Layout";
 import {
   Tooltip,
@@ -96,70 +97,6 @@ const isAnalyzedCandidate = (c: {
   Boolean(c.document_acquisition_status && c.document_acquisition_status !== "not_requested") ||
   Boolean(c.document_processing_status && c.document_processing_status !== "not_requested");
 
-const PORTAL_STYLES: Record<string, string> = {
-  caltrans: "bg-blue-500/10 text-blue-700",
-  planetbids: "bg-purple-500/10 text-purple-700",
-  epro: "bg-teal-500/10 text-teal-700",
-  ersp: "bg-orange-500/10 text-orange-700",
-  bonfirehub: "bg-pink-500/10 text-pink-700",
-  ramp: "bg-indigo-500/10 text-indigo-700",
-};
-
-const AUTO_STATUS_DOT: Record<NonNullable<AutoStatus>, string> = {
-  green: "bg-green-500",
-  yellow: "bg-yellow-400",
-  red: "bg-red-500",
-};
-
-const ANALYSIS_STYLES: Record<AnalysisStatus, string> = {
-  not_requested: "bg-gray-500/10 text-gray-600",
-  queued: "bg-blue-500/10 text-blue-700",
-  analyzing: "bg-indigo-500/10 text-indigo-700",
-  ready: "bg-green-500/10 text-green-700",
-  failed: "bg-red-500/10 text-red-700",
-};
-
-const ANALYSIS_LABELS: Record<AnalysisStatus, string> = {
-  not_requested: "Not analyzed",
-  queued: "Queued",
-  analyzing: "Generating report",
-  ready: "Ready",
-  failed: "Failed",
-};
-
-const DOCUMENT_ACQUISITION_STYLES: Record<DocumentAcquisitionStatus, string> = {
-  not_requested: "bg-gray-500/10 text-gray-600",
-  queued: "bg-blue-500/10 text-blue-700",
-  acquiring: "bg-indigo-500/10 text-indigo-700",
-  acquired: "bg-green-500/10 text-green-700",
-  failed: "bg-red-500/10 text-red-700",
-};
-
-const DOCUMENT_ACQUISITION_LABELS: Record<DocumentAcquisitionStatus, string> = {
-  not_requested: "Documents not requested",
-  queued: "Document acquisition queued",
-  acquiring: "Acquiring documents",
-  acquired: "Documents acquired",
-  failed: "Document acquisition failed",
-};
-
-const DOCUMENT_PROCESSING_STYLES: Record<DocumentProcessingStatus, string> = {
-  not_requested: "bg-gray-500/10 text-gray-600",
-  queued: "bg-blue-500/10 text-blue-700",
-  processing: "bg-indigo-500/10 text-indigo-700",
-  processed: "bg-green-500/10 text-green-700",
-  partial: "bg-yellow-500/10 text-yellow-700",
-  failed: "bg-red-500/10 text-red-700",
-};
-
-const DOCUMENT_PROCESSING_LABELS: Record<DocumentProcessingStatus, string> = {
-  not_requested: "Documents not processed",
-  queued: "Document processing queued",
-  processing: "Processing documents",
-  processed: "Documents processed",
-  partial: "Documents partially processed",
-  failed: "Document processing failed",
-};
 
 const AUTO_RANK: Record<string, number> = {
   green: 0,
@@ -185,17 +122,6 @@ function formatBidDate(iso: string | null): string {
     "America/Los_Angeles",
     "MM/dd/yyyy 'at' h:mm a zzz"
   );
-}
-
-function formatEstimatedValue(value: number | null | undefined): string | null {
-  if (typeof value !== "number" || value <= 0) return null;
-  if (value >= 1_000_000) {
-    return `$${(value / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
-  }
-  if (value >= 1_000) {
-    return `$${Math.round(value / 1_000)}K`;
-  }
-  return `$${value.toLocaleString("en-US")}`;
 }
 
 function timeAgo(iso: string | null): string {
@@ -426,7 +352,6 @@ const Opportunities = () => {
   
   const [lastScannedAt, setLastScannedAt] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
-  const [analyzingId, setAnalyzingId] = useState<string | null>(null);
   const [filteredOutOpen, setFilteredOutOpen] = useState(false);
   const [activeScanTaskIds, setActiveScanTaskIds] = useState<string[]>([]);
   const [scanStartedAt, setScanStartedAt] = useState<string | null>(null);
@@ -466,6 +391,11 @@ const Opportunities = () => {
     document_processing_started_at: row.document_processing_started_at ?? null,
     document_processing_completed_at: row.document_processing_completed_at ?? null,
     document_processing_error: row.document_processing_error ?? null,
+    opportunity_lifecycle_status: row.opportunity_lifecycle_status ?? null,
+    opportunity_intelligence_status: row.opportunity_intelligence_status ?? null,
+    opportunity_intelligence_task_id: row.opportunity_intelligence_task_id ?? null,
+    opportunity_intelligence_ready_at: row.opportunity_intelligence_ready_at ?? null,
+    opportunity_intelligence_error: row.opportunity_intelligence_error ?? null,
   }), []);
 
   const loadCandidates = useCallback(async (opts?: { silent?: boolean }) => {
@@ -727,52 +657,6 @@ const Opportunities = () => {
     }
   };
 
-  const handleAnalyzeProject = async (candidate: Candidate) => {
-    setAnalyzingId(candidate.id);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) { navigate("/auth"); return; }
-
-      const { data, error } = await supabase.functions.invoke("analyze-project", {
-        body: { candidate_id: candidate.id },
-      });
-
-      if (error) throw error;
-      if (data?.success === false) throw new Error(data.error ?? "Failed to queue analysis");
-
-      setCandidates((prev) =>
-        prev.map((c) =>
-          c.id === candidate.id
-            ? {
-                ...c,
-                analysis_status: (data?.analysis_status ?? "queued") as AnalysisStatus,
-                analysis_task_id: data?.task_id ?? c.analysis_task_id,
-                analysis_error: null,
-                analysis_requested_at: new Date().toISOString(),
-                document_acquisition_status: (data?.document_acquisition_status ?? "queued") as DocumentAcquisitionStatus,
-                document_acquisition_error: null,
-              }
-            : c,
-        ),
-      );
-
-      toast({
-        title: data?.duplicate
-          ? data?.document_acquisition_status === "acquired"
-            ? "Documents already acquired"
-            : "Analysis already queued"
-          : "Analysis queued",
-        description: data?.document_acquisition_status === "acquired"
-          ? "Documents are ready for processing. Project Intelligence has not been generated yet."
-          : "Document acquisition queued. Project Intelligence has not been generated yet.",
-      });
-    } catch (e: any) {
-      toast({ title: "Analysis request failed", description: e?.message ?? "Unknown error", variant: "destructive" });
-    } finally {
-      setAnalyzingId(null);
-    }
-  };
-
   // Distinct county / agency options from loaded candidates.
   const { countyOptions, agencyOptions, hasNoCounty, hasNoAgency } = useMemo(() => {
     const counties = new Set<string>();
@@ -860,131 +744,73 @@ const Opportunities = () => {
   const hasActiveFacetFilters = countyFilter.length > 0 || agencyFilter.length > 0;
 
 
-  const renderCard = (candidate: Candidate, index: number) => {
-    const acquisitionActive = candidate.document_acquisition_status === "queued" || candidate.document_acquisition_status === "acquiring";
-    const acquisitionComplete = candidate.document_acquisition_status === "acquired";
+  const renderCard = (candidate: Candidate, _index: number) => {
+    const oiStatus = resolveOIStatus(candidate);
+    const oiLabel = resolveOILabel(oiStatus);
+    const oiStyle = resolveOIStyle(oiStatus);
+    const oiIsActive = isOIActive(oiStatus);
+    const estimatedValue = resolveEstimatedValue(candidate.crawl_data);
     const bidClosed = isBidClosed(candidate.bid_due_at);
-    const analyzeDisabled = analyzingId === candidate.id || acquisitionActive || acquisitionComplete || bidClosed;
-    const analyzeLabel = analyzingId === candidate.id
-      ? "Queueing..."
-      : candidate.document_acquisition_status === "failed"
-      ? "Retry Analysis"
-      : candidate.document_acquisition_status === "acquired"
-      ? "Documents Acquired"
-      : acquisitionActive
-      ? candidate.document_acquisition_status === "acquiring" ? "Acquiring Documents" : "Document Acquisition Queued"
-      : "Analyze Project";
-    const titleClassification = classifyOpportunityTitle(candidate.raw_title);
-    const titleFilterLabel = titleClassification.reason
-      ? OPPORTUNITY_FILTER_REASON_LABELS[titleClassification.reason]
-      : null;
 
     return (
-    <div
-      key={candidate.id}
-      className="bg-card border border-border rounded-lg p-6 flex flex-col gap-3"
-    >
-      {/* Title + external link */}
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-base text-foreground leading-snug">
-            {candidate.raw_title ?? "Untitled Opportunity"}
-          </h3>
-          {/* Agency — Option D applied universally */}
-          {candidate.agency && (
-            <p className="mt-2 flex items-center gap-1.5 text-sm font-medium text-foreground">
-              <Building2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-              {candidate.agency}
-            </p>
-          )}
-        </div>
-        <a
-          href={candidate.source_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={(e) => e.stopPropagation()}
-          className="shrink-0 text-muted-foreground hover:text-foreground"
-          title="Open source page"
-        >
-          <ExternalLink className="h-4 w-4" />
-        </a>
-      </div>
-
-
-      {/* Badges row */}
-      {candidate.portal_type && (
-        <div className="flex items-center gap-2 flex-wrap">
-          <span
-            className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${
-              PORTAL_STYLES[candidate.portal_type] ?? "bg-gray-500/10 text-gray-600"
-            }`}
+      <div
+        key={candidate.id}
+        role="button"
+        tabIndex={0}
+        onClick={() => navigate(`/opportunities/${candidate.id}`)}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigate(`/opportunities/${candidate.id}`); }}
+        className="bg-card border border-border rounded-lg p-6 flex flex-col gap-4 cursor-pointer hover:border-foreground/20 hover:shadow-sm transition-all"
+      >
+        {/* Title + external link */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <h3 className="font-semibold text-base text-foreground leading-snug">
+              {candidate.raw_title ?? "Untitled Opportunity"}
+            </h3>
+            {candidate.agency && (
+              <p className="mt-1.5 flex items-center gap-1.5 text-sm text-muted-foreground">
+                <Building2 className="h-3.5 w-3.5 shrink-0" />
+                {candidate.agency}
+              </p>
+            )}
+          </div>
+          <a
+            href={candidate.source_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="shrink-0 text-muted-foreground hover:text-foreground mt-0.5"
+            title="Open source page"
           >
-            {candidate.portal_type}
+            <ExternalLink className="h-4 w-4" />
+          </a>
+        </div>
+
+        {/* Meta */}
+        <div className="text-sm text-muted-foreground space-y-1">
+          <p className={bidClosed ? "text-red-600" : ""}>
+            Bid Due: {formatBidDate(candidate.bid_due_at)}
+          </p>
+          {estimatedValue && <p>Est. Value: {estimatedValue}</p>}
+        </div>
+
+        {/* Footer: portal badge + OI status indicator */}
+        <div className="flex items-center justify-between gap-2 pt-1">
+          {candidate.portal_type ? (
+            <span
+              className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${resolvePortalStyle(candidate.portal_type)}`}
+            >
+              {candidate.portal_type}
+            </span>
+          ) : (
+            <span />
+          )}
+          <span className={`inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${oiStyle}`}>
+            {oiIsActive && <Loader2 className="h-2.5 w-2.5 animate-spin" />}
+            {oiLabel}
           </span>
         </div>
-      )}
-
-
-      {/* Meta */}
-      <div className="text-sm text-muted-foreground space-y-0.5">
-        <p>Bid Due: {formatBidDate(candidate.bid_due_at)}</p>
-        {(() => {
-          const ev = formatEstimatedValue(candidate.crawl_data?.estimated_value);
-          return ev ? <p>Estimated Value: {ev}</p> : null;
-        })()}
-        {candidate.source_name && (
-          <p className="text-xs">Source: {candidate.source_name}</p>
-        )}
       </div>
-
-      {/* Action: View Intelligence Report (after F4) | View Progress | View Project | Analyze Project */}
-      {isAnalyzedCandidate(candidate) ? (
-        <Button
-          size="sm"
-          onClick={() => navigate(`/opportunities/${candidate.id}`)}
-          className="w-full bg-orange-500 text-white hover:bg-orange-600"
-        >
-          <Sparkles className="h-4 w-4 mr-2" />
-          View Intelligence Report
-        </Button>
-      ) : candidate.analysis_status !== "not_requested" ? (
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => navigate(`/opportunities/${candidate.id}`)}
-          className="w-full"
-        >
-          <Sparkles className="h-4 w-4 mr-2" />
-          View Analysis Progress
-        </Button>
-      ) : candidate.status === "converted" && candidate.converted_project_id ? (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => navigate(`/projects/${candidate.converted_project_id}`)}
-        >
-          View Project
-        </Button>
-      ) : (
-        <div className="space-y-1.5">
-          <Button
-            size="sm"
-            disabled={analyzeDisabled}
-            onClick={() => handleAnalyzeProject(candidate)}
-            className="w-full bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90 disabled:opacity-40"
-          >
-            {analyzingId === candidate.id ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : candidate.document_acquisition_status === "failed" ? (
-              <RotateCcw className="h-4 w-4 mr-2" />
-            ) : (
-              <Sparkles className="h-4 w-4 mr-2" />
-            )}
-            {bidClosed ? "Bid Closed" : analyzeLabel}
-          </Button>
-        </div>
-      )}
-    </div>
     );
   };
 

@@ -1,0 +1,133 @@
+// Shared display resolvers for opportunity candidates.
+// Cards, Overview tab, and future Project Workspace consume these
+// rather than duplicating formatting logic inline.
+
+export const PORTAL_STYLES: Record<string, string> = {
+  caltrans: "bg-blue-500/10 text-blue-700",
+  planetbids: "bg-purple-500/10 text-purple-700",
+  epro: "bg-teal-500/10 text-teal-700",
+  ersp: "bg-orange-500/10 text-orange-700",
+  bonfirehub: "bg-pink-500/10 text-pink-700",
+  ramp: "bg-indigo-500/10 text-indigo-700",
+};
+
+export function resolveTitle(candidate: { raw_title: string | null }): string {
+  return candidate.raw_title?.trim() || "Untitled Opportunity";
+}
+
+export function resolveAgency(candidate: { agency: string | null }): string | null {
+  return candidate.agency?.trim() || null;
+}
+
+export function resolvePortalLabel(portalType: string | null | undefined): string | null {
+  return portalType?.trim() || null;
+}
+
+export function resolvePortalStyle(portalType: string | null | undefined): string {
+  return PORTAL_STYLES[portalType ?? ""] ?? "bg-gray-500/10 text-gray-600";
+}
+
+export function resolveEstimatedValue(crawlData: any): string | null {
+  const value = crawlData?.estimated_value;
+  if (typeof value !== "number" || value <= 0) return null;
+  if (value >= 1_000_000) {
+    return `$${(value / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  }
+  if (value >= 1_000) {
+    return `$${Math.round(value / 1_000)}K`;
+  }
+  return `$${value.toLocaleString("en-US")}`;
+}
+
+export function resolveEstimatedValueRaw(crawlData: any): number | null {
+  const value = crawlData?.estimated_value;
+  return typeof value === "number" && value > 0 ? value : null;
+}
+
+export function resolveLocation(crawlData: any): { projectAddress: string | null; county: string | null } {
+  const projectAddress =
+    typeof crawlData?.project_address === "string" && crawlData.project_address.trim()
+      ? crawlData.project_address.trim()
+      : null;
+  const county =
+    typeof crawlData?.county === "string" && crawlData.county.trim()
+      ? crawlData.county.trim()
+      : null;
+  return { projectAddress, county };
+}
+
+export function resolveSolicitationId(crawlData: any): string | null {
+  const v =
+    crawlData?.solicitation_number ??
+    crawlData?.project_number ??
+    crawlData?.bid_number ??
+    crawlData?.contract_number;
+  return typeof v === "string" && v.trim() ? v.trim() : null;
+}
+
+export function resolveDepartment(crawlData: any): string | null {
+  const v = crawlData?.department;
+  return typeof v === "string" && v.trim() ? v.trim() : null;
+}
+
+// OI status: maps the Phase 1 opportunity_intelligence_status field (or legacy fields) to display values.
+
+export const OI_STATUS_LABELS: Record<string, string> = {
+  not_requested: "Not Prepared",
+  queued: "Preparing",
+  acquiring_documents: "Acquiring Documents",
+  processing_documents: "Processing Documents",
+  generating_report: "Generating Intelligence",
+  ready: "Intelligence Ready",
+  partial: "Partial Intelligence",
+  failed: "Needs Review",
+};
+
+export const OI_STATUS_STYLES: Record<string, string> = {
+  not_requested: "bg-gray-500/10 text-gray-500",
+  queued: "bg-blue-500/10 text-blue-700",
+  acquiring_documents: "bg-indigo-500/10 text-indigo-700",
+  processing_documents: "bg-indigo-500/10 text-indigo-700",
+  generating_report: "bg-indigo-500/10 text-indigo-700",
+  ready: "bg-green-500/10 text-green-700",
+  partial: "bg-yellow-500/10 text-yellow-700",
+  failed: "bg-red-500/10 text-red-700",
+};
+
+export function resolveOIStatus(candidate: {
+  opportunity_intelligence_status?: string | null;
+  analysis_status?: string;
+  document_acquisition_status?: string;
+  document_processing_status?: string;
+}): string {
+  if (candidate.opportunity_intelligence_status) {
+    return candidate.opportunity_intelligence_status;
+  }
+  // Fall back to legacy fields for backwards compatibility
+  const as = candidate.analysis_status;
+  if (as === "ready") return "ready";
+  if (as === "analyzing") return "generating_report";
+  if (as === "queued") return "queued";
+  if (as === "failed") return "failed";
+  const dp = candidate.document_processing_status;
+  if (dp === "processing" || dp === "queued") return "processing_documents";
+  const da = candidate.document_acquisition_status;
+  if (da === "acquiring" || da === "queued") return "acquiring_documents";
+  return "not_requested";
+}
+
+export function resolveOILabel(oiStatus: string): string {
+  return OI_STATUS_LABELS[oiStatus] ?? "Unknown";
+}
+
+export function resolveOIStyle(oiStatus: string): string {
+  return OI_STATUS_STYLES[oiStatus] ?? "bg-gray-500/10 text-gray-500";
+}
+
+export function isOIActive(oiStatus: string): boolean {
+  return ["queued", "acquiring_documents", "processing_documents", "generating_report"].includes(oiStatus);
+}
+
+export function isOIReady(oiStatus: string): boolean {
+  return oiStatus === "ready" || oiStatus === "partial";
+}
