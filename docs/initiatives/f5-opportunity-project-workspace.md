@@ -945,25 +945,9 @@ This initiative should be referenced, not duplicated, from:
 
 Future data model documentation should include `opportunity_bid_items`, lifecycle fields, Opportunity Intelligence status, Project Intelligence status, pursuit status, and calendar transition metadata. Until a formal schema document exists, those concepts are documented here.
 
-## Future Design System Document
+## Design System Document
 
-Create later:
-
-```text
-docs/design-system.md
-```
-
-Purpose:
-
-- Spacing
-- Typography
-- Card patterns
-- Tabs
-- Tables
-- Badges
-- Empty states
-- Page hierarchy
-- Visual density rules
+The design system now lives at `docs/design-guidelines.md`. It is the authoritative standard for all BidBox interface decisions and covers spacing, typography, card patterns, tabs, tables, badges, empty states, page hierarchy, visual density rules, component standards, AI architecture mapping, UX anti-patterns, and the design review checklist.
 
 ## Success Criteria
 
