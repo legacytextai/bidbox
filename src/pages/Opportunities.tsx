@@ -3,8 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { ExternalLink, RefreshCw, ChevronDown, Loader2, Building2, Check, Filter } from "lucide-react";
-import { resolveOIStatus, resolveOILabel, resolveOIStyle, isOIActive, resolveEstimatedValue, resolvePortalStyle } from "@/lib/opportunityDomain";
+import { ExternalLink, RefreshCw, ChevronDown, Loader2, Check, Filter } from "lucide-react";
+import { resolveOIStatus, resolveOILabel, isOIActive, isOIReady, resolveEstimatedValue } from "@/lib/opportunityDomain";
 import { Layout } from "@/components/Layout";
 import {
   Tooltip,
@@ -747,10 +747,23 @@ const Opportunities = () => {
   const renderCard = (candidate: Candidate, _index: number) => {
     const oiStatus = resolveOIStatus(candidate);
     const oiLabel = resolveOILabel(oiStatus);
-    const oiStyle = resolveOIStyle(oiStatus);
     const oiIsActive = isOIActive(oiStatus);
+    const oiIsReady = isOIReady(oiStatus);
+    const oiFailed = oiStatus === "failed";
     const estimatedValue = resolveEstimatedValue(candidate.crawl_data);
     const bidClosed = isBidClosed(candidate.bid_due_at);
+    const county = candidate.crawl_data?.county as string | undefined;
+    const bidDateDisplay = formatBidDate(candidate.bid_due_at);
+
+    // One badge only. Semantic colors: green = ready, red = failure, blue = active.
+    // Not-requested shows no badge — a missing status is not information worth signaling.
+    const oiBadgeClass = oiIsReady
+      ? "bg-green-50 text-green-800 border border-green-100"
+      : oiFailed
+        ? "bg-red-50 text-red-800 border border-red-100"
+        : oiIsActive
+          ? "bg-blue-50 text-blue-700 border border-blue-100"
+          : null;
 
     return (
       <div
@@ -759,20 +772,22 @@ const Opportunities = () => {
         tabIndex={0}
         onClick={() => navigate(`/opportunities/${candidate.id}`)}
         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigate(`/opportunities/${candidate.id}`); }}
-        className="bg-card border border-border rounded-lg p-6 flex flex-col gap-4 cursor-pointer hover:border-foreground/20 hover:shadow-sm transition-all"
+        className="bg-card border border-border rounded-lg p-7 flex flex-col gap-5 cursor-pointer hover:border-foreground/30 hover:shadow-sm transition-all"
       >
-        {/* Title + external link */}
-        <div className="flex items-start justify-between gap-3">
+        {/* Title */}
+        <div className="flex items-start justify-between gap-4">
           <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-base text-foreground leading-snug">
+            <h3 className="font-bold text-lg text-foreground leading-snug">
               {candidate.raw_title ?? "Untitled Opportunity"}
             </h3>
-            {candidate.agency && (
-              <p className="mt-1.5 flex items-center gap-1.5 text-sm text-muted-foreground">
-                <Building2 className="h-3.5 w-3.5 shrink-0" />
-                {candidate.agency}
-              </p>
-            )}
+            <div className="mt-2 space-y-0.5">
+              {candidate.agency && (
+                <p className="text-sm text-muted-foreground">{candidate.agency}</p>
+              )}
+              {county && (
+                <p className="text-xs text-muted-foreground">{county} County</p>
+              )}
+            </div>
           </div>
           <a
             href={candidate.source_url}
@@ -786,29 +801,34 @@ const Opportunities = () => {
           </a>
         </div>
 
-        {/* Meta */}
-        <div className="text-sm text-muted-foreground space-y-1">
-          <p className={bidClosed ? "text-red-600" : ""}>
-            Bid Due: {formatBidDate(candidate.bid_due_at)}
-          </p>
-          {estimatedValue && <p>Est. Value: {estimatedValue}</p>}
+        {/* Bid Due + Estimate — primary decision data */}
+        <div className="space-y-1.5">
+          {bidDateDisplay !== "—" ? (
+            <p className={`text-base font-semibold ${bidClosed ? "text-red-600" : "text-foreground"}`}>
+              <span className="text-xs font-normal text-muted-foreground mr-2 uppercase tracking-wide">Bid Due</span>
+              {bidDateDisplay}
+            </p>
+          ) : (
+            <p className="text-sm text-muted-foreground">Bid date not listed</p>
+          )}
+          {estimatedValue && (
+            <p className="text-sm text-muted-foreground">
+              Est. <span className="font-medium text-foreground">{estimatedValue}</span>
+            </p>
+          )}
         </div>
 
-        {/* Footer: portal badge + OI status indicator */}
-        <div className="flex items-center justify-between gap-2 pt-1">
-          {candidate.portal_type ? (
-            <span
-              className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${resolvePortalStyle(candidate.portal_type)}`}
-            >
-              {candidate.portal_type}
-            </span>
-          ) : (
-            <span />
-          )}
-          <span className={`inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${oiStyle}`}>
-            {oiIsActive && <Loader2 className="h-2.5 w-2.5 animate-spin" />}
-            {oiLabel}
+        {/* Footer: portal as plain text label, one semantic OI badge */}
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs text-muted-foreground uppercase tracking-wide">
+            {candidate.portal_type ?? ""}
           </span>
+          {oiBadgeClass && (
+            <span className={`inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide px-2 py-0.5 rounded-full ${oiBadgeClass}`}>
+              {oiIsActive && <Loader2 className="h-2.5 w-2.5 animate-spin" />}
+              {oiLabel}
+            </span>
+          )}
         </div>
       </div>
     );

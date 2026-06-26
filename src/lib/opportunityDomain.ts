@@ -83,15 +83,17 @@ export const OI_STATUS_LABELS: Record<string, string> = {
   failed: "Needs Review",
 };
 
+// Semantic palette only: blue = active system action, green = success, red = failure, gray = neutral.
+// Indigo and yellow are not in the design system palette and have been removed.
 export const OI_STATUS_STYLES: Record<string, string> = {
-  not_requested: "bg-gray-500/10 text-gray-500",
-  queued: "bg-blue-500/10 text-blue-700",
-  acquiring_documents: "bg-indigo-500/10 text-indigo-700",
-  processing_documents: "bg-indigo-500/10 text-indigo-700",
-  generating_report: "bg-indigo-500/10 text-indigo-700",
-  ready: "bg-green-500/10 text-green-700",
-  partial: "bg-yellow-500/10 text-yellow-700",
-  failed: "bg-red-500/10 text-red-700",
+  not_requested: "bg-gray-100 text-gray-500",
+  queued: "bg-blue-50 text-blue-700",
+  acquiring_documents: "bg-blue-50 text-blue-700",
+  processing_documents: "bg-blue-50 text-blue-700",
+  generating_report: "bg-blue-50 text-blue-700",
+  ready: "bg-green-50 text-green-800",
+  partial: "bg-gray-100 text-gray-700",
+  failed: "bg-red-50 text-red-800",
 };
 
 export function resolveOIStatus(candidate: {

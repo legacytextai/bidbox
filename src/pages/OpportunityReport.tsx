@@ -673,7 +673,7 @@ const OpportunityReport = () => {
 
         {/* ── Tab content ──────────────────────────────────────────────────── */}
         {activeTab === "overview" && overview && (
-          <OpportunityOverviewTab data={overview} />
+          <OpportunityOverviewTab data={overview} documents={documents} />
         )}
 
         {activeTab === "documents" && (

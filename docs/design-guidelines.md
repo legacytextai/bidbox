@@ -264,13 +264,14 @@ Cards should feel quiet. Whitespace is more valuable than additional information
 
 **Required sections — always rendered, never removed:**
 
-1. **Project Snapshot** — Agency, Solicitation Number, Bid Due, Job Walk, Engineer Estimate, Estimated Contract Value, County, Location, Portal. Nothing else.
+1. **Project Snapshot** — Agency, Department, Solicitation Number, Bid Due, Job Walk, Engineer Estimate, County, Location, Portal, Contract Duration, Liquidated Damages. Nothing else. Contract Duration and Liquidated Damages belong here because they are project-level facts used in go/no-go evaluation, not dates or bidding requirements.
 2. **Executive Summary** — 1–3 paragraphs maximum. No bullets longer than two lines. No citations. No technical reasoning.
-3. **Key Requirements** — Critical bidding requirements only: License, Bond, Insurance, DIR, Prequalification. Not general project facts.
+3. **Key Requirements** — License requirements (from portal metadata) followed by critical bidding requirements from intelligence: Bond, Insurance, DIR, Prequalification. Not general project facts. License Requirements appear here, not in a separate "Quick Facts" section.
 4. **Bid Items** — Scope summary table. Every portal renders the same columns: Qty, Unit, Item Description. The extraction pipeline may vary; the presentation must not.
-5. **Documents Summary** — Simple inventory only. Example: *Plans (4), Specifications (2), Addenda (1)*. No previews, no AI, no document analysis.
+5. **Documents Summary** — Simple inventory only. Example: *Plans (4), Specifications (2), Addenda (1)*. No previews, no AI, no document analysis. The full document list lives in the Documents tab.
+6. **Key Dates** — Additional dates from intelligence findings beyond what is already in Project Snapshot. Bid Due and Job Walk are not repeated here — they are canonical Project Snapshot fields.
 
-Do not create miscellaneous sections. If content does not belong in one of these five sections, it does not belong on the Overview.
+Do not create miscellaneous sections. "Quick Facts" is not a canonical section — it is an anti-pattern that accumulates fields without a clear ownership rule. If content does not belong in one of these six sections, it does not belong on the Overview.
 
 When data is unavailable, sections display N/A, Not identified, or Preparing. Sections are never removed because data is missing.
 
