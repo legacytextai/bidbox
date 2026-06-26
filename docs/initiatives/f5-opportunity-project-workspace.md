@@ -183,6 +183,57 @@ Outputs:
 
 `Add to Calendar` activates or enables this deeper project-level intelligence. Opportunity Intelligence prepares the opportunity for review. Project Intelligence prepares the project for pursuit.
 
+## Future Architecture: Continuous Project Monitoring
+
+While Opportunity Intelligence prepares opportunities for evaluation and Project Intelligence prepares projects for execution, BidBox is ultimately designed to become a continuously operating project assistant.
+
+Once a project has been added to My Projects, the platform should continue working on behalf of the estimator without requiring manual intervention.
+
+This introduces a third stage in the BidBox lifecycle:
+
+```text
+Opportunity Discovery
+-> Project Execution
+-> Continuous Project Monitoring
+```
+
+Unlike Opportunity Intelligence, which runs automatically during opportunity ingestion, or Project Intelligence, which activates when a project is added to the calendar, Continuous Project Monitoring operates throughout the life of an active pursuit.
+
+The monitoring pipeline should periodically evaluate active projects for new information and trigger the appropriate agents as needed.
+
+Potential responsibilities include:
+
+- Detect newly issued addenda.
+- Download and acquire new project documents.
+- Update document indexes and knowledge.
+- Re-run Bid Readiness when requirements change.
+- Refresh Project Intelligence when significant project information changes.
+- Notify estimators of meaningful changes requiring attention.
+- Maintain an up-to-date view of project status throughout the pursuit.
+
+Initially, the highest-value capability will be the Addenda Agent.
+
+On a scheduled basis, for example nightly, the Addenda Agent should revisit active projects, determine whether new addenda have been published, acquire any new documents, and trigger downstream processing where appropriate.
+
+A typical monitoring workflow may resemble:
+
+```text
+Scheduled Monitoring
+-> Check Active Projects
+-> Detect New Addenda
+-> Acquire New Documents
+-> Update Knowledge Layer
+-> Refresh Project Intelligence
+-> Refresh Bid Readiness
+-> Notify Estimator
+```
+
+This capability is intentionally out of scope for the F5 MVP.
+
+However, the F5 architecture should be designed so that Continuous Project Monitoring can be added without requiring significant changes to the Opportunity Discovery or Project Workspace models.
+
+The long-term vision is for BidBox to evolve from a system that prepares projects once into a platform that continuously maintains project readiness throughout the entire bidding lifecycle.
+
 ## Product Area 1: Opportunity Discovery
 
 The Opportunities page should become a lightweight project discovery experience.

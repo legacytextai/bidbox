@@ -885,6 +885,8 @@ Subtasks:
 - Document unsupported portals or bid item extraction gaps.
 - Document manual cleanup paths.
 - Document deferred tabs and agents.
+- Document Continuous Project Monitoring as a post-MVP architecture path, including the future Addenda Agent, monitoring workflows, Project Intelligence refresh, Bid Readiness refresh, and estimator notifications.
+- Make clear that Continuous Project Monitoring is intentionally out of scope for the active F5 MVP.
 
 ## Task 41 - END-TO-END QA AND ROLLOUT
 Subtasks:
