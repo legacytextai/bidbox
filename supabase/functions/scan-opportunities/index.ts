@@ -21,6 +21,10 @@ interface SourceRunResult {
   queue_state: "queued" | "already_queued" | "not_queued";
 }
 
+function refreshWindow(date = new Date()) {
+  return date.toISOString().slice(0, 13);
+}
+
 async function qualifyCandidates(authHeader: string) {
   if (!authHeader) return;
 
@@ -47,6 +51,8 @@ async function queueWorkerScanSources(
   supabase: ReturnType<typeof createClient>,
   taskType: "planetbids_scan" | "caltrans_scan",
   label: string,
+  triggerReason: string,
+  window: string,
 ): Promise<SourceRunResult[]> {
   if (sources.length === 0) return [];
 
@@ -96,11 +102,15 @@ async function queueWorkerScanSources(
       task_type: taskType,
       status: "pending",
       priority: 0,
+      trigger_reason: triggerReason,
+      refresh_window: window,
       payload: {
         source_id: source.id,
         source_name: source.name,
         listing_url: source.listing_url,
         portal_type: source.portal_type,
+        trigger_reason: triggerReason,
+        refresh_window: window,
       },
     }));
 
@@ -123,6 +133,17 @@ async function queueWorkerScanSources(
           });
         }
       }
+    }
+
+    if (insertedBySourceId.size > 0) {
+      await supabase
+        .from("opportunity_sources")
+        .update({
+          last_refresh_queued_at: new Date().toISOString(),
+          last_refresh_status: "queued",
+          last_refresh_error: null,
+        })
+        .in("id", Array.from(insertedBySourceId.keys()));
     }
   }
 
@@ -251,7 +272,32 @@ async function scanSource(
 
     if (insertError) {
       if (insertError.code === "23505") {
-        log(`[${source.name}] Already known: ${candidate.source_url}`);
+        const { data: existing } = await supabase
+          .from("opportunity_candidates")
+          .select("id, metadata_refresh_count")
+          .eq("source_url", candidate.source_url)
+          .maybeSingle();
+        if (existing?.id) {
+          await supabase
+            .from("opportunity_candidates")
+            .update({
+              source_id: source.id,
+              portal_type: source.portal_type,
+              raw_title: candidate.raw_title,
+              agency: source.name,
+              bid_due_at: candidate.bid_due_at,
+              crawl_data: candidate.crawl_data ?? null,
+              last_metadata_refreshed_at: new Date().toISOString(),
+              last_metadata_changed_at: new Date().toISOString(),
+              metadata_refresh_count: Number(existing.metadata_refresh_count ?? 0) + 1,
+              metadata_refresh_source: "scan",
+              metadata_refresh_trigger: "manual_refresh",
+            })
+            .eq("id", existing.id);
+          log(`[${source.name}] Refreshed existing candidate: ${candidate.source_url}`);
+        } else {
+          log(`[${source.name}] Already known: ${candidate.source_url}`);
+        }
       } else {
         log(`[${source.name}] Insert error for ${candidate.source_url}: ${insertError.message}`);
         errors++;
@@ -289,10 +335,13 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     let sourceIdFilter: string | null = null;
+    let triggerReason = "manual_refresh";
+    const window = refreshWindow();
     if (req.method === "POST") {
       try {
         const body = await req.json();
         sourceIdFilter = body?.source_id ?? null;
+        triggerReason = body?.trigger_reason ?? triggerReason;
       } catch {
         // No body or non-JSON — scan all
       }
@@ -301,7 +350,8 @@ serve(async (req) => {
     let query = supabase
       .from("opportunity_sources")
       .select("id, name, portal_type, listing_url, scan_interval_hours")
-      .eq("scan_enabled", true);
+      .eq("scan_enabled", true)
+      .eq("refresh_enabled", true);
 
     if (sourceIdFilter) {
       query = query.eq("id", sourceIdFilter);
@@ -348,12 +398,12 @@ serve(async (req) => {
 
     const runs: SourceRunResult[] = [];
     if (planetbidsSources.length > 0) {
-      const queuedRuns = await queueWorkerScanSources(planetbidsSources, supabase, "planetbids_scan", "PlanetBids");
+      const queuedRuns = await queueWorkerScanSources(planetbidsSources, supabase, "planetbids_scan", "PlanetBids", triggerReason, window);
       runs.push(...queuedRuns);
     }
 
     if (caltransSources.length > 0) {
-      const queuedRuns = await queueWorkerScanSources(caltransSources, supabase, "caltrans_scan", "Caltrans");
+      const queuedRuns = await queueWorkerScanSources(caltransSources, supabase, "caltrans_scan", "Caltrans", triggerReason, window);
       runs.push(...queuedRuns);
     }
 
@@ -412,6 +462,8 @@ serve(async (req) => {
         total_already_queued: runs.filter((r) => r.queue_state === "already_queued").length,
         queued_task_ids: queuedTasks.map((t) => t.task_id),
         queued_tasks: queuedTasks,
+        trigger_reason: triggerReason,
+        refresh_window: window,
         partial: skippedNonPlanetBids,
         skipped_non_planetbids_sources: skippedNonPlanetBids ? otherSources.length : 0,
         runs,

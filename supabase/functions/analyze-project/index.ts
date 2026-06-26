@@ -112,6 +112,10 @@ serve(async (req) => {
           analysis_task_id: existingTask.id,
           document_acquisition_status: documentStatus,
           analysis_error: null,
+          opportunity_lifecycle_status: "opportunity_intelligence_queued",
+          opportunity_intelligence_status: documentStatus === "acquiring" ? "acquiring_documents" : "queued",
+          opportunity_intelligence_task_id: existingTask.id,
+          opportunity_intelligence_error: null,
         })
         .eq("id", candidateId);
 
@@ -155,6 +159,8 @@ serve(async (req) => {
         task_type: "project_analysis",
         status: "pending",
         priority: 0,
+        trigger_reason: "manual_analyze",
+        refresh_window: new Date().toISOString().slice(0, 13),
         payload: {
           candidate_id: candidate.id,
           source_id: candidate.source_id,
@@ -166,6 +172,8 @@ serve(async (req) => {
           bid_due_at: candidate.bid_due_at,
           requested_by: user.id,
           requested_at: requestedAt,
+          trigger_reason: "manual_analyze",
+          intelligence_tier: "opportunity",
         phase: "f1_analyze_project",
         next_phase: "f2_document_acquisition",
         intelligence_status: "not_generated",
@@ -193,6 +201,10 @@ serve(async (req) => {
         document_acquisition_started_at: null,
         document_acquisition_completed_at: null,
         document_acquisition_error: null,
+        opportunity_lifecycle_status: "opportunity_intelligence_queued",
+        opportunity_intelligence_status: "queued",
+        opportunity_intelligence_task_id: task.id,
+        opportunity_intelligence_error: null,
       })
       .eq("id", candidateId);
 

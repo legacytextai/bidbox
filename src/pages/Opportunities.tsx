@@ -73,6 +73,11 @@ interface Candidate {
   document_processing_started_at: string | null;
   document_processing_completed_at: string | null;
   document_processing_error: string | null;
+  opportunity_lifecycle_status?: string | null;
+  opportunity_intelligence_status?: string | null;
+  opportunity_intelligence_task_id?: string | null;
+  opportunity_intelligence_ready_at?: string | null;
+  opportunity_intelligence_error?: string | null;
 }
 
 const FILTERS: { label: string; value: string }[] = [
@@ -687,25 +692,25 @@ const Opportunities = () => {
           });
         }
         toast({
-          title: "Scan Started",
-          description: `${totalQueued} source${totalQueued === 1 ? "" : "s"} queued. Results appear as opportunities are discovered.`,
+          title: "Refresh started",
+          description: `${totalQueued} source${totalQueued === 1 ? "" : "s"} queued. Opportunities update as portal metadata refreshes.`,
         });
       } else if (sourcesScanned === 0) {
         toast({
           title: "No sources due",
-          description: "All sources were scanned recently. Try again later.",
+          description: "All sources were refreshed recently. Try again later.",
         });
         setScanActive(false);
       } else {
         toast({
-          title: "Scan complete",
+          title: "Refresh complete",
           description: `${data?.total_candidates_new ?? 0} new opportunities found.`,
         });
         setScanActive(false);
         await loadCandidates();
       }
     } catch (e: any) {
-      toast({ title: "Scan failed", description: e?.message ?? "Unknown error", variant: "destructive" });
+      toast({ title: "Refresh failed", description: e?.message ?? "Unknown error", variant: "destructive" });
       setScanActive(false);
     } finally {
       setScanLoading(false);
@@ -1008,7 +1013,7 @@ const Opportunities = () => {
                   className="bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90"
                 >
                   <RefreshCw className={`h-4 w-4 mr-2 ${scanLoading ? "animate-spin" : ""}`} />
-                  {scanLoading ? "Scanning..." : "Scan Now"}
+                  {scanLoading ? "Refreshing..." : "Refresh Now"}
                 </Button>
               </div>
             </div>
@@ -1091,7 +1096,7 @@ const Opportunities = () => {
                 <p className="text-lg font-medium text-foreground mb-2">No opportunities found</p>
                 <p className="text-sm text-muted-foreground mb-6">
                   {activeFilter === "all"
-                    ? "Click Scan Now to discover new bids from Caltrans and PlanetBids."
+                    ? "Click Refresh Now to discover and update bids from Caltrans and PlanetBids."
                     : "No opportunities in this view."}
                 </p>
                 {activeFilter === "all" && (
@@ -1101,7 +1106,7 @@ const Opportunities = () => {
                     className="bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90"
                   >
                     <RefreshCw className={`h-4 w-4 mr-2 ${scanLoading ? "animate-spin" : ""}`} />
-                    {scanLoading ? "Scanning..." : "Scan Now"}
+                    {scanLoading ? "Refreshing..." : "Refresh Now"}
                   </Button>
                 )}
               </div>

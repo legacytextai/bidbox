@@ -120,6 +120,16 @@ Click Scan to begin finding work.
 
 Manual scanning should become a secondary action such as `Refresh Now` or `Check For New Opportunities`. It should run the same refresh pipeline immediately instead of waiting for the next scheduled run.
 
+### Phase 1 Implementation Note
+
+The initial F5 foundation implements this as an additive lifecycle and refresh layer:
+
+* scheduled refresh queues existing portal scan tasks through `agent_tasks`
+* manual scan is reframed as `Refresh Now`
+* scan tasks refresh portal-owned metadata for existing opportunities instead of behaving as insert-only
+* new opportunities automatically queue Opportunity Intelligence preparation
+* source and opportunity refresh diagnostics are persisted for operational visibility
+
 ## Opportunity Intelligence vs Project Intelligence
 
 F5 separates intelligence into two tiers.

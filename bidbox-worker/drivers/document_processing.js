@@ -491,6 +491,9 @@ async function queueDocumentProcessingForCandidate({ supabase, candidateId, docu
       document_processing_started_at: null,
       document_processing_completed_at: null,
       document_processing_error: null,
+      opportunity_lifecycle_status: 'opportunity_intelligence_preparing',
+      opportunity_intelligence_status: 'processing_documents',
+      opportunity_intelligence_error: null,
     })
     .eq('id', candidateId);
   if (candidateError) throw new Error(`Candidate processing queue update failed: ${candidateError.message}`);
@@ -545,6 +548,9 @@ async function runDocumentProcessing(task, supabase, log) {
       document_processing_started_at: startedAt,
       document_processing_completed_at: null,
       document_processing_error: null,
+      opportunity_lifecycle_status: 'opportunity_intelligence_preparing',
+      opportunity_intelligence_status: 'processing_documents',
+      opportunity_intelligence_error: null,
     })
     .eq('id', candidate.id);
 
@@ -618,6 +624,13 @@ async function runDocumentProcessing(task, supabase, log) {
       document_processing_status: finalStatus,
       document_processing_completed_at: new Date().toISOString(),
       document_processing_error: errorSummary,
+      opportunity_lifecycle_status: finalStatus === 'failed'
+        ? 'opportunity_intelligence_failed'
+        : 'opportunity_intelligence_preparing',
+      opportunity_intelligence_status: finalStatus === 'failed'
+        ? 'failed'
+        : 'generating_report',
+      opportunity_intelligence_error: finalStatus === 'failed' ? errorSummary : null,
     })
     .eq('id', candidate.id);
 

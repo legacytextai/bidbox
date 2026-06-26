@@ -118,6 +118,7 @@ async function deleteOpportunityProject(adminClient: any, projectId: string, use
       .update({
         converted_project_id: null,
         status: "pending",
+        opportunity_lifecycle_status: "opportunity_intelligence_ready",
       })
       .eq("id", project.source_opportunity_candidate_id)
       .eq("converted_project_id", projectId);
@@ -211,6 +212,11 @@ async function deleteAnalysis(adminClient: any, candidateId: string, userId: str
       document_processing_started_at: null,
       document_processing_completed_at: null,
       document_processing_error: null,
+      opportunity_lifecycle_status: "discovered",
+      opportunity_intelligence_status: "not_requested",
+      opportunity_intelligence_task_id: null,
+      opportunity_intelligence_ready_at: null,
+      opportunity_intelligence_error: null,
       converted_project_id: null,
       status: "pending",
     })
@@ -265,6 +271,8 @@ async function reanalyze(adminClient: any, candidateId: string, userId: string) 
       task_type: "project_analysis",
       status: "pending",
       priority: 0,
+      trigger_reason: "reanalyze",
+      refresh_window: new Date().toISOString().slice(0, 13),
       payload: {
         candidate_id: candidate.id,
         source_id: candidate.source_id,
@@ -276,6 +284,8 @@ async function reanalyze(adminClient: any, candidateId: string, userId: string) 
         bid_due_at: candidate.bid_due_at,
         requested_by: userId,
         requested_at: requestedAt,
+        trigger_reason: "reanalyze",
+        intelligence_tier: "opportunity",
         source: "f4_safe_reanalysis",
         phase: "f2_metadata_refresh",
         next_phase: "f4_project_intelligence",
@@ -294,6 +304,10 @@ async function reanalyze(adminClient: any, candidateId: string, userId: string) 
       analysis_requested_at: requestedAt,
       analysis_error: null,
       analysis_requested_by: userId,
+      opportunity_lifecycle_status: "opportunity_intelligence_preparing",
+      opportunity_intelligence_status: "queued",
+      opportunity_intelligence_task_id: task.id,
+      opportunity_intelligence_error: null,
     })
     .eq("id", candidateId);
 

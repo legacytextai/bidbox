@@ -64,6 +64,11 @@ interface Candidate {
   document_acquisition_error: string | null;
   document_processing_status: string;
   document_processing_error: string | null;
+  opportunity_lifecycle_status?: string | null;
+  opportunity_intelligence_status?: string | null;
+  opportunity_intelligence_task_id?: string | null;
+  opportunity_intelligence_ready_at?: string | null;
+  opportunity_intelligence_error?: string | null;
 }
 
 interface ReportRow {
@@ -793,6 +798,7 @@ const OpportunityReport = () => {
           .update({
             status: "converted",
             converted_project_id: projectId,
+            opportunity_lifecycle_status: "added_to_calendar",
           })
           .eq("id", candidate.id);
 
@@ -804,6 +810,7 @@ const OpportunityReport = () => {
                 ...current,
                 status: "converted",
                 converted_project_id: projectId,
+                opportunity_lifecycle_status: "added_to_calendar",
               }
             : current,
         );
@@ -854,6 +861,9 @@ const OpportunityReport = () => {
         if (safeBidDue.value && existingProject.bid_due_at !== safeBidDue.value) {
           projectUpdates.bid_due_at = safeBidDue.value;
         }
+        projectUpdates.project_lifecycle_status = "project_intelligence_ready";
+        projectUpdates.project_intelligence_status = "ready";
+        projectUpdates.project_intelligence_ready_at = new Date().toISOString();
 
         if (Object.keys(projectUpdates).length > 0) {
           const { error: projectLinkError } = await sb
@@ -897,6 +907,14 @@ const OpportunityReport = () => {
           origin: "opportunity_intelligence",
           source_opportunity_candidate_id: candidate.id,
           opportunity_intelligence_report_id: report.id,
+          added_to_calendar_at: new Date().toISOString(),
+          added_to_calendar_by: session.user.id,
+          project_lifecycle_status: "project_intelligence_ready",
+          project_intelligence_status: "ready",
+          project_intelligence_ready_at: new Date().toISOString(),
+          pursuit_status: "active",
+          pursuit_status_updated_at: new Date().toISOString(),
+          pursuit_status_updated_by: session.user.id,
           status: "LIVE",
         })
         .select("id")

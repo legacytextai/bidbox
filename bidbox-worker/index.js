@@ -31,6 +31,206 @@ function userFacingDocumentAcquisitionFailureMessage() {
   return 'Document acquisition failed. BidBox could not acquire source documents for this opportunity.';
 }
 
+const ACTIVE_TASK_STATUSES = ['pending', 'running', 'retrying'];
+const PREPARATION_TASK_TYPES = ['project_analysis', 'document_processing', 'project_intelligence'];
+
+function buildRefreshWindow(date = new Date()) {
+  return date.toISOString().slice(0, 13);
+}
+
+function normalizeJson(value) {
+  if (Array.isArray(value)) return value.map((item) => normalizeJson(item));
+  if (value && typeof value === 'object') {
+    return Object.keys(value)
+      .sort()
+      .reduce((acc, key) => {
+        acc[key] = normalizeJson(value[key]);
+        return acc;
+      }, {});
+  }
+  return value ?? null;
+}
+
+function changedPortalMetadata(existing, next) {
+  return (
+    (existing.raw_title ?? null) !== (next.raw_title ?? null) ||
+    (existing.agency ?? null) !== (next.agency ?? null) ||
+    (existing.bid_due_at ?? null) !== (next.bid_due_at ?? null) ||
+    JSON.stringify(normalizeJson(existing.crawl_data)) !== JSON.stringify(normalizeJson(next.crawl_data))
+  );
+}
+
+function portalOwnedCandidateFields({ source_id, source_name, portal_type, candidate }) {
+  return {
+    source_id,
+    source_url: candidate.source_url,
+    portal_type,
+    raw_title: candidate.raw_title,
+    agency: source_name,
+    bid_due_at: candidate.bid_due_at,
+    crawl_data: candidate.crawl_data ?? null,
+  };
+}
+
+async function hasActivePreparationTask(supabase, candidateId) {
+  const { data, error } = await supabase
+    .from('agent_tasks')
+    .select('id')
+    .in('task_type', PREPARATION_TASK_TYPES)
+    .in('status', ACTIVE_TASK_STATUSES)
+    .contains('payload', { candidate_id: candidateId })
+    .limit(1);
+  if (error) throw new Error(`Active preparation lookup failed: ${error.message}`);
+  return Boolean(data?.length);
+}
+
+async function queueOpportunityPreparation({ supabase, candidate, sourceName, triggerReason, sourceTaskId, priority = 3 }) {
+  if (!candidate?.id) return { queued: false, duplicate: false, skipped: true, reason: 'candidate missing id' };
+
+  if (candidate.bid_due_at) {
+    const due = new Date(candidate.bid_due_at);
+    if (!isNaN(due.getTime()) && due.getTime() < Date.now()) {
+      return { queued: false, duplicate: false, skipped: true, reason: 'closed bid' };
+    }
+  }
+
+  if (await hasActivePreparationTask(supabase, candidate.id)) {
+    return { queued: false, duplicate: true, skipped: false, reason: 'active preparation task exists' };
+  }
+
+  const requestedAt = new Date().toISOString();
+  const payload = {
+    candidate_id: candidate.id,
+    source_id: candidate.source_id,
+    source_name: sourceName ?? candidate.agency ?? 'Unknown source',
+    source_url: candidate.source_url,
+    portal_type: candidate.portal_type,
+    agency: candidate.agency,
+    raw_title: candidate.raw_title,
+    bid_due_at: candidate.bid_due_at,
+    requested_at: requestedAt,
+    trigger_reason: triggerReason,
+    source_task_id: sourceTaskId,
+    intelligence_tier: 'opportunity',
+    phase: 'f5_opportunity_preparation',
+    next_phase: 'f2_document_acquisition',
+    intelligence_status: 'queued',
+  };
+
+  const { data: task, error: taskError } = await supabase
+    .from('agent_tasks')
+    .insert({
+      task_type: 'project_analysis',
+      status: 'pending',
+      priority,
+      trigger_reason: triggerReason,
+      refresh_window: buildRefreshWindow(),
+      payload,
+    })
+    .select('id')
+    .single();
+  if (taskError) throw new Error(`Opportunity Intelligence task insert failed: ${taskError.message}`);
+
+  const { error: updateError } = await supabase
+    .from('opportunity_candidates')
+    .update({
+      analysis_status: 'queued',
+      analysis_task_id: task.id,
+      analysis_requested_at: requestedAt,
+      analysis_started_at: null,
+      analysis_completed_at: null,
+      analysis_error: null,
+      document_acquisition_status: 'queued',
+      document_acquisition_started_at: null,
+      document_acquisition_completed_at: null,
+      document_acquisition_error: null,
+      opportunity_lifecycle_status: 'opportunity_intelligence_queued',
+      opportunity_intelligence_status: 'queued',
+      opportunity_intelligence_task_id: task.id,
+      opportunity_intelligence_error: null,
+    })
+    .eq('id', candidate.id);
+  if (updateError) throw new Error(`Candidate Opportunity Intelligence queue update failed: ${updateError.message}`);
+
+  return { queued: true, duplicate: false, skipped: false, taskId: task.id };
+}
+
+async function persistScannedCandidate({ supabase, source_id, source_name, portal_type, candidate, triggerReason, sourceTaskId, log }) {
+  const portalFields = portalOwnedCandidateFields({ source_id, source_name, portal_type, candidate });
+  const now = new Date().toISOString();
+  const { data: existing, error: lookupError } = await supabase
+    .from('opportunity_candidates')
+    .select('id, source_id, source_url, portal_type, raw_title, agency, bid_due_at, crawl_data, converted_project_id, analysis_status, last_metadata_changed_at, metadata_refresh_count')
+    .eq('source_url', candidate.source_url)
+    .maybeSingle();
+  if (lookupError) throw new Error(`Candidate lookup failed: ${lookupError.message}`);
+
+  if (!existing) {
+    const { data: inserted, error: insertError } = await supabase
+      .from('opportunity_candidates')
+      .insert({
+        ...portalFields,
+        last_metadata_refreshed_at: now,
+        last_metadata_changed_at: now,
+        metadata_refresh_count: 1,
+        metadata_refresh_source: 'scan',
+        metadata_refresh_trigger: triggerReason,
+        opportunity_lifecycle_status: 'discovered',
+        opportunity_intelligence_status: 'not_requested',
+      })
+      .select('id, source_id, source_url, portal_type, raw_title, agency, bid_due_at, crawl_data, converted_project_id, analysis_status, last_metadata_changed_at, metadata_refresh_count')
+      .single();
+    if (insertError) throw new Error(`Candidate insert failed: ${insertError.message}`);
+    const queued = await queueOpportunityPreparation({
+      supabase,
+      candidate: inserted,
+      sourceName: source_name,
+      triggerReason,
+      sourceTaskId,
+    }).catch((e) => ({ queued: false, duplicate: false, skipped: true, reason: e.message }));
+    return { state: 'new', candidate: inserted, metadataChanged: true, preparation: queued };
+  }
+
+  const metadataChanged = changedPortalMetadata(existing, portalFields);
+  const updatePayload = {
+    ...portalFields,
+    last_metadata_refreshed_at: now,
+    last_metadata_changed_at: metadataChanged ? now : existing.last_metadata_changed_at,
+    metadata_refresh_count: (existing.metadata_refresh_count ?? 0) + 1,
+    metadata_refresh_source: 'scan',
+    metadata_refresh_trigger: triggerReason,
+  };
+
+  const { data: updated, error: updateError } = await supabase
+    .from('opportunity_candidates')
+    .update(updatePayload)
+    .eq('id', existing.id)
+    .select('id, source_id, source_url, portal_type, raw_title, agency, bid_due_at, crawl_data, converted_project_id, analysis_status, last_metadata_changed_at, metadata_refresh_count')
+    .single();
+  if (updateError) throw new Error(`Candidate metadata refresh failed: ${updateError.message}`);
+
+  let preparation = { queued: false, duplicate: false, skipped: true, reason: metadataChanged ? 'already analyzed or converted' : 'metadata unchanged' };
+  const shouldPrepare = metadataChanged
+    && !updated.converted_project_id
+    && !['ready', 'queued', 'analyzing'].includes(updated.analysis_status ?? '');
+  if (shouldPrepare) {
+    preparation = await queueOpportunityPreparation({
+      supabase,
+      candidate: updated,
+      sourceName: source_name,
+      triggerReason,
+      sourceTaskId,
+    }).catch((e) => ({ queued: false, duplicate: false, skipped: true, reason: e.message }));
+  }
+
+  return {
+    state: metadataChanged ? 'refreshed' : 'unchanged',
+    candidate: updated,
+    metadataChanged,
+    preparation,
+  };
+}
+
 async function updateTaskStage(task, stage) {
   if (!task?.id) return;
   const payload = {
@@ -78,7 +278,7 @@ async function maybeQualifyCandidates() {
 }
 
 async function runPlanetBidsScan(task, supabase) {
-  const { source_id, source_name, listing_url, portal_type } = task.payload;
+  const { source_id, source_name, listing_url, portal_type, trigger_reason = task.trigger_reason ?? 'manual_refresh' } = task.payload;
   const logs = [];
   const log = (msg) => {
     const line = `[${ts()}] ${msg}`;
@@ -105,6 +305,15 @@ async function runPlanetBidsScan(task, supabase) {
   } catch (e) {
     console.warn(`[${ts()}] agent_run_logs insert threw: ${e.message}`);
   }
+
+  await supabase
+    .from('opportunity_sources')
+    .update({
+      last_refresh_started_at: new Date().toISOString(),
+      last_refresh_status: 'running',
+      last_refresh_error: null,
+    })
+    .eq('id', source_id);
 
   const {
     candidates,
@@ -118,42 +327,58 @@ async function runPlanetBidsScan(task, supabase) {
   let errors = driverErrors;
   const found = candidates.length;
   let newCount = 0;
+  let refreshedCount = 0;
+  let unchangedCount = 0;
+  let preparationQueued = 0;
+  let preparationDuplicates = 0;
 
   for (const candidate of candidates) {
     try {
-      const { error: insertError } = await supabase
-        .from('opportunity_candidates')
-        .insert({
-          source_id,
-          source_url: candidate.source_url,
-          portal_type,
-          raw_title: candidate.raw_title,
-          agency: source_name,
-          bid_due_at: candidate.bid_due_at,
-          crawl_data: candidate.crawl_data ?? null,
-        });
+      const saved = await persistScannedCandidate({
+        supabase,
+        source_id,
+        source_name,
+        portal_type,
+        candidate,
+        triggerReason: trigger_reason,
+        sourceTaskId: task.id,
+        log,
+      });
 
-      if (insertError) {
-        if (insertError.code === '23505') {
-          log(`[${source_name}] Already known: ${candidate.source_url}`);
-        } else {
-          log(`[${source_name}] Insert error: ${insertError.message}`);
-          errors++;
-        }
-      } else {
+      if (saved.state === 'new') {
         newCount++;
         log(`[${source_name}] New candidate: ${candidate.raw_title}`);
+      } else if (saved.state === 'refreshed') {
+        refreshedCount++;
+        log(`[${source_name}] Refreshed candidate metadata: ${candidate.source_url}`);
+      } else {
+        unchangedCount++;
+        log(`[${source_name}] Already current: ${candidate.source_url}`);
       }
+
+      if (saved.preparation?.queued) preparationQueued++;
+      if (saved.preparation?.duplicate) preparationDuplicates++;
     } catch (e) {
-      log(`[${source_name}] Candidate insert threw: ${e.message}`);
-      errorMessages.push(`Candidate insert threw: ${e.message}`);
+      log(`[${source_name}] Candidate refresh threw: ${e.message}`);
+      errorMessages.push(`Candidate refresh threw: ${e.message}`);
       errors++;
     }
   }
 
+  const sourceStatus = errors > 0 && (newCount + refreshedCount + unchangedCount) > 0
+    ? 'partial'
+    : errors > 0
+      ? 'failed'
+      : 'complete';
   await supabase
     .from('opportunity_sources')
-    .update({ last_scanned_at: new Date().toISOString() })
+    .update({
+      last_scanned_at: new Date().toISOString(),
+      last_refresh_completed_at: new Date().toISOString(),
+      last_refresh_failed_at: sourceStatus === 'failed' ? new Date().toISOString() : null,
+      last_refresh_status: sourceStatus,
+      last_refresh_error: errorMessages.length > 0 ? [...new Set(errorMessages)].slice(0, 5).join(' | ') : null,
+    })
     .eq('id', source_id);
 
   const errorSummary = errorMessages.length > 0
@@ -175,11 +400,11 @@ async function runPlanetBidsScan(task, supabase) {
     }
   }
 
-  return { found, new: newCount, errors, errorSummary, logs };
+  return { found, new: newCount, refreshed: refreshedCount, unchanged: unchangedCount, preparationQueued, preparationDuplicates, errors, errorSummary, logs };
 }
 
 async function runCaltransScan(task, supabase) {
-  const { source_id, source_name, listing_url, portal_type } = task.payload;
+  const { source_id, source_name, listing_url, portal_type, trigger_reason = task.trigger_reason ?? 'manual_refresh' } = task.payload;
   const logs = [];
   const log = (msg) => {
     const line = `[${ts()}] ${msg}`;
@@ -207,6 +432,15 @@ async function runCaltransScan(task, supabase) {
     console.warn(`[${ts()}] agent_run_logs insert threw: ${e.message}`);
   }
 
+  await supabase
+    .from('opportunity_sources')
+    .update({
+      last_refresh_started_at: new Date().toISOString(),
+      last_refresh_status: 'running',
+      last_refresh_error: null,
+    })
+    .eq('id', source_id);
+
   const {
     candidates,
     errors: driverErrors,
@@ -219,42 +453,58 @@ async function runCaltransScan(task, supabase) {
   let errors = driverErrors;
   const found = candidates.length;
   let newCount = 0;
+  let refreshedCount = 0;
+  let unchangedCount = 0;
+  let preparationQueued = 0;
+  let preparationDuplicates = 0;
 
   for (const candidate of candidates) {
     try {
-      const { error: insertError } = await supabase
-        .from('opportunity_candidates')
-        .insert({
-          source_id,
-          source_url: candidate.source_url,
-          portal_type,
-          raw_title: candidate.raw_title,
-          agency: source_name,
-          bid_due_at: candidate.bid_due_at,
-          crawl_data: candidate.crawl_data ?? null,
-        });
+      const saved = await persistScannedCandidate({
+        supabase,
+        source_id,
+        source_name,
+        portal_type,
+        candidate,
+        triggerReason: trigger_reason,
+        sourceTaskId: task.id,
+        log,
+      });
 
-      if (insertError) {
-        if (insertError.code === '23505') {
-          log(`[${source_name}] Already known: ${candidate.source_url}`);
-        } else {
-          log(`[${source_name}] Insert error: ${insertError.message}`);
-          errors++;
-        }
-      } else {
+      if (saved.state === 'new') {
         newCount++;
         log(`[${source_name}] New Caltrans candidate: ${candidate.raw_title}`);
+      } else if (saved.state === 'refreshed') {
+        refreshedCount++;
+        log(`[${source_name}] Refreshed Caltrans candidate metadata: ${candidate.source_url}`);
+      } else {
+        unchangedCount++;
+        log(`[${source_name}] Caltrans candidate already current: ${candidate.source_url}`);
       }
+
+      if (saved.preparation?.queued) preparationQueued++;
+      if (saved.preparation?.duplicate) preparationDuplicates++;
     } catch (e) {
-      log(`[${source_name}] Candidate insert threw: ${e.message}`);
-      errorMessages.push(`Candidate insert threw: ${e.message}`);
+      log(`[${source_name}] Candidate refresh threw: ${e.message}`);
+      errorMessages.push(`Candidate refresh threw: ${e.message}`);
       errors++;
     }
   }
 
+  const sourceStatus = errors > 0 && (newCount + refreshedCount + unchangedCount) > 0
+    ? 'partial'
+    : errors > 0
+      ? 'failed'
+      : 'complete';
   await supabase
     .from('opportunity_sources')
-    .update({ last_scanned_at: new Date().toISOString() })
+    .update({
+      last_scanned_at: new Date().toISOString(),
+      last_refresh_completed_at: new Date().toISOString(),
+      last_refresh_failed_at: sourceStatus === 'failed' ? new Date().toISOString() : null,
+      last_refresh_status: sourceStatus,
+      last_refresh_error: errorMessages.length > 0 ? [...new Set(errorMessages)].slice(0, 5).join(' | ') : null,
+    })
     .eq('id', source_id);
 
   const errorSummary = errorMessages.length > 0
@@ -276,7 +526,7 @@ async function runCaltransScan(task, supabase) {
     }
   }
 
-  return { found, new: newCount, errors, errorSummary, logs };
+  return { found, new: newCount, refreshed: refreshedCount, unchanged: unchangedCount, preparationQueued, preparationDuplicates, errors, errorSummary, logs };
 }
 
 async function runProjectAnalysisAcquisition(task, supabase) {
@@ -348,6 +598,10 @@ async function runProjectAnalysisAcquisition(task, supabase) {
       document_acquisition_started_at: startedAt,
       document_acquisition_completed_at: null,
       document_acquisition_error: null,
+      opportunity_lifecycle_status: 'opportunity_intelligence_preparing',
+      opportunity_intelligence_status: 'acquiring_documents',
+      opportunity_intelligence_task_id: task.id,
+      opportunity_intelligence_error: null,
     })
     .eq('id', candidate.id);
 
@@ -370,6 +624,9 @@ async function runProjectAnalysisAcquisition(task, supabase) {
         document_acquisition_status: 'failed',
         document_acquisition_completed_at: completedAt,
         document_acquisition_error: userFacingDocumentAcquisitionFailureMessage(),
+        opportunity_lifecycle_status: 'opportunity_intelligence_failed',
+        opportunity_intelligence_status: 'failed',
+        opportunity_intelligence_error: userFacingDocumentAcquisitionFailureMessage(),
       })
       .eq('id', candidate.id);
 
@@ -419,6 +676,13 @@ async function runProjectAnalysisAcquisition(task, supabase) {
       document_acquisition_status: acquisitionStatus,
       document_acquisition_completed_at: completedAt,
       document_acquisition_error: userFacingAcquisitionError,
+      opportunity_lifecycle_status: acquisitionStatus === 'failed'
+        ? 'opportunity_intelligence_failed'
+        : 'opportunity_intelligence_preparing',
+      opportunity_intelligence_status: acquisitionStatus === 'failed'
+        ? 'failed'
+        : 'processing_documents',
+      opportunity_intelligence_error: userFacingAcquisitionError,
       crawl_data: {
         ...(candidate.crawl_data ?? {}),
         acquisition_summary: acquisitionSummary,
@@ -695,10 +959,16 @@ async function processTask(task) {
       ? {
           found: result.found,
           new: result.new,
+          refreshed: result.refreshed ?? 0,
+          unchanged: result.unchanged ?? 0,
+          opportunity_intelligence_queued: result.preparationQueued ?? 0,
+          opportunity_intelligence_duplicates: result.preparationDuplicates ?? 0,
           errors: result.errors,
           error_summary: result.errorSummary,
           phase: task.task_type === 'caltrans_scan' ? 'caltrans_discovery_v1' : 'planetbids_discovery',
-          document_acquisition_supported: task.task_type !== 'caltrans_scan',
+          document_acquisition_supported: true,
+          trigger_reason: task.payload?.trigger_reason ?? task.trigger_reason ?? null,
+          refresh_window: task.payload?.refresh_window ?? task.refresh_window ?? null,
         }
       : task.task_type === 'document_processing'
       ? {
@@ -766,7 +1036,7 @@ async function processTask(task) {
       .eq('id', task.id);
 
     if (['planetbids_scan', 'caltrans_scan'].includes(task.task_type)) {
-      console.log(`[${ts()}] Task ${task.id} complete: found=${result.found} new=${result.new} errors=${result.errors}`);
+      console.log(`[${ts()}] Task ${task.id} complete: found=${result.found} new=${result.new} refreshed=${result.refreshed ?? 0} unchanged=${result.unchanged ?? 0} errors=${result.errors}`);
       await maybeQualifyCandidates();
     } else if (task.task_type === 'document_processing') {
       console.log(`[${ts()}] Task ${task.id} complete: documents_processed=${result.documents_processed} documents_failed=${result.documents_failed} pages=${result.pages_extracted} chunks=${result.chunks_created}`);
@@ -777,6 +1047,16 @@ async function processTask(task) {
     }
   } catch (e) {
     console.error(`[${ts()}] Task ${task.id} failed: ${e.message}`);
+    if (['planetbids_scan', 'caltrans_scan'].includes(task.task_type) && task.payload?.source_id) {
+      await supabase
+        .from('opportunity_sources')
+        .update({
+          last_refresh_failed_at: new Date().toISOString(),
+          last_refresh_status: 'failed',
+          last_refresh_error: e.message,
+        })
+        .eq('id', task.payload.source_id);
+    }
     if (task.task_type === 'project_analysis' && task.payload?.candidate_id) {
       await supabase
         .from('opportunity_candidates')
@@ -784,6 +1064,9 @@ async function processTask(task) {
           document_acquisition_status: 'failed',
           document_acquisition_completed_at: new Date().toISOString(),
           document_acquisition_error: userFacingDocumentAcquisitionFailureMessage(),
+          opportunity_lifecycle_status: 'opportunity_intelligence_failed',
+          opportunity_intelligence_status: 'failed',
+          opportunity_intelligence_error: userFacingDocumentAcquisitionFailureMessage(),
         })
         .eq('id', task.payload.candidate_id);
     }
@@ -794,6 +1077,9 @@ async function processTask(task) {
           document_processing_status: 'failed',
           document_processing_completed_at: new Date().toISOString(),
           document_processing_error: e.message,
+          opportunity_lifecycle_status: 'opportunity_intelligence_failed',
+          opportunity_intelligence_status: 'failed',
+          opportunity_intelligence_error: e.message,
         })
         .eq('id', task.payload.candidate_id);
     }
@@ -804,6 +1090,9 @@ async function processTask(task) {
           analysis_status: 'failed',
           analysis_completed_at: new Date().toISOString(),
           analysis_error: e.message,
+          opportunity_lifecycle_status: 'opportunity_intelligence_failed',
+          opportunity_intelligence_status: 'failed',
+          opportunity_intelligence_error: e.message,
         })
         .eq('id', task.payload.candidate_id);
     }

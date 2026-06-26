@@ -32,6 +32,13 @@ Subtasks:
 Purpose: Establish the underlying lifecycle model and automated preparation pipeline that everything else depends on.
 
 ## Task 2 - NORMALIZE OPPORTUNITY AND PROJECT LIFECYCLE MODEL
+Status: ✅ COMPLETE
+
+Implementation notes:
+- Added additive lifecycle fields for Opportunity Intelligence and Project Intelligence without removing legacy F2/F3/F4 status fields.
+- Backfilled unambiguous opportunity/project lifecycle states from existing analysis, conversion, and report relationships.
+- Preserved legacy One Link project behavior while giving Opportunity Intelligence projects direct lifecycle status fields for later phases.
+
 Subtasks:
 ### 2.1. Define Lifecycle State Contract
 
@@ -59,6 +66,14 @@ Subtasks:
 - Verify legacy One Link projects continue working.
 
 ## Task 3 - IMPLEMENT AUTOMATED OPPORTUNITY REFRESH PIPELINE
+Status: ✅ COMPLETE
+
+Implementation notes:
+- Added a scheduled refresh Edge Function that queues existing portal scan task types through `agent_tasks`.
+- Reframed manual scan as Refresh Now and threaded trigger reason / refresh window through scan tasks.
+- Replaced insert-only worker scan persistence with safe portal-owned metadata refreshes for existing opportunities.
+- Added source- and opportunity-level refresh observability plus automatic Opportunity Intelligence preparation queueing for newly discovered opportunities.
+
 Subtasks:
 ### 3.1. Design Scheduled Refresh Behavior
 

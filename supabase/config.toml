@@ -30,6 +30,9 @@ verify_jwt = false
 [functions.scan-opportunities]
 verify_jwt = true
 
+[functions.refresh-opportunities]
+verify_jwt = false
+
 [functions.analyze-project]
 verify_jwt = true
 

@@ -713,12 +713,18 @@ async function queueProjectIntelligenceForCandidate({ supabase, candidateId, sou
   const candidateUpdate = safeReanalysis
     ? {
         analysis_error: null,
+        opportunity_lifecycle_status: 'opportunity_intelligence_preparing',
+        opportunity_intelligence_status: 'generating_report',
+        opportunity_intelligence_error: null,
       }
     : {
         analysis_status: 'queued',
         analysis_error: null,
         analysis_started_at: null,
         analysis_completed_at: null,
+        opportunity_lifecycle_status: 'opportunity_intelligence_preparing',
+        opportunity_intelligence_status: 'generating_report',
+        opportunity_intelligence_error: null,
       };
   const { error: candidateError } = await supabase
     .from('opportunity_candidates')
@@ -741,6 +747,7 @@ async function queueProjectIntelligenceForCandidate({ supabase, candidateId, sou
         safe_reanalysis: safeReanalysis,
         queued_at: now,
       },
+      trigger_reason: safeReanalysis ? 'reanalyze' : 'pipeline_handoff',
     })
     .select('id')
     .single();
@@ -945,6 +952,10 @@ async function runProjectIntelligence(task, supabase, log) {
       .update({
         analysis_started_at: startedAt,
         analysis_error: null,
+        opportunity_lifecycle_status: 'opportunity_intelligence_preparing',
+        opportunity_intelligence_status: 'generating_report',
+        opportunity_intelligence_task_id: task.id,
+        opportunity_intelligence_error: null,
       })
       .eq('id', candidate_id);
   } else {
@@ -955,6 +966,10 @@ async function runProjectIntelligence(task, supabase, log) {
         analysis_started_at: startedAt,
         analysis_completed_at: null,
         analysis_error: null,
+        opportunity_lifecycle_status: 'opportunity_intelligence_preparing',
+        opportunity_intelligence_status: 'generating_report',
+        opportunity_intelligence_task_id: task.id,
+        opportunity_intelligence_error: null,
       })
       .eq('id', candidate_id);
   }
@@ -1079,13 +1094,31 @@ async function runProjectIntelligence(task, supabase, log) {
             ? `Re-analysis failed: ${errorSummary}`
             : errorSummary
           : null,
+        opportunity_lifecycle_status: finalStatus === 'failed' && !safeReanalysis
+          ? 'opportunity_intelligence_failed'
+          : finalStatus === 'partial'
+            ? 'opportunity_intelligence_partial'
+            : 'opportunity_intelligence_ready',
+        opportunity_intelligence_status: finalStatus,
+        opportunity_intelligence_ready_at: finalStatus !== 'failed' ? completedAt : null,
+        opportunity_intelligence_error: finalStatus === 'failed'
+          ? safeReanalysis
+            ? `Re-analysis failed: ${errorSummary}`
+            : errorSummary
+          : null,
       })
       .eq('id', candidate_id);
 
     if (finalStatus !== 'failed') {
       const { error: projectLinkError } = await supabase
         .from('projects')
-        .update({ opportunity_intelligence_report_id: report.id })
+        .update({
+          opportunity_intelligence_report_id: report.id,
+          project_lifecycle_status: 'project_intelligence_ready',
+          project_intelligence_status: finalStatus,
+          project_intelligence_ready_at: completedAt,
+          project_intelligence_error: null,
+        })
         .eq('origin', 'opportunity_intelligence')
         .eq('source_opportunity_candidate_id', candidate_id);
 
@@ -1127,6 +1160,9 @@ async function runProjectIntelligence(task, supabase, log) {
         analysis_status: safeReanalysis ? 'ready' : 'failed',
         analysis_completed_at: completedAt,
         analysis_error: safeReanalysis ? `Re-analysis failed: ${e.message}` : e.message,
+        opportunity_lifecycle_status: safeReanalysis ? 'opportunity_intelligence_ready' : 'opportunity_intelligence_failed',
+        opportunity_intelligence_status: safeReanalysis ? 'ready' : 'failed',
+        opportunity_intelligence_error: safeReanalysis ? `Re-analysis failed: ${e.message}` : e.message,
       })
       .eq('id', candidate_id);
     throw e;
