@@ -8,6 +8,116 @@ const corsHeaders = {
 
 type TaskType = "planetbids_scan" | "caltrans_scan";
 
+// One-time backfill: queues Opportunity Intelligence for candidates that existed
+// before the autonomous pipeline was deployed. Runs once per environment, gated by
+// a sentinel row in agent_tasks. Future refreshes skip it entirely.
+async function runOneTimeBackfillIfNeeded(supabase: any, requestedAt: string) {
+  // Check sentinel — if it exists, backfill already ran.
+  const { data: existing } = await supabase
+    .from("agent_tasks")
+    .select("id")
+    .eq("task_type", "one_time_oi_backfill")
+    .limit(1);
+
+  if (existing && existing.length > 0) return { ran: false };
+
+  const activeStatuses = ["pending", "running", "retrying"];
+
+  // Load up to 200 candidates missing OI that are not converted or active.
+  const { data: candidates, error } = await supabase
+    .from("opportunity_candidates")
+    .select("id, source_id, source_url, portal_type, agency, raw_title, bid_due_at")
+    .is("converted_project_id", null)
+    .not("opportunity_intelligence_status", "in", '("queued","processing","ready")')
+    .not("analysis_status", "in", '("queued","analyzing")')
+    .not("document_acquisition_status", "in", '("queued","acquiring")')
+    .not("document_processing_status", "in", '("queued","processing")')
+    .limit(200);
+
+  if (error) {
+    console.error("one_time_oi_backfill candidate query failed:", error.message);
+    // Insert sentinel anyway so a transient error doesn't cause repeated attempts.
+  }
+
+  let queued = 0;
+  let skipped = 0;
+
+  if (candidates && candidates.length > 0) {
+    // Bulk check active tasks to avoid duplicate work.
+    const { data: activeTasks } = await supabase
+      .from("agent_tasks")
+      .select("payload")
+      .in("status", activeStatuses)
+      .in("task_type", ["project_analysis", "document_processing", "project_intelligence"]);
+
+    const busyCandidateIds = new Set<string>(
+      (activeTasks ?? []).map((t: any) => t.payload?.candidate_id).filter(Boolean),
+    );
+
+    for (const candidate of candidates) {
+      if (busyCandidateIds.has(candidate.id)) { skipped++; continue; }
+
+      const { data: task, error: taskError } = await supabase
+        .from("agent_tasks")
+        .insert({
+          task_type: "project_analysis",
+          status: "pending",
+          priority: 2, // lower priority than normal refresh work
+          trigger_reason: "one_time_backfill",
+          refresh_window: requestedAt.slice(0, 13),
+          payload: {
+            candidate_id: candidate.id,
+            source_id: candidate.source_id,
+            source_name: candidate.agency ?? "Unknown source",
+            source_url: candidate.source_url,
+            portal_type: candidate.portal_type,
+            agency: candidate.agency,
+            raw_title: candidate.raw_title,
+            bid_due_at: candidate.bid_due_at,
+            requested_at: requestedAt,
+            trigger_reason: "one_time_backfill",
+            intelligence_tier: "opportunity",
+            preparation_reason: "one_time_backfill",
+            phase: "f2_metadata_refresh",
+            next_phase: "f4_project_intelligence",
+          },
+        })
+        .select("id")
+        .single();
+
+      if (taskError || !task) { skipped++; continue; }
+
+      await supabase
+        .from("opportunity_candidates")
+        .update({
+          analysis_task_id: task.id,
+          analysis_requested_at: requestedAt,
+          analysis_error: null,
+          opportunity_lifecycle_status: "opportunity_intelligence_queued",
+          opportunity_intelligence_status: "queued",
+          opportunity_intelligence_task_id: task.id,
+          opportunity_intelligence_error: null,
+        })
+        .eq("id", candidate.id);
+
+      queued++;
+    }
+  }
+
+  // Insert sentinel to prevent future runs.
+  await supabase.from("agent_tasks").insert({
+    task_type: "one_time_oi_backfill",
+    status: "completed",
+    priority: 0,
+    trigger_reason: "one_time_backfill",
+    refresh_window: requestedAt.slice(0, 13),
+    payload: { queued, skipped, ran_at: requestedAt },
+  });
+
+  console.info(`one_time_oi_backfill complete: queued=${queued} skipped=${skipped}`);
+  return { ran: true, queued, skipped };
+}
+
 function jsonResponse(body: Record<string, unknown>, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -70,6 +180,7 @@ serve(async (req) => {
     });
 
     if (eligible.length === 0) {
+      const backfill = await runOneTimeBackfillIfNeeded(supabase, now.toISOString());
       return jsonResponse({
         success: true,
         trigger_reason: triggerReason,
@@ -78,6 +189,7 @@ serve(async (req) => {
         sources_queued: 0,
         queued_task_ids: [],
         message: "No eligible opportunity sources due for refresh",
+        ...(backfill.ran ? { one_time_backfill: { queued: backfill.queued, skipped: backfill.skipped } } : {}),
       });
     }
 
@@ -112,6 +224,7 @@ serve(async (req) => {
       }));
 
     if (rows.length === 0) {
+      const backfill = await runOneTimeBackfillIfNeeded(supabase, now.toISOString());
       return jsonResponse({
         success: true,
         trigger_reason: triggerReason,
@@ -121,6 +234,7 @@ serve(async (req) => {
         sources_queued: 0,
         queued_task_ids: [],
         message: "Eligible sources already have active refresh tasks",
+        ...(backfill.ran ? { one_time_backfill: { queued: backfill.queued, skipped: backfill.skipped } } : {}),
       });
     }
 
@@ -146,6 +260,9 @@ serve(async (req) => {
         .in("id", queuedSourceIds);
     }
 
+    // One-time backfill: runs once per environment during any scheduled or manual refresh.
+    const backfill = await runOneTimeBackfillIfNeeded(supabase, now.toISOString());
+
     return jsonResponse({
       success: true,
       trigger_reason: triggerReason,
@@ -154,6 +271,7 @@ serve(async (req) => {
       sources_due: eligible.length,
       sources_queued: tasks?.length ?? 0,
       queued_task_ids: (tasks ?? []).map((task: any) => task.id),
+      ...(backfill.ran ? { one_time_backfill: { queued: backfill.queued, skipped: backfill.skipped } } : {}),
     });
   } catch (error) {
     console.error("refresh-opportunities error:", error);

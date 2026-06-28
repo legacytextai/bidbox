@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, ExternalLink, RefreshCw, ChevronDown, Loader2, Check, Filter, RotateCcw, Sparkles, Zap } from "lucide-react";
+import { Building2, ExternalLink, RefreshCw, ChevronDown, Loader2, Check, Filter, RotateCcw, Sparkles } from "lucide-react";
 import { PORTAL_STYLES, resolveOIStatus, isOIReady, isOIActive, resolveEstimatedValue } from "@/lib/opportunityDomain";
 import { Layout } from "@/components/Layout";
 import {
@@ -17,17 +17,6 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Command,
@@ -309,7 +298,6 @@ const Opportunities = () => {
   const [activeFilter, setActiveFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState<DateFilter>("all");
   const [scanLoading, setScanLoading] = useState(false);
-  const [backfillLoading, setBackfillLoading] = useState(false);
   const [countyFilter, setCountyFilter] = useState<string[]>([]);
   const [agencyFilter, setAgencyFilter] = useState<string[]>([]);
   const [lastScannedAt, setLastScannedAt] = useState<string | null>(null);
@@ -657,29 +645,6 @@ const Opportunities = () => {
     }
   };
 
-  const handleBackfillIntelligence = async () => {
-    setBackfillLoading(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("manage-opportunity-intelligence", {
-        body: { action: "backfill_opportunity_intelligence" },
-      });
-      if (error) throw error;
-      if (data?.success === false) throw new Error(data?.error ?? "Backfill failed");
-      const queued: number = data?.queued ?? 0;
-      toast({
-        title: queued > 0 ? "Backfill started" : "All opportunities up to date",
-        description: queued > 0
-          ? `${queued} opportunit${queued === 1 ? "y" : "ies"} queued for Intelligence preparation.`
-          : "No unprepared opportunities found.",
-      });
-      if (queued > 0) await loadCandidates({ silent: true });
-    } catch (e: any) {
-      toast({ title: "Backfill failed", description: e?.message ?? "Unknown error", variant: "destructive" });
-    } finally {
-      setBackfillLoading(false);
-    }
-  };
-
   const handleNotesSave = async (id: string) => {
     const note = notes[id] ?? "";
     const { error } = await supabase
@@ -911,32 +876,6 @@ const Opportunities = () => {
                 </p>
               </div>
               <div className="flex gap-2">
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button
-                      variant="outline"
-                      disabled={backfillLoading}
-                      className="text-sm"
-                    >
-                      <Zap className={`h-4 w-4 mr-2 ${backfillLoading ? "animate-pulse" : ""}`} />
-                      {backfillLoading ? "Preparing..." : "Prepare All"}
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Prepare all opportunities?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        This will queue Opportunity Intelligence for all unprepared opportunities. Existing prepared opportunities are not affected.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction onClick={handleBackfillIntelligence}>
-                        Prepare All
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
                 <Button
                   onClick={handleScanNow}
                   disabled={scanLoading}

@@ -24,10 +24,10 @@ All notable changes to the BidBox project are documented in this file.
 ## [Pre-Phase 3 Cleanup] - 2026-06-28
 
 ### Opportunity Intelligence Backfill
-- Added `backfill_opportunity_intelligence` action to `manage-opportunity-intelligence` edge function.
-- Queries all eligible unprepared candidates and queues `project_analysis` tasks using the existing autonomous pipeline.
-- Respects duplicate prevention and lifecycle rules. Skips converted, active, and already-prepared opportunities.
-- Exposed as a one-time "Prepare All" button in the Opportunities page header.
+- Added `backfill_opportunity_intelligence` action to `manage-opportunity-intelligence` edge function (internal use only, not exposed in UI).
+- Added one-time automatic backfill to `refresh-opportunities` edge function. Runs once per environment during the first scheduled or manual refresh after deployment, then never again.
+- Persistence: sentinel row in `agent_tasks` with `task_type: "one_time_oi_backfill"` prevents repeat execution. No hardcoded dates or manual intervention required.
+- Queues up to 200 eligible unprepared candidates at lower priority (priority 2) so normal refresh work is not blocked. Respects all existing lifecycle and duplicate-prevention rules.
 
 ### Opportunity List — Continuous List
 - Replaced permanent time-bucket sections (Due Today / This Week / Next Week / etc.) with a single continuous opportunity grid.
