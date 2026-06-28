@@ -1,15 +1,17 @@
 // Project Workspace — tabbed execution workspace for opportunities added to calendar.
-// Tasks 24-28: routing, data access, shell, overview, pursuit status.
+//
+// This file owns ONLY the shell:
+//   - routing (tab query param)
+//   - header (title, pursuit selector, actions)
+//   - shared data loading (dossier hook)
+//   - tab dispatch
+//
+// Each tab body lives under ./tabs/.
 
 import { useState, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useOpportunityDossier } from "@/hooks/useOpportunityDossier";
-import { OpportunityOverviewTab } from "@/components/OpportunityOverviewTab";
-import { OpportunityDocumentsTab } from "@/components/OpportunityDocumentsTab";
-import { BidReadinessChecklist } from "@/components/BidReadinessChecklist";
-import { CallListButton } from "@/components/CallListButton";
-import { BidListButton } from "@/components/BidListButton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
@@ -31,10 +33,16 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { ArrowLeft, ExternalLink, CalendarDays, Trash2, Loader2 } from "lucide-react";
-import { ProjectWorkspaceIntelligenceView } from "@/components/IntelligenceReportView";
+import { ArrowLeft, ExternalLink, CalendarDays, Trash2 } from "lucide-react";
 
-type PursuitStatus = "reviewing" | "pursuing" | "passed" | "submitted";
+import { OverviewTab } from "./tabs/OverviewTab";
+import { BidReadinessTab } from "./tabs/BidReadinessTab";
+import { DocumentsTab } from "./tabs/DocumentsTab";
+import { IntelligenceTab } from "./tabs/IntelligenceTab";
+import { CoverageTab } from "./tabs/CoverageTab";
+import { StubTab, type StubTabKey } from "./tabs/StubTab";
+
+import type { PursuitStatus, WorkspaceProject, WorkspaceProjectFile, WorkspaceProjectTrade, WorkspaceProjectSubmission } from "@/lib/opportunityView";
 
 const PURSUIT_STATUS_LABELS: Record<PursuitStatus, string> = {
   reviewing: "Reviewing",
@@ -56,10 +64,7 @@ type TabKey =
   | "documents"
   | "intelligence"
   | "coverage"
-  | "addenda"
-  | "activity"
-  | "estimate"
-  | "proposal";
+  | StubTabKey;
 
 interface TabDef {
   key: TabKey;
@@ -79,11 +84,11 @@ const TABS: TabDef[] = [
   { key: "proposal", label: "Proposal", available: false },
 ];
 
-interface ProjectWorkspaceProps {
-  project: any;
-  projectFiles: any[];
-  projectTrades: any[];
-  submissions: any[];
+export interface ProjectWorkspaceProps {
+  project: WorkspaceProject;
+  projectFiles: WorkspaceProjectFile[];
+  projectTrades: WorkspaceProjectTrade[];
+  submissions: WorkspaceProjectSubmission[];
   onDeleteProject: () => Promise<void>;
   onDownloadInternalFile: (filePath: string, fileName: string) => void;
   onDeleteInternalFile: (fileId: string, filePath: string) => void;
@@ -113,7 +118,7 @@ export function ProjectWorkspace({
   const [savingPursuit, setSavingPursuit] = useState(false);
   const [deletingProject, setDeletingProject] = useState(false);
 
-  const candidateId = project.source_opportunity_candidate_id as string | undefined;
+  const candidateId = project.source_opportunity_candidate_id ?? undefined;
   const {
     overview,
     documents,
@@ -152,9 +157,10 @@ export function ProjectWorkspace({
         } as never)
         .eq("id", project.id);
       if (error) throw error;
-    } catch (e: any) {
+    } catch (e: unknown) {
       setPursuitStatus(prev);
-      toast({ title: "Failed to update pursuit status", description: e?.message, variant: "destructive" });
+      const message = e instanceof Error ? e.message : String(e);
+      toast({ title: "Failed to update pursuit status", description: message, variant: "destructive" });
     } finally {
       setSavingPursuit(false);
     }
@@ -170,9 +176,10 @@ export function ProjectWorkspace({
   };
 
   const bidRoomUrl = `${window.location.origin}/bid/${project.public_token}`;
-  const ps = (pursuitStatus as PursuitStatus) in PURSUIT_STATUS_LABELS
-    ? (pursuitStatus as PursuitStatus)
-    : "reviewing";
+  const ps: PursuitStatus =
+    (pursuitStatus as PursuitStatus) in PURSUIT_STATUS_LABELS
+      ? (pursuitStatus as PursuitStatus)
+      : "reviewing";
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
@@ -187,23 +194,17 @@ export function ProjectWorkspace({
           <div>
             <div className="flex items-center gap-2 mb-2">
               <Badge variant="outline" className="text-xs">Project Workspace</Badge>
-              <Badge
-                variant="outline"
-                className={`text-xs ${PURSUIT_STATUS_STYLES[ps]}`}
-              >
+              <Badge variant="outline" className={`text-xs ${PURSUIT_STATUS_STYLES[ps]}`}>
                 {PURSUIT_STATUS_LABELS[ps]}
               </Badge>
             </div>
-            <h1 className="text-2xl font-bold text-foreground leading-tight">
-              {project.name}
-            </h1>
+            <h1 className="text-2xl font-bold text-foreground leading-tight">{project.name}</h1>
             <p className="text-sm text-muted-foreground mt-1">
               {[project.agency, project.county].filter(Boolean).join(" · ") || "Agency details unavailable"}
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* Pursuit Status Selector */}
             <Select value={pursuitStatus} onValueChange={handlePursuitStatusChange} disabled={savingPursuit}>
               <SelectTrigger className="w-36 h-9 text-sm">
                 <SelectValue />
@@ -220,7 +221,7 @@ export function ProjectWorkspace({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => window.open(project.source_url, "_blank", "noopener,noreferrer")}
+                onClick={() => window.open(project.source_url!, "_blank", "noopener,noreferrer")}
               >
                 <ExternalLink className="h-4 w-4 mr-2" />
                 Source
@@ -232,7 +233,12 @@ export function ProjectWorkspace({
             </Button>
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" disabled={deletingProject}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:text-destructive"
+                  disabled={deletingProject}
+                >
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </AlertDialogTrigger>
@@ -240,7 +246,8 @@ export function ProjectWorkspace({
                 <AlertDialogHeader>
                   <AlertDialogTitle>Delete Project?</AlertDialogTitle>
                   <AlertDialogDescription>
-                    This removes the project from Projects, Calendar, and Bid HQ. The Intelligence Report remains available from Opportunities.
+                    This removes the project from Projects, Calendar, and Bid HQ. The Intelligence Report
+                    remains available from Opportunities.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -286,7 +293,7 @@ export function ProjectWorkspace({
       )}
 
       {activeTab === "bid_readiness" && (
-        <BidReadinessTab projectId={project.id} />
+        <BidReadinessTab projectId={project.id} findings={findings} />
       )}
 
       {activeTab === "documents" && (
@@ -327,277 +334,7 @@ export function ProjectWorkspace({
       {(activeTab === "addenda" ||
         activeTab === "activity" ||
         activeTab === "estimate" ||
-        activeTab === "proposal") && (
-        <StubTab tab={activeTab} />
-      )}
-    </div>
-  );
-}
-
-// ── Overview Tab ────────────────────────────────────────────────────────────────
-
-function OverviewTab({
-  project,
-  overview,
-  reportReady,
-  pursuitStatus,
-  candidateId,
-  onNavigate,
-}: {
-  project: any;
-  overview: any;
-  reportReady: boolean;
-  pursuitStatus: PursuitStatus;
-  candidateId: string | undefined;
-  onNavigate: ReturnType<typeof useNavigate>;
-}) {
-  return (
-    <div className="space-y-6">
-      {/* Operational Context */}
-      <div className="bg-card border border-border rounded-lg p-6">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div>
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">Pursuit Status</p>
-            <p className="mt-1 font-medium text-foreground">{PURSUIT_STATUS_LABELS[pursuitStatus]}</p>
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">Bid Due</p>
-            <p className="mt-1 font-medium text-foreground">
-              {project.bid_due_at
-                ? new Date(project.bid_due_at).toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                    year: "numeric",
-                  })
-                : "—"}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">Agency</p>
-            <p className="mt-1 font-medium text-foreground">{project.agency ?? "—"}</p>
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">Added to Calendar</p>
-            <p className="mt-1 font-medium text-foreground">
-              {project.added_to_calendar_at
-                ? new Date(project.added_to_calendar_at).toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                    year: "numeric",
-                  })
-                : "—"}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* OI Overview */}
-      {overview ? (
-        <OpportunityOverviewTab data={overview} />
-      ) : (
-        <div className="bg-card border border-border rounded-lg p-8 text-center">
-          {reportReady === false ? (
-            <div className="flex flex-col items-center gap-3">
-              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">Preparing Opportunity Intelligence…</p>
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              Opportunity Intelligence overview is not available.
-              {candidateId && (
-                <Button variant="link" size="sm" onClick={() => onNavigate(`/opportunities/${candidateId}`)}>
-                  View opportunity
-                </Button>
-              )}
-            </p>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Bid Readiness Tab ───────────────────────────────────────────────────────────
-
-function BidReadinessTab({ projectId }: { projectId: string }) {
-  return (
-    <div className="max-w-2xl">
-      <BidReadinessChecklist projectId={projectId} />
-    </div>
-  );
-}
-
-// ── Documents Tab ───────────────────────────────────────────────────────────────
-
-function DocumentsTab({
-  documents,
-  projectFiles,
-  onDownload,
-  onDelete,
-}: {
-  documents: any[];
-  projectFiles: any[];
-  onDownload: (path: string, name: string) => void;
-  onDelete: (id: string, path: string) => void;
-}) {
-  return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-3">
-          Source Documents
-        </h2>
-        <OpportunityDocumentsTab documents={documents} />
-      </div>
-
-      {projectFiles.length > 0 && (
-        <div>
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-3">
-            Internal Documents
-          </h2>
-          <div className="bg-card border border-border rounded-lg p-6 space-y-2">
-            {projectFiles.map((file) => (
-              <div
-                key={file.id}
-                className="flex items-center justify-between gap-4 rounded-md border border-border px-3 py-2.5 text-sm"
-              >
-                <p className="font-medium text-foreground truncate">{file.file_name}</p>
-                <Button variant="ghost" size="sm" onClick={() => onDownload(file.file_url, file.file_name)}>
-                  Download
-                </Button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Intelligence Tab ────────────────────────────────────────────────────────────
-
-function IntelligenceTab({
-  candidate,
-  report,
-  findings,
-  citationsByFinding,
-  documents,
-  activeTask,
-  linkedProject,
-  reportReady,
-  analysisWorkActive,
-  reload,
-}: {
-  candidate: any;
-  report: any;
-  findings: any[];
-  citationsByFinding: Map<string, any[]>;
-  documents: any[];
-  activeTask: any;
-  linkedProject: any;
-  reportReady: boolean;
-  analysisWorkActive: boolean;
-  reload: () => void;
-}) {
-  if (!candidate) {
-    return (
-      <div className="bg-card border border-border rounded-lg p-8 text-center">
-        <p className="text-sm text-muted-foreground">No linked opportunity found.</p>
-      </div>
-    );
-  }
-  return (
-    <ProjectWorkspaceIntelligenceView
-      candidate={candidate}
-      report={report}
-      findings={findings}
-      citationsByFinding={citationsByFinding}
-      documents={documents}
-      activeTask={activeTask}
-      linkedProject={linkedProject}
-      reportReady={reportReady}
-      analysisWorkActive={analysisWorkActive}
-      reload={reload}
-    />
-  );
-}
-
-// ── Coverage Tab ────────────────────────────────────────────────────────────────
-
-function CoverageTab({
-  project,
-  projectTrades,
-  submissions,
-  bidRoomUrl,
-  copied,
-  onCopyBidLink,
-}: {
-  project: any;
-  projectTrades: any[];
-  submissions: any[];
-  bidRoomUrl: string;
-  copied: boolean;
-  onCopyBidLink: () => void;
-}) {
-  return (
-    <div className="space-y-6 max-w-2xl">
-      {projectTrades.length === 0 ? (
-        <div className="bg-card border border-border rounded-lg p-8 text-center">
-          <p className="text-sm text-muted-foreground">No trades assigned. Trades management is available in the legacy workspace via Projects.</p>
-        </div>
-      ) : (
-        <div className="bg-card border border-border rounded-lg p-6">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-4">Trades</h2>
-          <div className="space-y-2">
-            {projectTrades.map((trade: any) => (
-              <div key={trade.id} className="flex items-center justify-between rounded-md border border-border p-3">
-                <p className="text-sm font-medium">{trade.trade_types?.name ?? "Unknown"}</p>
-              </div>
-            ))}
-          </div>
-          <div className="flex flex-wrap gap-2 pt-4">
-            <CallListButton projectId={project.id} projectName={project.name} gcId={project.gc_id} hasSelectedTrades={projectTrades.length > 0} />
-            <BidListButton projectId={project.id} projectName={project.name} gcId={project.gc_id} hasSelectedTrades={projectTrades.length > 0} projectCounty={project.county} />
-          </div>
-        </div>
-      )}
-
-      <div className="bg-card border border-border rounded-lg p-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-4">Bid Room</h2>
-        <p className="text-sm text-muted-foreground break-all mb-3">{bidRoomUrl}</p>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={onCopyBidLink}>
-            {copied ? "Copied" : "Copy Link"}
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => window.open(bidRoomUrl, "_blank", "noopener,noreferrer")}>
-            <ExternalLink className="h-4 w-4 mr-2" />
-            Open Bid Room
-          </Button>
-        </div>
-        {submissions.length > 0 && (
-          <p className="mt-3 text-sm text-muted-foreground">{submissions.length} submission{submissions.length !== 1 ? "s" : ""} received.</p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ── Stub Tab ────────────────────────────────────────────────────────────────────
-
-const STUB_DESCRIPTIONS: Partial<Record<TabKey, string>> = {
-  addenda: "Addenda monitoring, acknowledgment tracking, and deadline impact review.",
-  activity: "Status changes, notes, and project timeline history.",
-  estimate: "Bid item schedule, quantity review, and estimate preparation.",
-  proposal: "Bid forms, submission instructions, and final package review.",
-};
-
-function StubTab({ tab }: { tab: TabKey }) {
-  const label = TABS.find((t) => t.key === tab)?.label ?? tab;
-  return (
-    <div className="bg-card border border-border rounded-lg p-8 text-center">
-      <h2 className="text-base font-semibold text-foreground mb-2">{label}</h2>
-      <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-        {STUB_DESCRIPTIONS[tab] ?? `${label} workspace is planned for a future phase.`}
-      </p>
+        activeTab === "proposal") && <StubTab tab={activeTab} />}
     </div>
   );
 }
