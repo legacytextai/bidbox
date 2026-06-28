@@ -4,6 +4,22 @@ All notable changes to the BidBox project are documented in this file.
 
 ---
 
+## [F5 Opportunity Experience Visual Recovery] - 2026-06-28
+
+### Opportunity Cards
+
+- Restored the calmer Opportunity card presentation from the reference implementation while preserving F5 routing, lifecycle state, and tab architecture.
+- Re-established the editorial card hierarchy: project title, agency, portal badge, bid due date, estimate, source, and one primary action.
+- Removed visual clutter from cards, including duplicate lifecycle/status badges, county lines, whole-card click behavior, and dashboard-heavy metadata styling.
+
+### Opportunity Overview
+
+- Kept the simplified Overview architecture: Project Snapshot, Executive Summary, Bid Items.
+- Refined Executive Summary into a single estimator briefing section with typographic hierarchy for Project Overview, Major Requirements, Required Licenses, Bond Requirements, and Primary Risks.
+- Updated design guidance so future F5 work preserves the restored visual language.
+
+---
+
 ## [F5 Opportunity Overview Simplification] - 2026-06-25
 
 ### Overview Tab

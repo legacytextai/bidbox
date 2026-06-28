@@ -244,8 +244,6 @@ Color communicates meaning, not decoration. Do not introduce new colors without 
 - Bid due date
 - Engineer estimate
 - Portal
-- County (if available)
-- Intelligence status
 
 **Must never display:**
 - Executive summaries
@@ -253,8 +251,10 @@ Color communicates meaning, not decoration. Do not introduce new colors without 
 - Long descriptions
 - More than one badge per card
 - More than one CTA button
+- County lines
+- Internal lifecycle/status badges unless they are the only actionable state
 
-Cards should feel quiet. Whitespace is more valuable than additional information.
+Cards should feel quiet, editorial, and governmental. Use a simple bordered card, strong title hierarchy, a small portal badge, restrained metadata, and one clear CTA. Whitespace is more valuable than additional information. Do not make the whole card clickable when a clear action button exists.
 
 ---
 
@@ -265,7 +265,7 @@ Cards should feel quiet. Whitespace is more valuable than additional information
 **Required sections — always rendered, never removed:**
 
 1. **Project Snapshot** — Agency, Department, Solicitation Number, Bid Due, Job Walk, Engineer Estimate, County, Location, Portal, Contract Duration, Liquidated Damages. Nothing else. Contract Duration and Liquidated Damages belong here because they are project-level facts used in go/no-go evaluation, not dates or bidding requirements.
-2. **Executive Summary** — The complete intelligence briefing for go/no-go evaluation. One section, no sub-divisions. Content reads in order: AI-generated prose paragraphs (scope, what's being built, major risks) followed by a requirements list (license requirements from portal metadata, then critical bid requirements from intelligence: Bond, Insurance, DIR, Prequalification). The requirements list appears within the same section container, separated by a subtle rule — not in a separate card. Do not concatenate or mechanically append; the section should read as one coherent briefing prepared by a senior estimator.
+2. **Executive Summary** — The complete intelligence briefing for go/no-go evaluation. One section, no extra cards. Content reads in a natural estimator briefing order: Project Overview, Major Requirements, Required Licenses, Bond Requirements, Primary Risks. These labels are typographic hierarchy inside the same section container, not separate report sections. Avoid walls of prose, raw extracted findings, and decorative UI. The section should read as one coherent briefing prepared by a senior estimator.
 3. **Bid Items** — Scope summary table. Every portal renders the same columns: Qty, Unit, Item Description. The extraction pipeline may vary; the presentation must not.
 
 Do not create miscellaneous sections. "Quick Facts", "Key Dates", and "Key Requirements" are not canonical sections — they are anti-patterns. If content does not belong in one of these three sections, it does not belong on the Overview. Documents belong in the Documents tab, not the Overview. Additional dates from intelligence (beyond Bid Due and Job Walk) are surfaced in the Intelligence tab, not the Overview.

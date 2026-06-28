@@ -3,8 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, ExternalLink, RefreshCw, ChevronDown, Loader2, Check, Filter } from "lucide-react";
-import { resolveOIStatus, resolveOILabel, isOIActive, isOIReady, resolveEstimatedValue } from "@/lib/opportunityDomain";
+import { Building2, ExternalLink, RefreshCw, ChevronDown, Loader2, Check, Filter, RotateCcw, Sparkles } from "lucide-react";
+import { PORTAL_STYLES, resolveOIStatus, isOIReady, resolveEstimatedValue } from "@/lib/opportunityDomain";
 import { Layout } from "@/components/Layout";
 import {
   Tooltip,
@@ -91,11 +91,8 @@ const isAnalyzedCandidate = (c: {
   analysis_task_id?: string | null;
   document_acquisition_status?: string | null;
   document_processing_status?: string | null;
-}) =>
-  c.analysis_status !== "not_requested" ||
-  Boolean(c.analysis_task_id) ||
-  Boolean(c.document_acquisition_status && c.document_acquisition_status !== "not_requested") ||
-  Boolean(c.document_processing_status && c.document_processing_status !== "not_requested");
+  opportunity_intelligence_status?: string | null;
+}) => isOIReady(resolveOIStatus(c));
 
 
 const AUTO_RANK: Record<string, number> = {
@@ -122,6 +119,10 @@ function formatBidDate(iso: string | null): string {
     "America/Los_Angeles",
     "MM/dd/yyyy 'at' h:mm a zzz"
   );
+}
+
+function formatEstimatedValue(crawlData: any): string | null {
+  return resolveEstimatedValue(crawlData);
 }
 
 function timeAgo(iso: string | null): string {
@@ -745,91 +746,128 @@ const Opportunities = () => {
 
 
   const renderCard = (candidate: Candidate, _index: number) => {
-    const oiStatus = resolveOIStatus(candidate);
-    const oiLabel = resolveOILabel(oiStatus);
-    const oiIsActive = isOIActive(oiStatus);
-    const oiIsReady = isOIReady(oiStatus);
-    const oiFailed = oiStatus === "failed";
-    const estimatedValue = resolveEstimatedValue(candidate.crawl_data);
+    const acquisitionActive =
+      candidate.document_acquisition_status === "queued" ||
+      candidate.document_acquisition_status === "acquiring";
+    const acquisitionComplete = candidate.document_acquisition_status === "acquired";
     const bidClosed = isBidClosed(candidate.bid_due_at);
-    const county = candidate.crawl_data?.county as string | undefined;
-    const bidDateDisplay = formatBidDate(candidate.bid_due_at);
-
-    // One badge only. Semantic colors: green = ready, red = failure, blue = active.
-    // Not-requested shows no badge — a missing status is not information worth signaling.
-    const oiBadgeClass = oiIsReady
-      ? "bg-green-50 text-green-800 border border-green-100"
-      : oiFailed
-        ? "bg-red-50 text-red-800 border border-red-100"
-        : oiIsActive
-          ? "bg-blue-50 text-blue-700 border border-blue-100"
-          : null;
+    const analyzeDisabled =
+      analyzingId === candidate.id || acquisitionActive || acquisitionComplete || bidClosed;
+    const analyzeLabel =
+      analyzingId === candidate.id
+        ? "Queueing..."
+        : candidate.document_acquisition_status === "failed"
+        ? "Retry Analysis"
+        : candidate.document_acquisition_status === "acquired"
+        ? "Documents Acquired"
+        : acquisitionActive
+        ? candidate.document_acquisition_status === "acquiring"
+          ? "Acquiring Documents"
+          : "Document Acquisition Queued"
+        : "Analyze Project";
 
     return (
       <div
         key={candidate.id}
-        role="button"
-        tabIndex={0}
-        onClick={() => navigate(`/opportunities/${candidate.id}`)}
-        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigate(`/opportunities/${candidate.id}`); }}
-        className="bg-card border border-border rounded-lg p-7 flex flex-col gap-5 cursor-pointer hover:border-foreground/30 hover:shadow-sm transition-all"
+        className="bg-card border border-border rounded-lg p-6 flex flex-col gap-3"
       >
-        {/* Title */}
-        <div className="flex items-start justify-between gap-4">
+        {/* Title + external link */}
+        <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
-            <h3 className="font-bold text-lg text-foreground leading-snug">
+            <h3 className="font-semibold text-base text-foreground leading-snug">
               {candidate.raw_title ?? "Untitled Opportunity"}
             </h3>
-            <div className="mt-2 space-y-0.5">
-              {candidate.agency && (
-                <p className="text-sm text-muted-foreground">{candidate.agency}</p>
-              )}
-              {county && (
-                <p className="text-xs text-muted-foreground">{county} County</p>
-              )}
-            </div>
+            {candidate.agency && (
+              <p className="mt-2 flex items-center gap-1.5 text-sm font-medium text-foreground">
+                <Building2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                {candidate.agency}
+              </p>
+            )}
           </div>
           <a
             href={candidate.source_url}
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}
-            className="shrink-0 text-muted-foreground hover:text-foreground mt-0.5"
+            className="shrink-0 text-muted-foreground hover:text-foreground"
             title="Open source page"
           >
             <ExternalLink className="h-4 w-4" />
           </a>
         </div>
 
-        {/* Bid Due + Estimate — primary decision data */}
-        <div className="space-y-1.5">
-          {bidDateDisplay !== "—" ? (
-            <p className={`text-base font-semibold ${bidClosed ? "text-red-600" : "text-foreground"}`}>
-              <span className="text-xs font-normal text-muted-foreground mr-2 uppercase tracking-wide">Bid Due</span>
-              {bidDateDisplay}
-            </p>
-          ) : (
-            <p className="text-sm text-muted-foreground">Bid date not listed</p>
-          )}
-          {estimatedValue && (
-            <p className="text-sm text-muted-foreground">
-              Est. <span className="font-medium text-foreground">{estimatedValue}</span>
-            </p>
+        {/* Portal pill */}
+        {candidate.portal_type && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <span
+              className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${
+                PORTAL_STYLES[candidate.portal_type] ?? "bg-gray-500/10 text-gray-600"
+              }`}
+            >
+              {candidate.portal_type}
+            </span>
+          </div>
+        )}
+
+        {/* Meta */}
+        <div className="text-sm text-muted-foreground space-y-0.5">
+          <p>Bid Due: {formatBidDate(candidate.bid_due_at)}</p>
+          {(() => {
+            const ev = formatEstimatedValue(candidate.crawl_data);
+            return ev ? <p>Estimated Value: {ev}</p> : null;
+          })()}
+          {candidate.source_name && (
+            <p className="text-xs">Source: {candidate.source_name}</p>
           )}
         </div>
 
-        {/* Footer: portal as plain text label, one semantic OI badge */}
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-xs text-muted-foreground uppercase tracking-wide">
-            {candidate.portal_type ?? ""}
-          </span>
-          {oiBadgeClass && (
-            <span className={`inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide px-2 py-0.5 rounded-full ${oiBadgeClass}`}>
-              {oiIsActive && <Loader2 className="h-2.5 w-2.5 animate-spin" />}
-              {oiLabel}
-            </span>
-          )}
-        </div>
+        {/* CTA */}
+        {isAnalyzedCandidate(candidate) ? (
+          <Button
+            size="sm"
+            onClick={() => navigate(`/opportunities/${candidate.id}`)}
+            className="w-full bg-orange-500 text-white hover:bg-orange-600"
+          >
+            <Sparkles className="h-4 w-4 mr-2" />
+            View Intelligence Report
+          </Button>
+        ) : candidate.analysis_status !== "not_requested" ? (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => navigate(`/opportunities/${candidate.id}`)}
+            className="w-full"
+          >
+            <Sparkles className="h-4 w-4 mr-2" />
+            View Analysis Progress
+          </Button>
+        ) : candidate.status === "converted" && candidate.converted_project_id ? (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate(`/projects/${candidate.converted_project_id}`)}
+          >
+            View Project
+          </Button>
+        ) : (
+          <div className="space-y-1.5">
+            <Button
+              size="sm"
+              disabled={analyzeDisabled}
+              onClick={() => handleAnalyzeProject(candidate)}
+              className="w-full bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90 disabled:opacity-40"
+            >
+              {analyzingId === candidate.id ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : candidate.document_acquisition_status === "failed" ? (
+                <RotateCcw className="h-4 w-4 mr-2" />
+              ) : (
+                <Sparkles className="h-4 w-4 mr-2" />
+              )}
+              {bidClosed ? "Bid Closed" : analyzeLabel}
+            </Button>
+          </div>
+        )}
       </div>
     );
   };
