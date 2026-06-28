@@ -4,6 +4,7 @@
 // Section structure follows docs/design-guidelines.md §Component Standards — Opportunity Overview:
 //   1. Project Snapshot   2. Executive Summary   3. Bid Items
 
+import { useState } from "react";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import type { OpportunityOverviewData } from "@/lib/opportunityView";
 import { isOIActive, isOIReady, resolveOILabel } from "@/lib/opportunityDomain";
@@ -13,6 +14,7 @@ interface Props {
 }
 
 export function OpportunityOverviewTab({ data }: Props) {
+  const [showAllBidItems, setShowAllBidItems] = useState(false);
   const oiReady = isOIReady(data.oiStatus);
   const oiActive = isOIActive(data.oiStatus);
 
@@ -22,6 +24,8 @@ export function OpportunityOverviewTab({ data }: Props) {
       !!data.licenseRequirements ||
       data.importantRequirements.length > 0);
   const briefing = buildBriefing(data);
+  const visibleBidItems = showAllBidItems ? data.bidItems : data.bidItems.slice(0, 12);
+  const hasDocumentDerivedBidItems = data.bidItems.some((item) => item.extractionMethod !== "portal_tab");
 
   return (
     <div className="space-y-5">
@@ -110,9 +114,60 @@ export function OpportunityOverviewTab({ data }: Props) {
 
       {/* ── 3. Bid Items ─────────────────────────────────────────────────── */}
       <OverviewSection title="Bid Items">
-        <p className="text-sm text-muted-foreground">
-          Structured bid items coming soon.
-        </p>
+        {data.bidItemsAvailable ? (
+          <div className="space-y-4">
+            {hasDocumentDerivedBidItems && (
+              <div className="rounded border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-900">
+                Some bid items were derived conservatively from source documents and should be reviewed against the bid package.
+              </div>
+            )}
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[680px] border-collapse text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left text-xs uppercase tracking-widest text-muted-foreground">
+                    <th className="w-28 pb-3 pr-4 font-semibold">Item</th>
+                    <th className="pb-3 pr-4 font-semibold">Description</th>
+                    <th className="w-32 pb-3 pr-4 text-right font-semibold">Quantity</th>
+                    <th className="w-24 pb-3 text-left font-semibold">Unit</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleBidItems.map((item) => (
+                    <tr key={item.id} className="border-b border-border/70 last:border-b-0">
+                      <td className="py-3 pr-4 align-top font-medium text-foreground">
+                        {item.itemNumber ?? "—"}
+                        {item.itemCode && (
+                          <div className="mt-1 text-xs font-normal text-muted-foreground">{item.itemCode}</div>
+                        )}
+                      </td>
+                      <td className="py-3 pr-4 align-top text-foreground">
+                        {item.description}
+                        {item.sectionName && (
+                          <div className="mt-1 text-xs text-muted-foreground">{item.sectionName}</div>
+                        )}
+                      </td>
+                      <td className="py-3 pr-4 align-top text-right text-foreground">{item.quantity ?? "—"}</td>
+                      <td className="py-3 align-top text-foreground">{item.unit ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {data.bidItemsTotal > 12 && (
+              <button
+                type="button"
+                onClick={() => setShowAllBidItems((value) => !value)}
+                className="text-sm font-medium text-primary hover:underline"
+              >
+                {showAllBidItems ? "Show Fewer Bid Items" : `View All Bid Items (${data.bidItemsTotal})`}
+              </button>
+            )}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            No structured bid items were found for this opportunity.
+          </p>
+        )}
       </OverviewSection>
 
     </div>

@@ -79,6 +79,20 @@ export interface DossierDocument {
   processing_status: string | null;
 }
 
+export interface DossierBidItem {
+  id: string;
+  item_number: string | null;
+  item_code: string | null;
+  description: string | null;
+  quantity: number | null;
+  quantity_raw: string | null;
+  unit_of_measure: string | null;
+  section_name: string | null;
+  extraction_method: string;
+  extraction_status: string;
+  source_order: number | null;
+}
+
 export interface DossierActiveTask {
   id: string;
   task_type: string;
@@ -104,6 +118,7 @@ export interface UseOpportunityDossierResult {
   citationsByFinding: Map<string, DossierCitation[]>;
   findingsByCategory: Map<string, DossierFinding[]>;
   documents: DossierDocument[];
+  bidItems: DossierBidItem[];
   activeTask: DossierActiveTask | null;
   linkedProject: DossierLinkedProject;
   overview: OpportunityOverviewData | null;
@@ -129,6 +144,7 @@ export function useOpportunityDossier(id: string | undefined): UseOpportunityDos
   const [findings, setFindings] = useState<DossierFinding[]>([]);
   const [citations, setCitations] = useState<DossierCitation[]>([]);
   const [documents, setDocuments] = useState<DossierDocument[]>([]);
+  const [bidItems, setBidItems] = useState<DossierBidItem[]>([]);
   const [activeTask, setActiveTask] = useState<DossierActiveTask | null>(null);
   const [linkedProject, setLinkedProject] = useState<DossierLinkedProject>({
     bidDueAt: null,
@@ -153,7 +169,7 @@ export function useOpportunityDossier(id: string | undefined): UseOpportunityDos
       return;
     }
 
-    const [reportRes, docsRes, activeTaskRes] = await Promise.all([
+    const [reportRes, docsRes, bidItemsRes, activeTaskRes] = await Promise.all([
       sb
         .from("opportunity_intelligence_reports")
         .select("*")
@@ -167,6 +183,12 @@ export function useOpportunityDossier(id: string | undefined): UseOpportunityDos
         .select("id, file_name, document_class, document_family, text_page_count, processing_status")
         .eq("opportunity_candidate_id", id)
         .order("document_source_order", { ascending: true, nullsFirst: false })
+        .order("created_at", { ascending: true }),
+      sb
+        .from("opportunity_bid_items")
+        .select("id, item_number, item_code, description, quantity, quantity_raw, unit_of_measure, section_name, extraction_method, extraction_status, source_order")
+        .eq("opportunity_candidate_id", id)
+        .order("source_order", { ascending: true })
         .order("created_at", { ascending: true }),
       sb
         .from("agent_tasks")
@@ -228,6 +250,7 @@ export function useOpportunityDossier(id: string | undefined): UseOpportunityDos
     setCandidate(candRes.data as DossierCandidate);
     setReport((reportRes.data ?? null) as DossierReport | null);
     setDocuments((docsRes.data ?? []) as DossierDocument[]);
+    setBidItems((bidItemsRes.data ?? []) as DossierBidItem[]);
     setActiveTask((activeTaskRes.data ?? null) as DossierActiveTask | null);
     setFindings(findingRows);
     setCitations(citationRows);
@@ -294,12 +317,13 @@ export function useOpportunityDossier(id: string | undefined): UseOpportunityDos
       findings,
       citationsByFinding,
       documents,
+      bidItems,
       linkedProjectBidDueAt: linkedProject.bidDueAt,
       linkedProjectBidDueOverrideAt: linkedProject.bidDueOverrideAt,
       linkedProjectBidDueOverrideSource: linkedProject.bidDueOverrideSource,
       linkedProjectBidDueOverrideReason: linkedProject.bidDueOverrideReason,
     });
-  }, [candidate, report, findings, citationsByFinding, documents, linkedProject]);
+  }, [candidate, report, findings, citationsByFinding, documents, bidItems, linkedProject]);
 
   return {
     loading,
@@ -310,6 +334,7 @@ export function useOpportunityDossier(id: string | undefined): UseOpportunityDos
     citationsByFinding,
     findingsByCategory,
     documents,
+    bidItems,
     activeTask,
     linkedProject,
     overview,

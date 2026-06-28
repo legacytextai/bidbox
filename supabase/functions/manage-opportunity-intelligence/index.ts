@@ -180,6 +180,12 @@ async function deleteAnalysis(adminClient: any, candidateId: string, userId: str
     deletedProject = await deleteOpportunityProject(adminClient, candidate.converted_project_id, userId);
   }
 
+  const { error: bidItemDeleteError } = await adminClient
+    .from("opportunity_bid_items")
+    .delete()
+    .eq("opportunity_candidate_id", candidateId);
+  if (bidItemDeleteError) throw new Error(`Bid item cleanup failed: ${bidItemDeleteError.message}`);
+
   const opportunityDocumentsRemoved = await removeOpportunityDocuments(adminClient, candidateId);
 
   await adminClient

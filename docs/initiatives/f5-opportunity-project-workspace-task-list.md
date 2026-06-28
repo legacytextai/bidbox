@@ -327,6 +327,13 @@ Subtasks:
 - Preserve technical errors in logs and internal result metadata.
 
 ## Task 10 - DESIGN BID ITEM DOMAIN MODEL
+Status: ✅ COMPLETE
+
+Implementation notes:
+- Added canonical `opportunity_bid_items` model for portal-native and document-derived bid schedules.
+- The model preserves source ordering, item number/code, description, quantity, unit, section, extraction method/status, optional source document linkage, and portal-specific metadata.
+- Authority rule implemented: portal-native rows are preferred; conservative document-derived rows are used only when no portal-native rows exist.
+
 Subtasks:
 ### 10.1. Finalize `opportunity_bid_items` Schema
 
@@ -347,6 +354,13 @@ Subtasks:
 - Label inferred items differently from official portal items.
 
 ## Task 11 - IMPLEMENT BID ITEM STORAGE
+Status: ✅ COMPLETE
+
+Implementation notes:
+- Added `supabase/migrations/20260628000001_add_opportunity_bid_items.sql` with RLS, grants, indexes, and updated-at trigger.
+- Added worker normalization/replacement helpers in `bidbox-worker/drivers/bid_items.js`.
+- Updated generated Supabase types and Delete Analysis cleanup to include bid item rows.
+
 Subtasks:
 ### 11.1. Create Migration
 
@@ -367,6 +381,13 @@ Subtasks:
 - Add delete/replace helpers for re-analysis or source refresh.
 
 ## Task 12 - EXTRACT PLANETBIDS BID ITEMS
+Status: ✅ COMPLETE
+
+Implementation notes:
+- PlanetBids document acquisition now attempts to open the Line Items/Bid Items tab after login and extracts visible table rows into the canonical bid item model.
+- Extraction is best-effort and non-blocking; failures are logged and document acquisition continues.
+- Re-analysis replaces prior portal-native PlanetBids bid items for the candidate.
+
 Subtasks:
 ### 12.1. Audit PlanetBids Line Item UI
 
@@ -387,6 +408,13 @@ Subtasks:
 - Confirm extraction failure does not block document acquisition.
 
 ## Task 13 - EXTRACT CALTRANS BID ITEMS
+Status: ✅ COMPLETE
+
+Implementation notes:
+- Caltrans document acquisition now extracts bid item rows from structured tables or a narrow Contractors Corner bid-items text block when present.
+- Contract number, detail URL, and source metadata are preserved with each row.
+- Extraction/storage failures are isolated from document acquisition.
+
 Subtasks:
 ### 13.1. Audit Caltrans Bid Item Sources
 
@@ -407,6 +435,13 @@ Subtasks:
 - Confirm document acquisition remains unaffected.
 
 ## Task 14 - ADD DOCUMENT-BASED BID ITEM FALLBACK
+Status: ✅ COMPLETE
+
+Implementation notes:
+- F3 document processing now runs a conservative bid item fallback only when portal-native rows are unavailable.
+- Fallback scans likely bid schedule/proposal documents, stores source document/page metadata, and marks rows as `needs_review`.
+- Missing fallback rows produce an empty state; inferred rows never overwrite portal-native rows.
+
 Subtasks:
 ### 14.1. Identify Candidate Documents
 
@@ -569,6 +604,13 @@ Subtasks:
 - Show source confidence or needs-review state only when useful.
 
 ## Task 20 - IMPLEMENT OPPORTUNITY BID ITEMS UI
+Status: ✅ COMPLETE
+
+Implementation notes:
+- `useOpportunityDossier` now reads `opportunity_bid_items` and passes them through `OpportunityOverviewData`.
+- `OpportunityOverviewTab` replaced the placeholder with a read-only bid items table showing item, description, quantity, and unit.
+- Long schedules render the first 12 rows with an inline `View All Bid Items` expansion; document-derived rows show a review notice.
+
 Subtasks:
 ### 20.1. Build Shared Bid Items Table
 

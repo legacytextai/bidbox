@@ -4,6 +4,7 @@ const {
   extractSupportedArchiveEntries,
   isArchiveFile,
 } = require('./archive_extraction');
+const { replaceBidItemsForCandidate } = require('./bid_items');
 
 const DOCUMENT_BUCKET = 'opportunity-documents';
 const CALTRANS_ORIGIN = 'https://ppmoe.dot.ca.gov';
@@ -275,6 +276,93 @@ function parseCaltransMetadataFromText(text, candidate) {
     detail_metadata_refreshed_at: new Date().toISOString(),
     document_acquisition_supported: true,
   };
+}
+
+async function extractCaltransBidItems(page, candidate, log) {
+  const items = await page.evaluate(() => {
+    const clean = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
+    const tables = Array.from(document.querySelectorAll('table'));
+    const candidates = [];
+
+    const headerIndex = (headers, patterns) => headers.findIndex((header) => patterns.some((pattern) => pattern.test(header)));
+
+    for (const table of tables) {
+      const rows = Array.from(table.querySelectorAll('tr'))
+        .map((tr) => Array.from(tr.querySelectorAll('th,td')).map((cell) => clean(cell.innerText)))
+        .filter((row) => row.some(Boolean));
+      if (rows.length < 2) continue;
+
+      const headers = rows[0].map((header) => header.toLowerCase());
+      const bodyRows = rows.slice(1);
+      const tableText = clean(table.innerText);
+      if (!/bid\s*items?|item\s*(no|number)|item\s*code|description|unit|quantity|qty/i.test(tableText)) continue;
+
+      const itemIndex = headerIndex(headers, [/^item\b/, /item\s*(no|number)/]);
+      const codeIndex = headerIndex(headers, [/code/]);
+      const descIndex = headerIndex(headers, [/description/, /item\s*description/, /work\s*description/]);
+      const unitIndex = headerIndex(headers, [/^unit$/, /unit\s*of\s*measure/, /^uom$/]);
+      const qtyIndex = headerIndex(headers, [/quantity/, /^qty$/, /estimated\s*quantity/]);
+      if (descIndex < 0) continue;
+
+      for (const row of bodyRows) {
+        const description = row[descIndex];
+        if (!description || /^total\b/i.test(description)) continue;
+        candidates.push({
+          item_number: itemIndex >= 0 ? row[itemIndex] : null,
+          item_code: codeIndex >= 0 ? row[codeIndex] : null,
+          description,
+          unit_of_measure: unitIndex >= 0 ? row[unitIndex] : null,
+          quantity_raw: qtyIndex >= 0 ? row[qtyIndex] : null,
+          raw_text: row.join(' | '),
+          metadata: {
+            source_table_headers: rows[0],
+          },
+        });
+      }
+    }
+
+    if (candidates.length > 0) return candidates;
+
+    const text = document.body?.innerText ?? '';
+    const bidItemsMatch = text.match(/Bid items?\s*([\s\S]*?)(?:Bidder Inquiries|Subcontractor Opt-Ins|Prime:|Bid Documents|Post Bid Documents|Back to Top|$)/i);
+    const block = bidItemsMatch?.[1] ?? '';
+    return block
+      .split('\n')
+      .map((line) => clean(line))
+      .filter((line) => /^\d+\s+\d{4,}\s+.+\s+[A-Z]{1,8}\s+[\d,.]+$/i.test(line))
+      .map((line) => {
+        const match = line.match(/^(\d+)\s+(\d{4,})\s+(.+?)\s+([A-Z]{1,8})\s+([\d,.]+)$/i);
+        return {
+          item_number: match?.[1] ?? null,
+          item_code: match?.[2] ?? null,
+          description: match?.[3] ?? line,
+          unit_of_measure: match?.[4] ?? null,
+          quantity_raw: match?.[5] ?? null,
+          raw_text: line,
+          metadata: {
+            source_parser: 'caltrans_bid_items_text_block',
+          },
+        };
+      });
+  });
+
+  const normalized = items.map((item, index) => ({
+    ...item,
+    source_portal: 'caltrans',
+    source_opportunity_id: extractContractNumber(candidate),
+    extraction_method: 'portal_tab',
+    extraction_status: 'extracted',
+    source_url: buildDetailUrl(candidate),
+    source_order: index + 1,
+    metadata: {
+      ...(item.metadata ?? {}),
+      source: 'caltrans_contractors_corner',
+      detail_url: buildDetailUrl(candidate),
+    },
+  }));
+
+  log(`Caltrans bid item rows discovered: ${normalized.length}`);
+  return normalized;
 }
 
 async function mergeCandidateMetadata(supabase, candidate, metadata, log) {
@@ -856,6 +944,26 @@ async function acquireCaltransDocuments({ supabase, task, candidate, log }) {
     const metadata = parseCaltransMetadataFromText(bodyText, candidate);
     await mergeCandidateMetadata(supabase, candidate, metadata, log);
 
+    const bidItems = await extractCaltransBidItems(session.page, candidate, log).catch((e) => {
+      log(`Caltrans bid item extraction failed: ${e.message}`);
+      return [];
+    });
+    await replaceBidItemsForCandidate({
+      supabase,
+      candidateId: candidate.id,
+      items: bidItems,
+      methods: ['portal_tab'],
+      defaults: {
+        sourcePortal: 'caltrans',
+        sourceOpportunityId: extractContractNumber(candidate),
+        extractionMethod: 'portal_tab',
+        sourceUrl: detailUrl,
+      },
+      log,
+    }).catch((e) => {
+      log(`Caltrans bid item storage failed: ${e.message}`);
+    });
+
     const manifestDocs = await discoverDocuments(session.page, candidate, log);
 
     for (const doc of manifestDocs) {
@@ -971,5 +1079,6 @@ module.exports = {
   DOCUMENT_BUCKET,
   SELECTORS,
   parseCaltransMetadataFromText,
+  extractCaltransBidItems,
   discoverDocuments,
 };

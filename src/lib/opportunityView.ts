@@ -40,6 +40,19 @@ export interface RequirementItem {
   isCritical: boolean;
 }
 
+export interface OpportunityBidItemView {
+  id: string;
+  itemNumber: string | null;
+  itemCode: string | null;
+  description: string;
+  quantity: string | null;
+  unit: string | null;
+  sectionName: string | null;
+  extractionMethod: string;
+  extractionStatus: string;
+  sourceOrder: number;
+}
+
 // The single model the Overview tab consumes.
 // Fields never removed — missing data uses null, not absence of field.
 export interface OpportunityOverviewData {
@@ -88,8 +101,10 @@ export interface OpportunityOverviewData {
   lifecycleStatus: string;
   convertedProjectId: string | null;
 
-  // Bid items placeholder — Tasks 10-14 not yet built
-  bidItemsAvailable: false;
+  // Bid items
+  bidItems: OpportunityBidItemView[];
+  bidItemsTotal: number;
+  bidItemsAvailable: boolean;
 }
 
 // ─── Helpers (mirrored from OpportunityReport.tsx, extracted here so the
@@ -208,6 +223,19 @@ export interface AdapterInput {
     document_class: string | null;
     document_family: string | null;
   }>;
+  bidItems: Array<{
+    id: string;
+    item_number: string | null;
+    item_code: string | null;
+    description: string | null;
+    quantity: number | null;
+    quantity_raw: string | null;
+    unit_of_measure: string | null;
+    section_name: string | null;
+    extraction_method: string;
+    extraction_status: string;
+    source_order: number | null;
+  }>;
   linkedProjectBidDueAt: string | null;
   linkedProjectBidDueOverrideAt: string | null;
   linkedProjectBidDueOverrideSource: string | null;
@@ -221,6 +249,7 @@ export function buildOpportunityOverviewData(input: AdapterInput): OpportunityOv
     findings,
     citationsByFinding,
     documents,
+    bidItems,
     linkedProjectBidDueAt,
     linkedProjectBidDueOverrideAt,
     linkedProjectBidDueOverrideSource,
@@ -340,6 +369,25 @@ export function buildOpportunityOverviewData(input: AdapterInput): OpportunityOv
   }));
 
   const { projectAddress, county } = resolveLocation(crawl);
+  const normalizedBidItems: OpportunityBidItemView[] = bidItems
+    .filter((item) => String(item.description ?? "").trim())
+    .sort((a, b) => (a.source_order ?? 0) - (b.source_order ?? 0))
+    .map((item) => ({
+      id: item.id,
+      itemNumber: item.item_number,
+      itemCode: item.item_code,
+      description: String(item.description ?? "").replace(/\s+/g, " ").trim(),
+      quantity:
+        item.quantity_raw ??
+        (typeof item.quantity === "number"
+          ? item.quantity.toLocaleString(undefined, { maximumFractionDigits: 4 })
+          : null),
+      unit: item.unit_of_measure,
+      sectionName: item.section_name,
+      extractionMethod: item.extraction_method,
+      extractionStatus: item.extraction_status,
+      sourceOrder: item.source_order ?? 0,
+    }));
 
   return {
     title: resolveTitle(candidate),
@@ -365,6 +413,8 @@ export function buildOpportunityOverviewData(input: AdapterInput): OpportunityOv
     oiReadyAt: candidate.opportunity_intelligence_ready_at ?? null,
     lifecycleStatus: candidate.opportunity_lifecycle_status ?? "discovered",
     convertedProjectId: candidate.converted_project_id,
-    bidItemsAvailable: false,
+    bidItems: normalizedBidItems,
+    bidItemsTotal: normalizedBidItems.length,
+    bidItemsAvailable: normalizedBidItems.length > 0,
   };
 }

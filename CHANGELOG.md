@@ -4,6 +4,18 @@ All notable changes to the BidBox project are documented in this file.
 
 ---
 
+## [F5 Bid Items Pipeline] - 2026-06-28
+
+### Bid Schedule Foundation
+
+- Added canonical `opportunity_bid_items` storage for portal-native and document-derived bid schedules.
+- Added best-effort PlanetBids Line Items extraction during document acquisition.
+- Added best-effort Caltrans bid item extraction from Contractors Corner detail pages.
+- Added conservative document-derived fallback after F3 processing when portal-native bid items are unavailable.
+- Replaced the Opportunity Overview Bid Items placeholder with a read-only estimator table and inline View All expansion.
+
+---
+
 ## [F5.3 Autonomous Opportunity Pipeline] - 2026-06-28
 
 ### Autonomous Preparation

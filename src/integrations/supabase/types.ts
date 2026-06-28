@@ -508,6 +508,105 @@ export type Database = {
           },
         ]
       }
+      opportunity_bid_items: {
+        Row: {
+          created_at: string
+          description: string
+          extracted_at: string
+          extraction_method: string
+          extraction_status: string
+          id: string
+          item_code: string | null
+          item_number: string | null
+          metadata: Json
+          opportunity_candidate_id: string
+          opportunity_document_id: string | null
+          quantity: number | null
+          quantity_raw: string | null
+          raw_text: string | null
+          reference: string | null
+          section_name: string | null
+          section_number: string | null
+          source_opportunity_id: string | null
+          source_order: number
+          source_portal: string | null
+          source_url: string | null
+          unit_of_measure: string | null
+          unit_price: number | null
+          unit_price_raw: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description: string
+          extracted_at?: string
+          extraction_method: string
+          extraction_status?: string
+          id?: string
+          item_code?: string | null
+          item_number?: string | null
+          metadata?: Json
+          opportunity_candidate_id: string
+          opportunity_document_id?: string | null
+          quantity?: number | null
+          quantity_raw?: string | null
+          raw_text?: string | null
+          reference?: string | null
+          section_name?: string | null
+          section_number?: string | null
+          source_opportunity_id?: string | null
+          source_order?: number
+          source_portal?: string | null
+          source_url?: string | null
+          unit_of_measure?: string | null
+          unit_price?: number | null
+          unit_price_raw?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          extracted_at?: string
+          extraction_method?: string
+          extraction_status?: string
+          id?: string
+          item_code?: string | null
+          item_number?: string | null
+          metadata?: Json
+          opportunity_candidate_id?: string
+          opportunity_document_id?: string | null
+          quantity?: number | null
+          quantity_raw?: string | null
+          raw_text?: string | null
+          reference?: string | null
+          section_name?: string | null
+          section_number?: string | null
+          source_opportunity_id?: string | null
+          source_order?: number
+          source_portal?: string | null
+          source_url?: string | null
+          unit_of_measure?: string | null
+          unit_price?: number | null
+          unit_price_raw?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "opportunity_bid_items_opportunity_candidate_id_fkey"
+            columns: ["opportunity_candidate_id"]
+            isOneToOne: false
+            referencedRelation: "opportunity_candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "opportunity_bid_items_opportunity_document_id_fkey"
+            columns: ["opportunity_document_id"]
+            isOneToOne: false
+            referencedRelation: "opportunity_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       opportunity_document_chunks: {
         Row: {
           char_count: number

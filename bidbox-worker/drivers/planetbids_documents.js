@@ -3,6 +3,7 @@ const {
   extractSupportedArchiveEntries,
   isArchiveFile,
 } = require('./archive_extraction');
+const { replaceBidItemsForCandidate } = require('./bid_items');
 
 const DOCUMENT_BUCKET = 'opportunity-documents';
 const API_HOST = 'api-external.prod.planetbids.com';
@@ -654,6 +655,91 @@ async function openDocumentsTab(page, log) {
   return null;
 }
 
+async function extractPlanetBidsBidItems(page, candidate, log) {
+  const lineItemsTab = page
+    .getByText(/^(Line Items|Bid Items|Bid Line Items)$/i)
+    .first();
+
+  if (!(await lineItemsTab.isVisible({ timeout: 3000 }).catch(() => false))) {
+    log('PlanetBids Line Items tab not visible; bid item extraction skipped');
+    return [];
+  }
+
+  log('Opening PlanetBids Line Items tab');
+  await lineItemsTab.click();
+  await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+  await page.waitForTimeout(1500);
+
+  const rows = await page.evaluate(() => {
+    const clean = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
+    const headerIndex = (headers, patterns) => headers.findIndex((header) => patterns.some((pattern) => pattern.test(header)));
+    const tables = Array.from(document.querySelectorAll('table'));
+    const items = [];
+
+    for (const table of tables) {
+      const tableRows = Array.from(table.querySelectorAll('tr'))
+        .map((tr) => Array.from(tr.querySelectorAll('th,td')).map((cell) => clean(cell.innerText)))
+        .filter((row) => row.some(Boolean));
+      if (tableRows.length < 2) continue;
+
+      const headers = tableRows[0].map((header) => header.toLowerCase());
+      const tableText = clean(table.innerText);
+      if (!/(line\s*items?|bid\s*items?|item\s*(no|number)|description|quantity|qty|unit)/i.test(tableText)) continue;
+
+      const section = clean(table.closest('section, mat-card, div')?.querySelector('h1,h2,h3,h4,h5,strong')?.textContent ?? '');
+      const itemIndex = headerIndex(headers, [/item\s*(no|number)?/, /^#$/]);
+      const codeIndex = headerIndex(headers, [/code/]);
+      const descIndex = headerIndex(headers, [/description/, /item\s*description/, /scope/]);
+      const unitIndex = headerIndex(headers, [/^unit$/, /uom/, /unit\s*of\s*measure/]);
+      const qtyIndex = headerIndex(headers, [/quantity/, /^qty$/]);
+      const refIndex = headerIndex(headers, [/reference/, /^ref$/]);
+      if (descIndex < 0) continue;
+
+      for (const row of tableRows.slice(1)) {
+        const description = row[descIndex];
+        if (!description || /^total\b/i.test(description)) continue;
+        items.push({
+          section_name: section || null,
+          item_number: itemIndex >= 0 ? row[itemIndex] : null,
+          item_code: codeIndex >= 0 ? row[codeIndex] : null,
+          description,
+          unit_of_measure: unitIndex >= 0 ? row[unitIndex] : null,
+          quantity_raw: qtyIndex >= 0 ? row[qtyIndex] : null,
+          reference: refIndex >= 0 ? row[refIndex] : null,
+          raw_text: row.join(' | '),
+          metadata: {
+            source_table_headers: tableRows[0],
+          },
+        });
+      }
+    }
+
+    return items;
+  }).catch((e) => {
+    log(`PlanetBids Line Items table parse failed: ${e.message}`);
+    return [];
+  });
+
+  const bidId = candidate.crawl_data?.bid_id ?? extractBidId(candidate.source_url);
+  const normalized = rows.map((row, index) => ({
+    ...row,
+    source_portal: 'planetbids',
+    source_opportunity_id: bidId,
+    extraction_method: 'portal_tab',
+    extraction_status: 'extracted',
+    source_url: candidate.source_url,
+    source_order: index + 1,
+    metadata: {
+      ...(row.metadata ?? {}),
+      source: 'planetbids_line_items_tab',
+      bid_id: bidId,
+    },
+  }));
+
+  log(`PlanetBids bid item rows discovered: ${normalized.length}`);
+  return normalized;
+}
+
 async function extractPortalMetadata(page, log) {
   const raw = await page.evaluate(() => {
     const clean = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
@@ -978,6 +1064,10 @@ async function getAuthenticatedManifest(candidate, log) {
     await page.waitForTimeout(2500);
 
     const portalMetadata = await extractPortalMetadata(page, log);
+    const bidItems = await extractPlanetBidsBidItems(page, candidate, log).catch((e) => {
+      log(`PlanetBids bid item extraction failed: ${e.message}`);
+      return [];
+    });
     const capturedManifestJson = await openDocumentsTab(page, log);
 
     if (!bearerToken) {
@@ -988,6 +1078,7 @@ async function getAuthenticatedManifest(candidate, log) {
       return {
         documents: normalizeManifestJson(capturedManifestJson, bearerToken, log),
         portalMetadata,
+        bidItems,
       };
     }
 
@@ -995,6 +1086,7 @@ async function getAuthenticatedManifest(candidate, log) {
       return {
         documents: await fetchManifest(bidId, bearerToken, log),
         portalMetadata,
+        bidItems,
       };
     } catch (e) {
       const needsProspectiveBidder = e instanceof ManifestHttpError && e.status === 403;
@@ -1017,6 +1109,10 @@ async function getAuthenticatedManifest(candidate, log) {
           Object.entries(refreshedAfterRegistration).filter(([, value]) => value !== null && value !== '')
         ),
       };
+      const retryBidItems = await extractPlanetBidsBidItems(page, candidate, log).catch((e) => {
+        log(`PlanetBids bid item retry extraction failed: ${e.message}`);
+        return bidItems;
+      });
 
       if (!bearerToken) {
         throw new Error('No PlanetBids bearer token captured after prospective bidder registration');
@@ -1027,6 +1123,7 @@ async function getAuthenticatedManifest(candidate, log) {
         return {
           documents: normalizeManifestJson(retryCapturedManifestJson, bearerToken, log),
           portalMetadata: retryPortalMetadata,
+          bidItems: retryBidItems,
         };
       }
 
@@ -1036,6 +1133,7 @@ async function getAuthenticatedManifest(candidate, log) {
       return {
         documents: docs,
         portalMetadata: retryPortalMetadata,
+        bidItems: retryBidItems,
       };
     }
   } finally {
@@ -1300,8 +1398,23 @@ async function storeExtractedArchiveDocuments({ supabase, taskId, candidateId, p
 }
 
 async function acquirePlanetBidsDocuments({ supabase, task, candidate, log }) {
-  const { documents: manifestDocs, portalMetadata } = await getAuthenticatedManifest(candidate, log);
+  const { documents: manifestDocs, portalMetadata, bidItems = [] } = await getAuthenticatedManifest(candidate, log);
   await mergeCandidatePortalMetadata(supabase, candidate, portalMetadata, log);
+  await replaceBidItemsForCandidate({
+    supabase,
+    candidateId: candidate.id,
+    items: bidItems,
+    methods: ['portal_tab'],
+    defaults: {
+      sourcePortal: 'planetbids',
+      sourceOpportunityId: candidate.crawl_data?.bid_id ?? extractBidId(candidate.source_url),
+      extractionMethod: 'portal_tab',
+      sourceUrl: candidate.source_url,
+    },
+    log,
+  }).catch((e) => {
+    log(`PlanetBids bid item storage failed: ${e.message}`);
+  });
   let acquired = 0;
   let skipped = 0;
   let failed = 0;

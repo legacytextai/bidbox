@@ -923,7 +923,7 @@ The detailed engineering task list lives in `docs/initiatives/f5-opportunity-pro
 
 Rules:
 - Fields are never removed from the contract. Missing data uses `null`, not field absence.
-- `bidItemsAvailable: false` is a literal type until Tasks 10–14 are implemented.
+- Bid items are populated from `opportunity_bid_items`; portal-native rows are preferred and conservative document-derived rows are labeled for review.
 - Bid due is resolved by `resolveAuthoritativeBidDue` with full conflict detection.
 
 ### Domain Resolvers
@@ -932,11 +932,11 @@ Rules:
 
 ### Data Access Hook
 
-`useOpportunityDossier(id)` (in `src/hooks/useOpportunityDossier.ts`) is the single data access layer for the dossier. Returns `overview: OpportunityOverviewData | null`, `findings`, `citations`, `documents`, `activeTask`, `linkedProject`, `reportReady`, `analysisWorkActive`, `reload`, and `setCandidate`. Polls every 5 seconds when analysis is active.
+`useOpportunityDossier(id)` (in `src/hooks/useOpportunityDossier.ts`) is the single data access layer for the dossier. Returns `overview: OpportunityOverviewData | null`, `findings`, `citations`, `documents`, `bidItems`, `activeTask`, `linkedProject`, `reportReady`, `analysisWorkActive`, `reload`, and `setCandidate`. Polls every 5 seconds when analysis is active.
 
 ### Tab Architecture
 
-- **Overview tab** — `OpportunityOverviewTab` renders 6 always-present sections: Project Snapshot, Executive Summary, Key Dates, Bid Items (placeholder), Important Requirements, Quick Facts.
+- **Overview tab** — `OpportunityOverviewTab` renders 3 always-present sections: Project Snapshot, Executive Summary, and Bid Items. Bid Items now displays the normalized bid schedule when available, with a clean empty state when no structured rows are found.
 - **Documents tab** — `OpportunityDocumentsTab` groups documents by `document_family` in preferred order.
 - **Intelligence tab** — Inline `IntelligenceTab` component preserves all F4 functionality: executive summary, 7 report sections with citations, bid due conflict evidence, analysis progress, re-analysis and delete controls.
 

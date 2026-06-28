@@ -12,6 +12,9 @@ const {
   queueProjectIntelligenceForCandidate,
   runProjectIntelligence,
 } = require('./drivers/project_intelligence');
+const {
+  extractDocumentDerivedBidItemsForCandidate,
+} = require('./drivers/bid_items');
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -835,6 +838,23 @@ async function runDocumentProcessingTask(task, supabase) {
   try {
     await updateTaskStage(task, 'metadata_refresh');
     const result = await runDocumentProcessing(task, supabase, log);
+    let bidItemFallback = { inserted: 0, skipped: true, reason: 'not_run' };
+    try {
+      bidItemFallback = await extractDocumentDerivedBidItemsForCandidate({
+        supabase,
+        candidateId: result.candidate_id,
+        sourcePortal: task.payload?.portal_type ?? null,
+        log,
+      });
+      if (bidItemFallback.skipped) {
+        log(`Bid item fallback skipped: ${bidItemFallback.reason}`);
+      } else {
+        log(`Bid item fallback complete: inserted=${bidItemFallback.inserted}`);
+      }
+    } catch (e) {
+      bidItemFallback = { inserted: 0, skipped: true, reason: e.message };
+      log(`Bid item fallback failed: ${e.message}`);
+    }
     let projectIntelligenceTaskId = null;
     let projectIntelligenceDuplicate = false;
     let projectIntelligenceSkipped = false;
@@ -872,6 +892,7 @@ async function runDocumentProcessingTask(task, supabase) {
     }
     return {
       ...result,
+      bid_item_fallback: bidItemFallback,
       project_intelligence_task_id: projectIntelligenceTaskId,
       project_intelligence_duplicate: projectIntelligenceDuplicate,
       project_intelligence_skipped: projectIntelligenceSkipped,
