@@ -107,6 +107,55 @@ export interface OpportunityOverviewData {
   bidItemsAvailable: boolean;
 }
 
+// ─── Project Workspace shared types ──────────────────────────────────────────
+// These describe the rows ProjectDetail loads from Supabase before handing
+// them to <ProjectWorkspace />. Tabs consume these instead of `any`.
+
+export type PursuitStatus = "reviewing" | "pursuing" | "passed" | "submitted";
+
+export interface WorkspaceProject {
+  id: string;
+  name: string;
+  agency: string | null;
+  county: string | null;
+  bid_due_at: string | null;
+  source_url: string | null;
+  public_token: string;
+  gc_id: string | null;
+  source_opportunity_candidate_id: string | null;
+  // Optional / not always present on production rows.
+  pursuit_status?: string | null;
+  pursuit_status_updated_at?: string | null;
+  added_to_calendar_at?: string | null;
+}
+
+export interface WorkspaceProjectFile {
+  id: string;
+  file_name: string;
+  file_url: string;
+}
+
+export interface WorkspaceProjectTrade {
+  id: string;
+  trade_type_id: string;
+  trade_types: { name: string } | null;
+}
+
+export interface WorkspaceProjectSubmissionFile {
+  file_name: string;
+  file_url: string;
+}
+
+export interface WorkspaceProjectSubmission {
+  submission_id: string;
+  submitted_at: string;
+  bidder_name?: string;
+  company_name?: string;
+  email?: string;
+  bid_item?: string;
+  files: WorkspaceProjectSubmissionFile[];
+}
+
 // ─── Helpers (mirrored from OpportunityReport.tsx, extracted here so the
 //     adapter layer owns them rather than individual pages) ─────────────────
 
