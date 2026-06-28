@@ -925,6 +925,23 @@ Subtasks:
 
 # Phase 4 — Workspace Capabilities
 
+Status (current commit):
+- ✅ Workspace refactor — tabs extracted to `src/components/project-workspace/tabs/`, `any` removed from tab props (shared workspace types live in `src/lib/opportunityView.ts`).
+- ✅ Task 29 — Readiness item model, derivation, and effective-status mapping implemented in `src/lib/bidReadiness.ts`. Storage in `public.project_readiness_items`.
+- ✅ Task 30.1 / 30.2 — Bid Readiness UI in `tabs/BidReadinessTab.tsx` with Confirm / Needs Review controls, evidence panel, and notes.
+- ⏳ Task 30.3 — Workflow validation against complete / missing / conflicting projects pending.
+- ⏳ Task 31 — Documents workspace polish (M2). Deferred from this commit.
+- ⏳ Tasks 32+ — Project Intelligence workspace, Estimate, Proposal, Addenda, Activity tabs remain stubs.
+
+Effective readiness mapping used by the UI:
+- `detected` → **Ready**
+- `missing` → **Not Ready**
+- `conflicting` → **Needs Review**
+- `unknown` → **Needs Review**
+- manual `confirmed` overrides to **Ready**; manual `needs_review` overrides to **Needs Review**.
+
+
+
 Purpose: Populate the Project Workspace with execution-oriented functionality after the shell and activation flow are established.
 
 ## Task 29 - IMPLEMENT BID READINESS FOUNDATION
