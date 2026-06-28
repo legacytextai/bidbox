@@ -498,7 +498,7 @@ const OpportunityReport = () => {
           project_lifecycle_status: "project_intelligence_ready",
           project_intelligence_status: "ready",
           project_intelligence_ready_at: new Date().toISOString(),
-          pursuit_status: "active",
+          pursuit_status: "reviewing",
           pursuit_status_updated_at: new Date().toISOString(),
           pursuit_status_updated_by: session.user.id,
           status: "LIVE",

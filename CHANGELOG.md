@@ -4,6 +4,23 @@ All notable changes to the BidBox project are documented in this file.
 
 ---
 
+## [F5 Phase 3 — Project Workspace] - 2026-06-28
+
+### Project Workspace Shell (Tasks 23–28)
+
+- Created `ProjectWorkspace.tsx` — new tabbed execution shell for Opportunity Intelligence projects.
+- Tabs: Overview, Bid Readiness, Documents, Intelligence, Coverage, and stubs for Addenda / Activity / Estimate / Proposal.
+- Overview tab reuses `useOpportunityDossier` and renders `OpportunityOverviewTab` (Project Snapshot, Executive Summary, Bid Items) plus an operational context block (pursuit status, bid due, agency, added-to-calendar date).
+- Documents tab renders source documents via `OpportunityDocumentsTab` (flat list) plus internal documents.
+- Bid Readiness tab renders `BidReadinessChecklist`.
+- Intelligence tab links to the full Opportunity dossier at `/opportunities/:id?tab=intelligence`.
+- Coverage tab renders trades, Bid Room link, and submission count.
+- Pursuit Status selector in workspace header — persists to `projects.pursuit_status` via Supabase update.
+- Add to Calendar now sets `pursuit_status: "reviewing"` (was "active") as the default post-calendar status.
+- ProjectDetail delegates OI projects to the new `ProjectWorkspace`; delete uses `manage-opportunity-intelligence` for proper cleanup.
+
+---
+
 ## [Pre-Phase 3 Cleanup] - 2026-06-28
 
 ### Opportunity Intelligence Backfill

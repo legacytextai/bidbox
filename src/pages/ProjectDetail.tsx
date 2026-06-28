@@ -24,6 +24,7 @@ import { ProjectSignals } from "@/components/ProjectSignals";
 import { HighSignalPanel } from "@/components/HighSignalPanel";
 import { BidReadinessChecklist } from "@/components/BidReadinessChecklist";
 import { OpportunityIntelligenceWorkspace } from "@/components/project-workspace/OpportunityIntelligenceWorkspace";
+import { ProjectWorkspace } from "@/components/project-workspace/ProjectWorkspace";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -728,6 +729,18 @@ const ProjectDetail = () => {
     }
   };
 
+  const deleteOIProject = async () => {
+    const { data, error } = await supabase.functions.invoke("manage-opportunity-intelligence", {
+      body: { action: "delete_project", project_id: project?.id },
+    });
+    if (error || data?.success === false) {
+      toast({ title: "Failed to delete project", description: data?.error ?? error?.message, variant: "destructive" });
+    } else {
+      toast({ title: "Project deleted", description: "The Intelligence Report remains available from Opportunities." });
+      navigate("/projects");
+    }
+  };
+
   const isOpportunityIntelligenceProject = project?.origin === "opportunity_intelligence";
   const isOneLinkProject = project?.origin === "one_link" || (!project?.origin && project?.source_url);
 
@@ -775,35 +788,16 @@ const ProjectDetail = () => {
   }
   if (isOpportunityIntelligenceProject) {
     return <Layout showSidebar={true}>
-        <OpportunityIntelligenceWorkspace
+        <ProjectWorkspace
           project={project}
-          sourceOpportunity={sourceOpportunity}
-          intelligenceReport={intelligenceReport}
-          findings={intelligenceFindings}
-          citations={intelligenceCitations}
-          opportunityDocuments={opportunityDocuments}
           projectFiles={projectFiles}
           projectTrades={projectTrades}
           submissions={submissions}
           copied={copied}
-          newFiles={newFiles}
-          currentUpload={currentUpload}
-          isUploading={isUploading}
-          editingTrades={editingTrades}
-          editedTradeIds={editedTradeIds}
-          savingTrades={savingTrades}
-          onCopyBidLink={copyBidLink}
-          onFilesSelected={files => setNewFiles(files)}
-          onUploadFiles={handleFileUpload}
+          onDeleteProject={deleteOIProject}
           onDownloadInternalFile={downloadFile}
           onDeleteInternalFile={deleteFile}
-          onDownloadBid={downloadBid}
-          onDeleteSubmission={deleteSubmission}
-          onOverrideBidDueDate={saveBidDueOverride}
-          onOverrideJobWalkDate={saveJobWalkOverride}
-          onEditingTradesChange={setEditingTrades}
-          onEditedTradeIdsChange={setEditedTradeIds}
-          onSaveTrades={saveTrades}
+          onCopyBidLink={copyBidLink}
         />
       </Layout>;
   }

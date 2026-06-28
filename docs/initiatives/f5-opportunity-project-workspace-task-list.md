@@ -739,6 +739,58 @@ Purpose: Introduce the new Project Workspace and transition from Opportunity Dis
 - Replaced grouped sections with a single flat ordered list: filename, page count, processing status.
 
 ## Task 23 - HARDEN ADD TO CALENDAR ACTIVATION
+Status: ✅ COMPLETE
+
+Implementation notes:
+- Add to Calendar is already idempotent (findExistingProject guard).
+- Sets `added_to_calendar_at`, `added_to_calendar_by`, `project_lifecycle_status: "project_intelligence_ready"`, `project_intelligence_status: "ready"`.
+- Updated default `pursuit_status` from "active" to "reviewing" — cleaner lifecycle semantics.
+- Converted project is protected from OI re-preparation by existing eligibility rules.
+
+## Task 24 - BUILD PROJECT WORKSPACE ROUTING ARCHITECTURE
+Status: ✅ COMPLETE
+
+Implementation notes:
+- `ProjectDetail.tsx` now routes OI projects to `ProjectWorkspace.tsx` (new component).
+- `ProjectWorkspace` uses `useSearchParams` for tab routing via `?tab=` query param.
+- Legacy One Link projects and manual projects remain on existing `ProjectDetail` shell.
+- Tabs: overview | bid_readiness | documents | intelligence | coverage | addenda (stub) | activity (stub) | estimate (stub) | proposal (stub).
+
+## Task 25 - BUILD PROJECT WORKSPACE DATA ACCESS LAYER
+Status: ✅ COMPLETE
+
+Implementation notes:
+- `ProjectWorkspace` calls `useOpportunityDossier(candidateId)` internally for OI data (overview, documents, bidItems, reportReady).
+- Project-level data (files, trades, submissions) continues to be loaded by `ProjectDetail` and passed as props.
+- Legacy crawl state separated: `isCrawlPending` only checked for One Link projects, never for OI projects.
+
+## Task 26 - IMPLEMENT PROJECT WORKSPACE SHELL
+Status: ✅ COMPLETE
+
+Implementation notes:
+- Clean header: project title, agency/county, Pursuit Status badge, Pursuit Status selector, action buttons (View Intelligence, Source, Calendar, Delete).
+- Tab navigation rendered as underline tabs across the top.
+- Stubs for unimplemented tabs show descriptive placeholder copy.
+- Delete uses `manage-opportunity-intelligence delete_project` for proper candidate status reset.
+
+## Task 27 - IMPLEMENT PROJECT WORKSPACE OVERVIEW
+Status: ✅ COMPLETE
+
+Implementation notes:
+- Overview tab shows an operational context block (pursuit status, bid due, agency, added-to-calendar date) followed by `OpportunityOverviewTab`.
+- `OpportunityOverviewTab` reuses `buildOpportunityOverviewData` via `useOpportunityDossier` — same data as the Opportunity dossier.
+- While OI is loading, shows a spinner and link to view progress. If unavailable, shows a graceful empty state.
+
+## Task 28 - IMPLEMENT PURSUIT STATUS MANAGEMENT
+Status: ✅ COMPLETE
+
+Implementation notes:
+- Pursuit states: `reviewing` | `pursuing` | `passed` | `submitted`.
+- Select control in workspace header persists to `projects.pursuit_status` with `pursuit_status_updated_at`.
+- Optimistic update with rollback on error.
+- Add to Calendar sets initial status to `reviewing`.
+
+
 Subtasks:
 ### 23.1. Preserve Idempotent Project Creation
 
