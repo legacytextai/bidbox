@@ -4,6 +4,59 @@ All notable changes to the BidBox project are documented in this file.
 
 ---
 
+## F5 Phase 4 — Project Workspace Refactor + Bid Readiness Foundation (M1)
+
+### Refactor — Modular Project Workspace
+- Split `src/components/project-workspace/ProjectWorkspace.tsx` into a thin shell.
+  Shell retains: routing, header, pursuit controls, navigation, shared dossier
+  loading, tab dispatch.
+- Extracted each tab into `src/components/project-workspace/tabs/`:
+  `OverviewTab.tsx`, `BidReadinessTab.tsx`, `DocumentsTab.tsx`,
+  `IntelligenceTab.tsx`, `CoverageTab.tsx`, `StubTab.tsx`.
+- Removed `any` from every workspace tab prop. Tabs now consume the existing
+  `Dossier*` types from `useOpportunityDossier` and new
+  `WorkspaceProject` / `WorkspaceProjectFile` / `WorkspaceProjectTrade` /
+  `WorkspaceProjectSubmission` / `PursuitStatus` types added to
+  `src/lib/opportunityView.ts`. No parallel type modules introduced.
+- No behavioral or visual changes from the refactor.
+
+### M1 — Bid Readiness Foundation
+- **Schema:** New `public.project_readiness_items` table (1 row per project per
+  catalog item). Columns: `derived_status`
+  (`unknown` | `detected` | `missing` | `conflicting`), `manual_status`
+  (`unset` | `needs_review` | `confirmed`), `derived_source` (jsonb), `notes`.
+  RLS scoped to `projects.gc_id = auth.uid()`.
+- **Domain model (`src/lib/bidReadiness.ts`):** Readiness catalog (bid bond,
+  performance bond, payment bond, license, prevailing wage, insurance, job
+  walk, addenda, bid forms, submission format). `deriveItemStatus()` reads
+  intelligence findings and produces the derived status.
+  `effectiveStatus(derived, manual)` collapses to the estimator-facing label:
+    - `detected` → **Ready**
+    - `missing` → **Not Ready**
+    - `conflicting` → **Needs Review**
+    - `unknown` → **Needs Review**
+  Manual `confirmed` always maps to **Ready**; manual `needs_review` always
+  maps to **Needs Review**. The underlying derived value is preserved as-is.
+- **Hook (`src/hooks/useProjectReadiness.ts`):** Loads persisted rows, composes
+  with catalog + findings, exposes `setManualStatus` and `setNotes` with
+  optimistic update and rollback on error.
+- **UI (`tabs/BidReadinessTab.tsx`):** Effective-status badge per item,
+  Confirm / Needs Review controls, expandable evidence list of supporting
+  intelligence findings, optional estimator notes. Header summarizes counts.
+- **Legacy:** `BidReadinessChecklist` remains on disk and continues to render
+  from `ProjectDetail.tsx` and `OpportunityIntelligenceWorkspace.tsx`. It is no
+  longer mounted from `ProjectWorkspace.tsx`. The `project_bid_readiness` table
+  is untouched and not migrated.
+
+### Out of Scope (deferred)
+- M2 Documents polish (processing badges, download all, sorting).
+- Tier 2 Project Intelligence.
+- Estimate / Proposal / Addenda / Activity tab implementations.
+- Playwright tests, deployment work, and any architecture cleanup beyond the
+  approved refactor.
+
+---
+
 ## [F5 Phase 3 — Project Workspace] - 2026-06-28
 
 ### Project Workspace Shell (Tasks 23–28)
