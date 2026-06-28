@@ -357,6 +357,7 @@ const Opportunities = () => {
   const [activeScanTaskIds, setActiveScanTaskIds] = useState<string[]>([]);
   const [scanStartedAt, setScanStartedAt] = useState<string | null>(null);
   const [scanActive, setScanActive] = useState(false);
+  const [analyzingId, setAnalyzingId] = useState<string | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -647,6 +648,54 @@ const Opportunities = () => {
       setScanLoading(false);
     }
   };
+
+  const handleAnalyzeProject = async (candidate: Candidate) => {
+    setAnalyzingId(candidate.id);
+    try {
+      const { data, error } = await supabase.functions.invoke("analyze-project", {
+        body: { candidate_id: candidate.id },
+      });
+      if (error) throw error;
+      if (data?.success === false) {
+        throw new Error(data?.error ?? "Failed to queue analysis");
+      }
+
+      setCandidates((prev) =>
+        prev.map((c) =>
+          c.id === candidate.id
+            ? {
+                ...c,
+                analysis_status: (data?.analysis_status ?? "queued") as AnalysisStatus,
+                analysis_task_id: data?.task_id ?? c.analysis_task_id,
+                analysis_requested_at: new Date().toISOString(),
+                analysis_error: null,
+                document_acquisition_status: (data?.document_acquisition_status ?? "queued") as DocumentAcquisitionStatus,
+                document_acquisition_error: null,
+                opportunity_lifecycle_status: "opportunity_intelligence_queued",
+                opportunity_intelligence_status: "queued",
+                opportunity_intelligence_task_id: data?.task_id ?? c.opportunity_intelligence_task_id,
+                opportunity_intelligence_error: null,
+              }
+            : c,
+        ),
+      );
+
+      toast({
+        title: data?.duplicate ? "Analysis already queued" : "Analysis queued",
+        description: data?.message ?? "BidBox will acquire documents and prepare Project Intelligence.",
+      });
+      await loadCandidates({ silent: true });
+    } catch (e: any) {
+      toast({
+        title: "Analysis failed",
+        description: e?.message ?? "Failed to queue analysis",
+        variant: "destructive",
+      });
+    } finally {
+      setAnalyzingId(null);
+    }
+  };
+
   const handleNotesSave = async (id: string) => {
     const note = notes[id] ?? "";
     const { error } = await supabase
