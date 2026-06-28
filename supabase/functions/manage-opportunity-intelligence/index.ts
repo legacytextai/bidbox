@@ -261,7 +261,7 @@ async function reanalyze(adminClient: any, candidateId: string, userId: string) 
     .eq("opportunity_candidate_id", candidateId);
   if (chunkCountError) throw new Error(`Chunk count failed: ${chunkCountError.message}`);
   if (!count || count < 1) {
-    throw new Error("Re-analysis requires processed document chunks. Run Analyze Project first.");
+    throw new Error("Refresh analysis requires processed document chunks. Queue preparation first.");
   }
 
   const requestedAt = new Date().toISOString();

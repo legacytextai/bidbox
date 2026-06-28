@@ -130,6 +130,17 @@ The initial F5 foundation implements this as an additive lifecycle and refresh l
 * new opportunities automatically queue Opportunity Intelligence preparation
 * source and opportunity refresh diagnostics are persisted for operational visibility
 
+### F5.3 Implementation Note
+
+The autonomous opportunity pipeline expands the initial foundation so refreshes do more than discover new rows:
+
+* supported opportunities encountered during worker refresh are evaluated for automatic preparation
+* newly discovered opportunities queue Opportunity Intelligence without estimator action
+* existing unprepared opportunities can be picked up by refresh even when metadata is unchanged
+* materially changed opportunities can regenerate Opportunity Intelligence while preserving converted projects
+* manual preparation remains available only as a retry/recovery path, not the default card workflow
+* task payloads record whether preparation came from new discovery, metadata change, automatic refresh, or manual recovery
+
 ## Opportunity Intelligence vs Project Intelligence
 
 F5 separates intelligence into two tiers.

@@ -4,6 +4,25 @@ All notable changes to the BidBox project are documented in this file.
 
 ---
 
+## [F5.3 Autonomous Opportunity Pipeline] - 2026-06-28
+
+### Autonomous Preparation
+
+- Expanded worker refresh behavior so supported opportunities encountered during scan refresh are evaluated for automatic Opportunity Intelligence preparation.
+- New opportunities continue to queue preparation immediately.
+- Existing unprepared opportunities can now be queued by refresh even when portal metadata is unchanged.
+- Material metadata changes can queue refreshed Opportunity Intelligence for unconverted opportunities, including ones that were previously ready.
+- Added preparation reason metadata to queued tasks for source/trigger diagnostics.
+
+### Manual Recovery
+
+- Removed `Analyze Project` as the normal card-level action.
+- Opportunity cards now open the Opportunity dossier by default, show progress for active preparation, and reserve `Retry Analysis` for failed opportunities.
+- The Opportunity Intelligence tab now distinguishes `Refresh Analysis` for existing reports from `Retry Preparation` for unprepared or failed opportunities.
+- Manual fallback queueing now checks active acquisition, processing, and intelligence tasks before creating new work.
+
+---
+
 ## [F5 Opportunity Experience Visual Recovery] - 2026-06-28
 
 ### Opportunity Cards

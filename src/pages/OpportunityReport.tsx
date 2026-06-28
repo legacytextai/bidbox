@@ -528,14 +528,23 @@ const OpportunityReport = () => {
     setReanalyzing(true);
     setReanalysisFailureNotice(null);
     try {
-      const { data, error } = await supabase.functions.invoke("manage-opportunity-intelligence", {
-        body: { action: "reanalyze", candidate_id: candidate.id },
+      const { data, error } = reportReady
+        ? await supabase.functions.invoke("manage-opportunity-intelligence", {
+            body: { action: "reanalyze", candidate_id: candidate.id },
+          })
+        : await supabase.functions.invoke("analyze-project", {
+            body: { candidate_id: candidate.id },
+          });
+      if (error || data?.success === false) throw new Error(data?.error ?? error?.message ?? "Failed to queue analysis");
+      toast({
+        title: reportReady ? "Re-analysis queued" : "Preparation queued",
+        description: reportReady
+          ? "BidBox will regenerate Project Intelligence from the current processed evidence."
+          : "BidBox will acquire documents and prepare Opportunity Intelligence.",
       });
-      if (error || data?.success === false) throw new Error(data?.error ?? error?.message ?? "Failed to queue re-analysis");
-      toast({ title: "Re-analysis queued", description: "BidBox will regenerate Project Intelligence from the current processed evidence." });
       await reload();
     } catch (e: any) {
-      toast({ title: "Failed to re-analyze", description: e?.message ?? "Unknown error", variant: "destructive" });
+      toast({ title: "Failed to queue analysis", description: e?.message ?? "Unknown error", variant: "destructive" });
     } finally {
       setReanalyzing(false);
     }
@@ -593,7 +602,7 @@ const OpportunityReport = () => {
       case "queued": return "Project Intelligence is queued. The report will appear after document processing and report generation finish.";
       case "analyzing": return "Generating Project Intelligence from processed document evidence.";
       case "failed": return candidate.analysis_error ?? "Project Intelligence failed.";
-      default: return "Project Intelligence has not been generated yet.";
+      default: return "Opportunity Intelligence has not been generated yet. BidBox prepares opportunities automatically during source refresh; use Re-Analyze only as a recovery action.";
     }
   })();
 
@@ -760,20 +769,22 @@ const IntelligenceTab = ({
           <AlertDialogTrigger asChild>
             <Button variant="outline" size="sm" disabled={reanalyzing || analysisWorkActive || !candidate}>
               <RotateCcw className="h-4 w-4 mr-2" />
-              Re-Analyze
+              {reportReady ? "Refresh Analysis" : "Retry Preparation"}
             </Button>
           </AlertDialogTrigger>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Re-Analyze Project?</AlertDialogTitle>
+              <AlertDialogTitle>{reportReady ? "Refresh Analysis?" : "Retry Preparation?"}</AlertDialogTitle>
               <AlertDialogDescription>
-                This will regenerate Project Intelligence from the currently processed evidence. The current report stays available while the new report runs.
+                {reportReady
+                  ? "This will regenerate Project Intelligence from the currently processed evidence. The current report stays available while the new report runs."
+                  : "This will queue document acquisition and Opportunity Intelligence preparation for this opportunity."}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
               <AlertDialogAction onClick={onReanalyze} disabled={reanalyzing || analysisWorkActive}>
-                {reanalyzing ? "Queueing..." : "Re-Analyze"}
+                {reanalyzing ? "Queueing..." : reportReady ? "Refresh Analysis" : "Retry Preparation"}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

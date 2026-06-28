@@ -84,7 +84,51 @@ async function hasActivePreparationTask(supabase, candidateId) {
   return Boolean(data?.length);
 }
 
-async function queueOpportunityPreparation({ supabase, candidate, sourceName, triggerReason, sourceTaskId, priority = 3 }) {
+const OI_ACTIVE_STATUSES = new Set(['queued', 'acquiring_documents', 'processing_documents', 'generating_report']);
+const OI_READY_STATUSES = new Set(['ready', 'partial']);
+const LEGACY_ACTIVE_ANALYSIS_STATUSES = new Set(['queued', 'analyzing']);
+const LEGACY_READY_ANALYSIS_STATUSES = new Set(['ready']);
+const LEGACY_ACTIVE_DOCUMENT_STATUSES = new Set(['queued', 'acquiring']);
+const LEGACY_READY_DOCUMENT_STATUSES = new Set(['acquired']);
+const LEGACY_ACTIVE_PROCESSING_STATUSES = new Set(['queued', 'processing']);
+const LEGACY_READY_PROCESSING_STATUSES = new Set(['processed', 'partial']);
+
+function shouldQueueOpportunityPreparation(candidate, metadataChanged) {
+  if (!candidate?.id) return { shouldQueue: false, reason: 'candidate missing id' };
+  if (candidate.converted_project_id) return { shouldQueue: false, reason: 'already converted to project' };
+
+  const oiStatus = candidate.opportunity_intelligence_status ?? null;
+  if (oiStatus && OI_ACTIVE_STATUSES.has(oiStatus)) {
+    return { shouldQueue: false, reason: `Opportunity Intelligence already active: ${oiStatus}` };
+  }
+  if (LEGACY_ACTIVE_ANALYSIS_STATUSES.has(candidate.analysis_status ?? '')) {
+    return { shouldQueue: false, reason: `legacy analysis already active: ${candidate.analysis_status}` };
+  }
+  if (LEGACY_ACTIVE_DOCUMENT_STATUSES.has(candidate.document_acquisition_status ?? '')) {
+    return { shouldQueue: false, reason: `document acquisition already active: ${candidate.document_acquisition_status}` };
+  }
+  if (LEGACY_ACTIVE_PROCESSING_STATUSES.has(candidate.document_processing_status ?? '')) {
+    return { shouldQueue: false, reason: `document processing already active: ${candidate.document_processing_status}` };
+  }
+
+  if (metadataChanged) return { shouldQueue: true, reason: 'portal metadata changed' };
+
+  if (oiStatus && OI_READY_STATUSES.has(oiStatus)) {
+    return { shouldQueue: false, reason: `Opportunity Intelligence already ready: ${oiStatus}` };
+  }
+
+  const legacyReady =
+    LEGACY_READY_ANALYSIS_STATUSES.has(candidate.analysis_status ?? '') ||
+    LEGACY_READY_DOCUMENT_STATUSES.has(candidate.document_acquisition_status ?? '') ||
+    LEGACY_READY_PROCESSING_STATUSES.has(candidate.document_processing_status ?? '');
+  if ((!oiStatus || oiStatus === 'not_requested') && !legacyReady) {
+    return { shouldQueue: true, reason: 'unprepared opportunity discovered during refresh' };
+  }
+
+  return { shouldQueue: false, reason: 'metadata unchanged' };
+}
+
+async function queueOpportunityPreparation({ supabase, candidate, sourceName, triggerReason, sourceTaskId, priority = 3, preparationReason = 'automatic_refresh' }) {
   if (!candidate?.id) return { queued: false, duplicate: false, skipped: true, reason: 'candidate missing id' };
 
   if (candidate.bid_due_at) {
@@ -110,6 +154,7 @@ async function queueOpportunityPreparation({ supabase, candidate, sourceName, tr
     bid_due_at: candidate.bid_due_at,
     requested_at: requestedAt,
     trigger_reason: triggerReason,
+    preparation_reason: preparationReason,
     source_task_id: sourceTaskId,
     intelligence_tier: 'opportunity',
     phase: 'f5_opportunity_preparation',
@@ -160,7 +205,7 @@ async function persistScannedCandidate({ supabase, source_id, source_name, porta
   const now = new Date().toISOString();
   const { data: existing, error: lookupError } = await supabase
     .from('opportunity_candidates')
-    .select('id, source_id, source_url, portal_type, raw_title, agency, bid_due_at, crawl_data, converted_project_id, analysis_status, last_metadata_changed_at, metadata_refresh_count')
+    .select('id, source_id, source_url, portal_type, raw_title, agency, bid_due_at, crawl_data, converted_project_id, analysis_status, document_acquisition_status, document_processing_status, opportunity_intelligence_status, last_metadata_changed_at, metadata_refresh_count')
     .eq('source_url', candidate.source_url)
     .maybeSingle();
   if (lookupError) throw new Error(`Candidate lookup failed: ${lookupError.message}`);
@@ -178,7 +223,7 @@ async function persistScannedCandidate({ supabase, source_id, source_name, porta
         opportunity_lifecycle_status: 'discovered',
         opportunity_intelligence_status: 'not_requested',
       })
-      .select('id, source_id, source_url, portal_type, raw_title, agency, bid_due_at, crawl_data, converted_project_id, analysis_status, last_metadata_changed_at, metadata_refresh_count')
+      .select('id, source_id, source_url, portal_type, raw_title, agency, bid_due_at, crawl_data, converted_project_id, analysis_status, document_acquisition_status, document_processing_status, opportunity_intelligence_status, last_metadata_changed_at, metadata_refresh_count')
       .single();
     if (insertError) throw new Error(`Candidate insert failed: ${insertError.message}`);
     const queued = await queueOpportunityPreparation({
@@ -187,6 +232,7 @@ async function persistScannedCandidate({ supabase, source_id, source_name, porta
       sourceName: source_name,
       triggerReason,
       sourceTaskId,
+      preparationReason: 'new opportunity discovered',
     }).catch((e) => ({ queued: false, duplicate: false, skipped: true, reason: e.message }));
     return { state: 'new', candidate: inserted, metadataChanged: true, preparation: queued };
   }
@@ -205,21 +251,20 @@ async function persistScannedCandidate({ supabase, source_id, source_name, porta
     .from('opportunity_candidates')
     .update(updatePayload)
     .eq('id', existing.id)
-    .select('id, source_id, source_url, portal_type, raw_title, agency, bid_due_at, crawl_data, converted_project_id, analysis_status, last_metadata_changed_at, metadata_refresh_count')
+    .select('id, source_id, source_url, portal_type, raw_title, agency, bid_due_at, crawl_data, converted_project_id, analysis_status, document_acquisition_status, document_processing_status, opportunity_intelligence_status, last_metadata_changed_at, metadata_refresh_count')
     .single();
   if (updateError) throw new Error(`Candidate metadata refresh failed: ${updateError.message}`);
 
-  let preparation = { queued: false, duplicate: false, skipped: true, reason: metadataChanged ? 'already analyzed or converted' : 'metadata unchanged' };
-  const shouldPrepare = metadataChanged
-    && !updated.converted_project_id
-    && !['ready', 'queued', 'analyzing'].includes(updated.analysis_status ?? '');
-  if (shouldPrepare) {
+  const eligibility = shouldQueueOpportunityPreparation(updated, metadataChanged);
+  let preparation = { queued: false, duplicate: false, skipped: true, reason: eligibility.reason };
+  if (eligibility.shouldQueue) {
     preparation = await queueOpportunityPreparation({
       supabase,
       candidate: updated,
       sourceName: source_name,
       triggerReason,
       sourceTaskId,
+      preparationReason: eligibility.reason,
     }).catch((e) => ({ queued: false, duplicate: false, skipped: true, reason: e.message }));
   }
 

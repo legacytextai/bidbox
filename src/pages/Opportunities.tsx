@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { Building2, ExternalLink, RefreshCw, ChevronDown, Loader2, Check, Filter, RotateCcw, Sparkles } from "lucide-react";
-import { PORTAL_STYLES, resolveOIStatus, isOIReady, resolveEstimatedValue } from "@/lib/opportunityDomain";
+import { PORTAL_STYLES, resolveOIStatus, isOIReady, isOIActive, resolveEstimatedValue } from "@/lib/opportunityDomain";
 import { Layout } from "@/components/Layout";
 import {
   Tooltip,
@@ -795,25 +795,19 @@ const Opportunities = () => {
 
 
   const renderCard = (candidate: Candidate, _index: number) => {
+    const oiStatus = resolveOIStatus(candidate);
+    const oiActive = isOIActive(oiStatus);
+    const oiFailed = oiStatus === "failed" || candidate.document_acquisition_status === "failed";
     const acquisitionActive =
       candidate.document_acquisition_status === "queued" ||
       candidate.document_acquisition_status === "acquiring";
-    const acquisitionComplete = candidate.document_acquisition_status === "acquired";
     const bidClosed = isBidClosed(candidate.bid_due_at);
-    const analyzeDisabled =
-      analyzingId === candidate.id || acquisitionActive || acquisitionComplete || bidClosed;
-    const analyzeLabel =
+    const retryDisabled =
+      analyzingId === candidate.id || acquisitionActive || bidClosed;
+    const retryLabel =
       analyzingId === candidate.id
         ? "Queueing..."
-        : candidate.document_acquisition_status === "failed"
-        ? "Retry Analysis"
-        : candidate.document_acquisition_status === "acquired"
-        ? "Documents Acquired"
-        : acquisitionActive
-        ? candidate.document_acquisition_status === "acquiring"
-          ? "Acquiring Documents"
-          : "Document Acquisition Queued"
-        : "Analyze Project";
+        : "Retry Analysis";
 
     return (
       <div
@@ -880,7 +874,21 @@ const Opportunities = () => {
             <Sparkles className="h-4 w-4 mr-2" />
             View Intelligence Report
           </Button>
-        ) : candidate.analysis_status !== "not_requested" ? (
+        ) : oiFailed ? (
+          <Button
+            size="sm"
+            disabled={retryDisabled}
+            onClick={() => handleAnalyzeProject(candidate)}
+            className="w-full bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90 disabled:opacity-40"
+          >
+            {analyzingId === candidate.id ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <RotateCcw className="h-4 w-4 mr-2" />
+            )}
+            {bidClosed ? "Bid Closed" : retryLabel}
+          </Button>
+        ) : oiActive || candidate.analysis_status !== "not_requested" ? (
           <Button
             size="sm"
             variant="outline"
@@ -899,23 +907,16 @@ const Opportunities = () => {
             View Project
           </Button>
         ) : (
-          <div className="space-y-1.5">
-            <Button
-              size="sm"
-              disabled={analyzeDisabled}
-              onClick={() => handleAnalyzeProject(candidate)}
-              className="w-full bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90 disabled:opacity-40"
-            >
-              {analyzingId === candidate.id ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : candidate.document_acquisition_status === "failed" ? (
-                <RotateCcw className="h-4 w-4 mr-2" />
-              ) : (
-                <Sparkles className="h-4 w-4 mr-2" />
-              )}
-              {bidClosed ? "Bid Closed" : analyzeLabel}
-            </Button>
-          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={bidClosed}
+            onClick={() => navigate(`/opportunities/${candidate.id}`)}
+            className="w-full"
+          >
+            <ExternalLink className="h-4 w-4 mr-2" />
+            {bidClosed ? "Bid Closed" : "View Opportunity"}
+          </Button>
         )}
       </div>
     );

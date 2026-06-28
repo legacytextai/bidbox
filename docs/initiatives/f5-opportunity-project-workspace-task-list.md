@@ -242,10 +242,11 @@ Subtasks:
 Status: ✅ COMPLETE
 
 Implementation notes:
-- Removed `handleAnalyzeProject`, `analyzingId` state, and the Analyze Project button from Opportunities.tsx.
-- Removed dead constants `PORTAL_STYLES`, `ANALYSIS_STYLES`, `ANALYSIS_LABELS`, `DOCUMENT_ACQUISITION_*`, `DOCUMENT_PROCESSING_*`, `AUTO_STATUS_DOT`, local `formatEstimatedValue`.
-- Cards now navigate to `/opportunities/:id` on click. OI status is shown as a read-only badge with animated spinner when active.
-- Re-Analyze and Delete Analysis controls preserved as secondary actions inside the Intelligence tab.
+- The Opportunity card no longer presents `Analyze Project` as the normal primary action.
+- Unprepared opportunities open the Opportunity dossier with automatic-preparation messaging.
+- Active opportunities open the preparation/progress view.
+- Failed opportunities preserve a manual `Retry Analysis` recovery action.
+- The Intelligence tab preserves `Refresh Analysis` / `Retry Preparation` as secondary maintenance actions.
 
 Subtasks:
 ### 7.1. Identify Analyze Project Entrypoints
@@ -267,6 +268,16 @@ Subtasks:
 - Confirm old `project_analysis` tasks still complete correctly.
 
 ## Task 8 - IMPLEMENT OPPORTUNITY INTELLIGENCE QUEUEING
+Status: ✅ COMPLETE
+
+Implementation notes:
+- Worker refresh persistence now evaluates every encountered supported opportunity for automatic preparation eligibility.
+- New opportunities queue Opportunity Intelligence preparation automatically.
+- Existing unprepared opportunities discovered during refresh queue automatically even when portal metadata is unchanged.
+- Materially changed opportunities queue preparation even if they previously had ready Opportunity Intelligence, as long as they have not been converted to an active project.
+- Active, ready, converted, or closed opportunities are protected from duplicate automatic work.
+- Task payloads include `preparation_reason` so automatic refresh work can be distinguished from manual recovery.
+
 Subtasks:
 ### 8.1. Define Queue Trigger
 
@@ -287,6 +298,15 @@ Subtasks:
 - Keep diagnostics available in worker logs and `agent_tasks.result`.
 
 ## Task 9 - UPDATE WORKER HANDOFF FOR TWO-TIER INTELLIGENCE
+Status: ✅ COMPLETE
+
+Implementation notes:
+- The existing F2/F3/F4 worker chain remains the transitional Tier 1 Opportunity Intelligence pipeline.
+- Worker status writes now keep `analysis_status`, document acquisition, document processing, and `opportunity_intelligence_status` moving through separate lifecycle states.
+- Manual fallback uses `manual_retry` metadata and checks active `project_analysis`, `document_processing`, and `project_intelligence` tasks before queueing duplicate work.
+- Safe re-analysis remains available for reports that already have processed chunks.
+- Full distinct Tier 2 Project Intelligence remains a later Project Workspace concern after Add to Calendar.
+
 Subtasks:
 ### 9.1. Preserve Existing F2/F3/F4 Chain
 

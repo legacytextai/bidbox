@@ -91,7 +91,7 @@ serve(async (req) => {
     const { data: activeTasks, error: activeTaskError } = await adminClient
       .from("agent_tasks")
       .select("id, status, created_at")
-      .eq("task_type", "project_analysis")
+      .in("task_type", ["project_analysis", "document_processing", "project_intelligence"])
       .in("status", activeStatuses)
       .contains("payload", { candidate_id: candidateId })
       .order("created_at", { ascending: false })
@@ -159,7 +159,7 @@ serve(async (req) => {
         task_type: "project_analysis",
         status: "pending",
         priority: 0,
-        trigger_reason: "manual_analyze",
+        trigger_reason: "manual_retry",
         refresh_window: new Date().toISOString().slice(0, 13),
         payload: {
           candidate_id: candidate.id,
@@ -172,9 +172,10 @@ serve(async (req) => {
           bid_due_at: candidate.bid_due_at,
           requested_by: user.id,
           requested_at: requestedAt,
-          trigger_reason: "manual_analyze",
+          trigger_reason: "manual_retry",
+          preparation_reason: "manual recovery action",
           intelligence_tier: "opportunity",
-        phase: "f1_analyze_project",
+        phase: "f5_opportunity_preparation",
         next_phase: "f2_document_acquisition",
         intelligence_status: "not_generated",
       },
@@ -222,7 +223,7 @@ serve(async (req) => {
       analysis_status: "queued",
       document_acquisition_status: "queued",
       intelligence_status: "not_generated",
-      message: "Analysis queued. Project Intelligence has not been generated yet.",
+      message: "Opportunity preparation queued.",
     });
   } catch (error) {
     console.error("analyze-project error:", error);
