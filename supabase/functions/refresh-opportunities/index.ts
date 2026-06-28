@@ -10,16 +10,15 @@ type TaskType = "planetbids_scan" | "caltrans_scan";
 
 // One-time backfill: queues Opportunity Intelligence for candidates that existed
 // before the autonomous pipeline was deployed. Runs once per environment, gated by
-// a sentinel row in agent_tasks. Future refreshes skip it entirely.
+// an app_settings row. Future refreshes skip it entirely.
 async function runOneTimeBackfillIfNeeded(supabase: any, requestedAt: string) {
-  // Check sentinel — if it exists, backfill already ran.
-  const { data: existing } = await supabase
-    .from("agent_tasks")
-    .select("id")
-    .eq("task_type", "one_time_oi_backfill")
-    .limit(1);
+  const { data: setting } = await supabase
+    .from("app_settings")
+    .select("value")
+    .eq("key", "one_time_oi_backfill_completed")
+    .maybeSingle();
 
-  if (existing && existing.length > 0) return { ran: false };
+  if (setting) return { ran: false };
 
   const activeStatuses = ["pending", "running", "retrying"];
 
@@ -104,14 +103,11 @@ async function runOneTimeBackfillIfNeeded(supabase: any, requestedAt: string) {
     }
   }
 
-  // Insert sentinel to prevent future runs.
-  await supabase.from("agent_tasks").insert({
-    task_type: "one_time_oi_backfill",
-    status: "completed",
-    priority: 0,
-    trigger_reason: "one_time_backfill",
-    refresh_window: requestedAt.slice(0, 13),
-    payload: { queued, skipped, ran_at: requestedAt },
+  // Record completion so future refreshes skip this entirely.
+  await supabase.from("app_settings").upsert({
+    key: "one_time_oi_backfill_completed",
+    value: { queued, skipped, ran_at: requestedAt },
+    updated_at: requestedAt,
   });
 
   console.info(`one_time_oi_backfill complete: queued=${queued} skipped=${skipped}`);
