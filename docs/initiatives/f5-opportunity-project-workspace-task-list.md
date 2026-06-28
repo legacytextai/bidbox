@@ -1,6 +1,6 @@
 # F5 — Opportunity & Project Workspace
 
-Status: Planned
+Status: Phase 3 In Progress
 Document type: Engineering task list
 Source initiative: `docs/initiatives/f5-opportunity-project-workspace.md`
 
@@ -719,6 +719,24 @@ Subtasks:
 # Phase 3 — Project Workspace
 
 Purpose: Introduce the new Project Workspace and transition from Opportunity Discovery into Project Execution.
+
+## Pre-Phase 3 Cleanup - COMPLETE ✅
+
+### OI Backfill
+- Added `backfill_opportunity_intelligence` action to `manage-opportunity-intelligence` edge function.
+- Queries all unprepared candidates (no converted project, no active tasks, OI status not queued/ready), queues `project_analysis` tasks for up to 100 at a time.
+- Reuses existing autonomous pipeline task type and lifecycle writes.
+- Exposed in Opportunities UI as "Prepare All" button with confirmation dialog.
+
+### Opportunity List — Flat List
+- Replaced permanent bucket sections (Due Today / This Week / Next Week / Next Month / Future) with a single continuous grid.
+- Added optional date filter chips at top: All Dates / This Week / This Month.
+- Existing county and agency facet filters preserved. "Filtered Out" collapsible preserved at bottom.
+- All opportunities sorted by bid date ascending.
+
+### Documents Tab — Flat List
+- Removed document family grouping from `OpportunityDocumentsTab`.
+- Replaced grouped sections with a single flat ordered list: filename, page count, processing status.
 
 ## Task 23 - HARDEN ADD TO CALENDAR ACTIVATION
 Subtasks:

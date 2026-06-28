@@ -4,6 +4,25 @@ All notable changes to the BidBox project are documented in this file.
 
 ---
 
+## [Pre-Phase 3 Cleanup] - 2026-06-28
+
+### Opportunity Intelligence Backfill
+- Added `backfill_opportunity_intelligence` action to `manage-opportunity-intelligence` edge function.
+- Queries all eligible unprepared candidates and queues `project_analysis` tasks using the existing autonomous pipeline.
+- Respects duplicate prevention and lifecycle rules. Skips converted, active, and already-prepared opportunities.
+- Exposed as a one-time "Prepare All" button in the Opportunities page header.
+
+### Opportunity List — Continuous List
+- Replaced permanent time-bucket sections (Due Today / This Week / Next Week / etc.) with a single continuous opportunity grid.
+- Added optional date filter chips at the top of the filter bar: All Dates / This Week / This Month.
+- Existing county and agency facets preserved. "Filtered Out" section preserved as collapsible at bottom.
+
+### Documents Tab — Flat List
+- Removed document family grouping from the Opportunity Documents tab.
+- Replaced grouped sections with a single flat list: filename, page count, processing status.
+
+---
+
 ## [F5 Bid Items Pipeline] - 2026-06-28
 
 ### Bid Schedule Foundation

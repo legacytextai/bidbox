@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-type Action = "delete_project" | "delete_analysis" | "reanalyze";
+type Action = "delete_project" | "delete_analysis" | "reanalyze" | "backfill_opportunity_intelligence";
 
 interface ManageRequest {
   action?: Action;
@@ -326,6 +326,95 @@ async function reanalyze(adminClient: any, candidateId: string, userId: string) 
   };
 }
 
+async function backfillOpportunityIntelligence(adminClient: any, userId: string) {
+  const activeStatuses = ["pending", "running", "retrying"];
+
+  // Load all candidates missing OI that aren't already converted or active
+  const { data: candidates, error } = await adminClient
+    .from("opportunity_candidates")
+    .select("id, source_id, source_url, portal_type, agency, raw_title, bid_due_at, converted_project_id, opportunity_intelligence_status, analysis_status, document_acquisition_status, document_processing_status")
+    .is("converted_project_id", null)
+    .not("opportunity_intelligence_status", "in", '("queued","processing","ready")')
+    .not("analysis_status", "in", '("queued","analyzing")')
+    .not("document_acquisition_status", "in", '("queued","acquiring")')
+    .not("document_processing_status", "in", '("queued","processing")')
+    .limit(100);
+
+  if (error) throw new Error(`Backfill candidate lookup failed: ${error.message}`);
+  if (!candidates || candidates.length === 0) return { queued: 0, skipped: 0, total_eligible: 0 };
+
+  // Bulk check for active tasks to avoid duplicates
+  const candidateIds = candidates.map((c: any) => c.id);
+  const { data: activeTasks } = await adminClient
+    .from("agent_tasks")
+    .select("payload")
+    .in("status", activeStatuses)
+    .in("task_type", ["project_analysis", "document_processing", "project_intelligence"]);
+
+  const busyCandidateIds = new Set<string>(
+    (activeTasks ?? [])
+      .map((t: any) => t.payload?.candidate_id)
+      .filter(Boolean),
+  );
+
+  const requestedAt = new Date().toISOString();
+  let queued = 0;
+  let skipped = 0;
+
+  for (const candidate of candidates) {
+    if (busyCandidateIds.has(candidate.id)) { skipped++; continue; }
+
+    const { data: task, error: taskError } = await adminClient
+      .from("agent_tasks")
+      .insert({
+        task_type: "project_analysis",
+        status: "pending",
+        priority: 1,
+        trigger_reason: "backfill",
+        refresh_window: requestedAt.slice(0, 13),
+        payload: {
+          candidate_id: candidate.id,
+          source_id: candidate.source_id,
+          source_name: candidate.agency ?? "Unknown source",
+          source_url: candidate.source_url,
+          portal_type: candidate.portal_type,
+          agency: candidate.agency,
+          raw_title: candidate.raw_title,
+          bid_due_at: candidate.bid_due_at,
+          requested_by: userId,
+          requested_at: requestedAt,
+          trigger_reason: "backfill",
+          intelligence_tier: "opportunity",
+          preparation_reason: "backfill_one_time",
+          phase: "f2_metadata_refresh",
+          next_phase: "f4_project_intelligence",
+        },
+      })
+      .select("id")
+      .single();
+
+    if (taskError || !task) { skipped++; continue; }
+
+    await adminClient
+      .from("opportunity_candidates")
+      .update({
+        analysis_task_id: task.id,
+        analysis_requested_at: requestedAt,
+        analysis_error: null,
+        analysis_requested_by: userId,
+        opportunity_lifecycle_status: "opportunity_intelligence_queued",
+        opportunity_intelligence_status: "queued",
+        opportunity_intelligence_task_id: task.id,
+        opportunity_intelligence_error: null,
+      })
+      .eq("id", candidate.id);
+
+    queued++;
+  }
+
+  return { queued, skipped, total_eligible: candidates.length };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -354,6 +443,11 @@ serve(async (req) => {
     if (body.action === "reanalyze") {
       if (!body.candidate_id) return jsonResponse({ success: false, error: "candidate_id is required" }, 400);
       const result = await reanalyze(adminClient, body.candidate_id, user.id);
+      return jsonResponse({ success: true, action: body.action, ...result });
+    }
+
+    if (body.action === "backfill_opportunity_intelligence") {
+      const result = await backfillOpportunityIntelligence(adminClient, user.id);
       return jsonResponse({ success: true, action: body.action, ...result });
     }
 

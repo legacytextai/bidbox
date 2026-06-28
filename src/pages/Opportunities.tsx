@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, ExternalLink, RefreshCw, ChevronDown, Loader2, Check, Filter, RotateCcw, Sparkles } from "lucide-react";
+import { Building2, ExternalLink, RefreshCw, ChevronDown, Loader2, Check, Filter, RotateCcw, Sparkles, Zap } from "lucide-react";
 import { PORTAL_STYLES, resolveOIStatus, isOIReady, isOIActive, resolveEstimatedValue } from "@/lib/opportunityDomain";
 import { Layout } from "@/components/Layout";
 import {
@@ -17,6 +17,17 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Command,
@@ -27,7 +38,6 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { ActiveScansPanel } from "@/components/ActiveScansPanel";
 import { formatProjectDateTime, formatInProjectTimezone } from "@/lib/timezoneUtils";
 import {
@@ -144,80 +154,37 @@ const NO_VALUE_SENTINEL = "__none__";
 
 
 
-type BucketKey =
-  | "overdue"
-  | "today"
-  | "this_week"
-  | "next_week"
-  | "later_this_month"
-  | "next_month"
-  | "future"
-  | "no_date";
-
-const BUCKETS: { key: BucketKey; label: string; defaultOpen: boolean }[] = [
-  { key: "overdue", label: "Overdue", defaultOpen: false },
-  { key: "today", label: "Due Today", defaultOpen: true },
-  { key: "this_week", label: "This Week", defaultOpen: true },
-  { key: "next_week", label: "Next Week", defaultOpen: true },
-  { key: "later_this_month", label: "Later This Month", defaultOpen: false },
-  { key: "next_month", label: "Next Month", defaultOpen: false },
-  { key: "future", label: "Future", defaultOpen: false },
-  { key: "no_date", label: "No Bid Date", defaultOpen: false },
-];
-
 const PT_TZ = "America/Los_Angeles";
 
-function getBucket(iso: string | null): BucketKey {
-  if (!iso) return "no_date";
+type DateFilter = "all" | "this_week" | "this_month";
+
+const DATE_FILTERS: { label: string; value: DateFilter }[] = [
+  { label: "All Dates", value: "all" },
+  { label: "This Week", value: "this_week" },
+  { label: "This Month", value: "this_month" },
+];
+
+function matchesDateFilter(iso: string | null, df: DateFilter): boolean {
+  if (df === "all") return true;
+  if (!iso) return false;
   const d = new Date(iso);
-  if (isNaN(d.getTime())) return "no_date";
+  if (isNaN(d.getTime())) return false;
   const nowPt = toZonedTime(new Date(), PT_TZ);
   const duePt = toZonedTime(d, PT_TZ);
-
-  // Start of today (PT). Anything strictly before today's calendar date is overdue;
-  // anything on today's calendar date is "today" regardless of whether the bid
-  // time has already passed.
   const startOfToday = new Date(nowPt);
   startOfToday.setHours(0, 0, 0, 0);
-  if (duePt.getTime() < startOfToday.getTime()) return "overdue";
-
-  const endOfToday = new Date(startOfToday);
-  endOfToday.setHours(23, 59, 59, 999);
-  if (duePt.getTime() <= endOfToday.getTime()) return "today";
-
-  // End of this week = upcoming Sunday 23:59:59 PT
-  const endOfThisWeek = new Date(endOfToday);
-  const daysUntilSunday = (7 - nowPt.getDay()) % 7; // Sunday = 0
-  endOfThisWeek.setDate(endOfThisWeek.getDate() + daysUntilSunday);
-  if (duePt.getTime() <= endOfThisWeek.getTime()) return "this_week";
-
-  const endOfNextWeek = new Date(endOfThisWeek);
-  endOfNextWeek.setDate(endOfNextWeek.getDate() + 7);
-  if (duePt.getTime() <= endOfNextWeek.getTime()) return "next_week";
-
-  const endOfThisMonth = new Date(
-    nowPt.getFullYear(),
-    nowPt.getMonth() + 1,
-    0,
-    23,
-    59,
-    59,
-    999,
-  );
-  if (duePt.getTime() <= endOfThisMonth.getTime()) return "later_this_month";
-
-  const endOfNextMonth = new Date(
-    nowPt.getFullYear(),
-    nowPt.getMonth() + 2,
-    0,
-    23,
-    59,
-    59,
-    999,
-  );
-  if (duePt.getTime() <= endOfNextMonth.getTime()) return "next_month";
-
-  return "future";
+  if (df === "this_week") {
+    const endOfNextWeek = new Date(startOfToday);
+    const daysUntilSunday = (7 - nowPt.getDay()) % 7 || 7;
+    endOfNextWeek.setDate(endOfNextWeek.getDate() + daysUntilSunday);
+    endOfNextWeek.setHours(23, 59, 59, 999);
+    return duePt.getTime() >= startOfToday.getTime() && duePt.getTime() <= endOfNextWeek.getTime();
+  }
+  if (df === "this_month") {
+    const endOfMonth = new Date(nowPt.getFullYear(), nowPt.getMonth() + 1, 0, 23, 59, 59, 999);
+    return duePt.getTime() >= startOfToday.getTime() && duePt.getTime() <= endOfMonth.getTime();
+  }
+  return true;
 }
 
 function getCandidateCounty(c: { crawl_data: any | null }): string | null {
@@ -340,17 +307,11 @@ const Opportunities = () => {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState("all");
+  const [dateFilter, setDateFilter] = useState<DateFilter>("all");
   const [scanLoading, setScanLoading] = useState(false);
+  const [backfillLoading, setBackfillLoading] = useState(false);
   const [countyFilter, setCountyFilter] = useState<string[]>([]);
   const [agencyFilter, setAgencyFilter] = useState<string[]>([]);
-  const [openBuckets, setOpenBuckets] = useState<Record<BucketKey, boolean>>(
-    () =>
-      BUCKETS.reduce(
-        (acc, b) => ({ ...acc, [b.key]: b.defaultOpen }),
-        {} as Record<BucketKey, boolean>,
-      ),
-  );
-  
   const [lastScannedAt, setLastScannedAt] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [filteredOutOpen, setFilteredOutOpen] = useState(false);
@@ -696,6 +657,29 @@ const Opportunities = () => {
     }
   };
 
+  const handleBackfillIntelligence = async () => {
+    setBackfillLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("manage-opportunity-intelligence", {
+        body: { action: "backfill_opportunity_intelligence" },
+      });
+      if (error) throw error;
+      if (data?.success === false) throw new Error(data?.error ?? "Backfill failed");
+      const queued: number = data?.queued ?? 0;
+      toast({
+        title: queued > 0 ? "Backfill started" : "All opportunities up to date",
+        description: queued > 0
+          ? `${queued} opportunit${queued === 1 ? "y" : "ies"} queued for Intelligence preparation.`
+          : "No unprepared opportunities found.",
+      });
+      if (queued > 0) await loadCandidates({ silent: true });
+    } catch (e: any) {
+      toast({ title: "Backfill failed", description: e?.message ?? "Unknown error", variant: "destructive" });
+    } finally {
+      setBackfillLoading(false);
+    }
+  };
+
   const handleNotesSave = async (id: string) => {
     const note = notes[id] ?? "";
     const { error } = await supabase
@@ -756,9 +740,8 @@ const Opportunities = () => {
     [candidates, activeFilter, matchesFacets],
   );
 
-  // Split candidates into time-bucket sections, sort within each bucket,
-  // and separate auto-Red / low-relevance into a Filtered Out section.
-  const { buckets, filteredOutCards } = useMemo(() => {
+  // Separate auto-Red / low-relevance into Filtered Out; sort remainder by bid date.
+  const { visibleCards, filteredOutCards } = useMemo(() => {
     const isFilteredOut = (candidate: Candidate) =>
       activeFilter === "all" &&
       (candidate.auto_status === "red" ||
@@ -771,27 +754,15 @@ const Opportunities = () => {
       else visible.push(c);
     }
 
-    const empty: Record<BucketKey, Candidate[]> = {
-      overdue: [], today: [], this_week: [], next_week: [],
-      later_this_month: [], next_month: [], future: [], no_date: [],
-    };
-    for (const c of visible) {
-      empty[getBucket(c.bid_due_at)].push(c);
-    }
-    for (const key of Object.keys(empty) as BucketKey[]) {
-      empty[key].sort(compareByDueAsc);
-    }
+    const datePassed = visible
+      .filter((c) => matchesDateFilter(c.bid_due_at, dateFilter))
+      .sort(compareByDueAsc);
     filteredOut.sort(compareByDueAsc);
 
-    return { buckets: empty, filteredOutCards: filteredOut };
-  }, [filtered, activeFilter]);
+    return { visibleCards: datePassed, filteredOutCards: filteredOut };
+  }, [filtered, activeFilter, dateFilter]);
 
-  const totalVisible = useMemo(
-    () => (Object.values(buckets) as Candidate[][]).reduce((n, arr) => n + arr.length, 0),
-    [buckets],
-  );
-
-  const hasActiveFacetFilters = countyFilter.length > 0 || agencyFilter.length > 0;
+  const hasActiveFacetFilters = countyFilter.length > 0 || agencyFilter.length > 0 || dateFilter !== "all";
 
 
   const renderCard = (candidate: Candidate, _index: number) => {
@@ -940,7 +911,32 @@ const Opportunities = () => {
                 </p>
               </div>
               <div className="flex gap-2">
-
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      variant="outline"
+                      disabled={backfillLoading}
+                      className="text-sm"
+                    >
+                      <Zap className={`h-4 w-4 mr-2 ${backfillLoading ? "animate-pulse" : ""}`} />
+                      {backfillLoading ? "Preparing..." : "Prepare All"}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Prepare all opportunities?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This will queue Opportunity Intelligence for all unprepared opportunities. Existing prepared opportunities are not affected.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={handleBackfillIntelligence}>
+                        Prepare All
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
                 <Button
                   onClick={handleScanNow}
                   disabled={scanLoading}
@@ -988,6 +984,19 @@ const Opportunities = () => {
                 })}
               </div>
               <div className="flex items-center gap-2 flex-wrap">
+                {DATE_FILTERS.map((df) => (
+                  <button
+                    key={df.value}
+                    onClick={() => setDateFilter(df.value)}
+                    className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                      dateFilter === df.value
+                        ? "bg-muted text-foreground"
+                        : "text-muted-foreground hover:bg-accent"
+                    }`}
+                  >
+                    {df.label}
+                  </button>
+                ))}
                 <FacetMultiSelect
                   label="County"
                   icon={<Filter className="h-3.5 w-3.5" />}
@@ -1015,6 +1024,7 @@ const Opportunities = () => {
                     onClick={() => {
                       setCountyFilter([]);
                       setAgencyFilter([]);
+                      setDateFilter("all");
                     }}
                     className="text-sm text-muted-foreground hover:text-foreground"
                   >
@@ -1046,54 +1056,15 @@ const Opportunities = () => {
               </div>
             ) : (
               <>
-                {totalVisible === 0 && (
+                {visibleCards.length === 0 ? (
                   <div className="text-sm text-muted-foreground py-12 text-center">
                     No opportunities match this view.
                   </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {visibleCards.map(renderCard)}
+                  </div>
                 )}
-                {BUCKETS.map((bucket) => {
-                  const items = buckets[bucket.key];
-                  const alwaysShow = bucket.key === "today" || bucket.key === "this_week";
-                  if ((!items || items.length === 0) && !alwaysShow) return null;
-                  const open = openBuckets[bucket.key];
-                  return (
-                    <Collapsible
-                      key={bucket.key}
-                      open={open}
-                      onOpenChange={(v) =>
-                        setOpenBuckets((prev) => ({ ...prev, [bucket.key]: v }))
-                      }
-                      className="mb-8"
-                    >
-                      <CollapsibleTrigger className="flex items-center gap-2 w-full text-left group">
-                        <ChevronDown
-                          className={`h-4 w-4 text-muted-foreground transition-transform ${
-                            open ? "rotate-0" : "-rotate-90"
-                          }`}
-                        />
-                        <h2 className="text-base font-semibold text-foreground">
-                          {bucket.label}
-                        </h2>
-                        <span className="text-sm text-muted-foreground">
-                          ({items.length})
-                        </span>
-                        <Separator className="flex-1 ml-3" />
-                      </CollapsibleTrigger>
-                      <CollapsibleContent className="mt-4">
-                        {items.length === 0 ? (
-                          <p className="text-sm text-muted-foreground italic">
-                            Nothing due in this window.
-                          </p>
-                        ) : (
-                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {items.map(renderCard)}
-                          </div>
-                        )}
-                      </CollapsibleContent>
-                    </Collapsible>
-                  );
-                })}
-
                 {activeFilter === "all" && filteredOutCards.length > 0 && (
                   <Collapsible
                     open={filteredOutOpen}
