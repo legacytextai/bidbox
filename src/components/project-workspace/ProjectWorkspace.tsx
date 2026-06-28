@@ -400,12 +400,6 @@ function OverviewTab({
             <div className="flex flex-col items-center gap-3">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
               <p className="text-sm text-muted-foreground">Preparing Opportunity Intelligence…</p>
-              {candidateId && (
-                <Button variant="outline" size="sm" onClick={() => onNavigate(`/opportunities/${candidateId}`)}>
-                  <Sparkles className="h-4 w-4 mr-2" />
-                  View Progress
-                </Button>
-              )}
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">
