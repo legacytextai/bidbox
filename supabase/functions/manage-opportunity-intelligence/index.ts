@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-type Action = "delete_project" | "delete_analysis" | "reanalyze" | "backfill_opportunity_intelligence";
+type Action = "delete_project" | "delete_analysis" | "reanalyze" | "backfill_opportunity_intelligence" | "force_prepare";
 
 interface ManageRequest {
   action?: Action;
@@ -326,6 +326,90 @@ async function reanalyze(adminClient: any, candidateId: string, userId: string) 
   };
 }
 
+// Force-prepares OI for an opportunity that has already been converted to a project.
+// Bypasses the bid_due_at closed-bid gate because the user explicitly owns this project.
+async function forcePrepare(adminClient: any, candidateId: string, userId: string) {
+  const activeStatuses = ["pending", "running", "retrying"];
+  const { data: activeTasks, error: activeTaskError } = await adminClient
+    .from("agent_tasks")
+    .select("id")
+    .in("task_type", ["project_analysis", "document_processing", "project_intelligence"])
+    .in("status", activeStatuses)
+    .contains("payload", { candidate_id: candidateId })
+    .limit(1);
+  if (activeTaskError) throw new Error(`Active task lookup failed: ${activeTaskError.message}`);
+  if ((activeTasks ?? []).length > 0) {
+    throw new Error("Preparation is already in progress for this opportunity.");
+  }
+
+  const { data: candidate, error } = await adminClient
+    .from("opportunity_candidates")
+    .select("id, source_id, source_url, portal_type, raw_title, agency, bid_due_at, converted_project_id")
+    .eq("id", candidateId)
+    .maybeSingle();
+  if (error) throw new Error(`Candidate lookup failed: ${error.message}`);
+  if (!candidate) throw new Error("Opportunity not found");
+
+  // Verify ownership via linked project — this action is only available to the project owner.
+  if (!candidate.converted_project_id) throw new Error("This opportunity has not been added to calendar. Use the standard preparation flow.");
+  const { data: project } = await adminClient
+    .from("projects")
+    .select("gc_id")
+    .eq("id", candidate.converted_project_id)
+    .maybeSingle();
+  if (!project || project.gc_id !== userId) throw new Error("Access denied");
+
+  const requestedAt = new Date().toISOString();
+  const { data: task, error: taskError } = await adminClient
+    .from("agent_tasks")
+    .insert({
+      task_type: "project_analysis",
+      status: "pending",
+      priority: 0,
+      trigger_reason: "force_prepare",
+      refresh_window: requestedAt.slice(0, 13),
+      payload: {
+        candidate_id: candidate.id,
+        source_id: candidate.source_id,
+        source_name: candidate.agency ?? "Unknown source",
+        source_url: candidate.source_url,
+        portal_type: candidate.portal_type,
+        agency: candidate.agency,
+        raw_title: candidate.raw_title,
+        bid_due_at: candidate.bid_due_at,
+        requested_by: userId,
+        requested_at: requestedAt,
+        trigger_reason: "force_prepare",
+        intelligence_tier: "opportunity",
+        phase: "f5_opportunity_preparation",
+        next_phase: "f2_document_acquisition",
+        intelligence_status: "queued",
+      },
+    })
+    .select("id")
+    .single();
+  if (taskError || !task) throw new Error(`Failed to queue preparation: ${taskError?.message ?? "unknown error"}`);
+
+  const { error: candidateUpdateError } = await adminClient
+    .from("opportunity_candidates")
+    .update({
+      analysis_task_id: task.id,
+      analysis_requested_at: requestedAt,
+      analysis_error: null,
+      analysis_requested_by: userId,
+      document_acquisition_status: "queued",
+      document_acquisition_error: null,
+      opportunity_lifecycle_status: "opportunity_intelligence_queued",
+      opportunity_intelligence_status: "queued",
+      opportunity_intelligence_task_id: task.id,
+      opportunity_intelligence_error: null,
+    })
+    .eq("id", candidateId);
+  if (candidateUpdateError) throw new Error(`Candidate state update failed: ${candidateUpdateError.message}`);
+
+  return { candidate_id: candidateId, task_id: task.id };
+}
+
 async function backfillOpportunityIntelligence(adminClient: any, userId: string) {
   const activeStatuses = ["pending", "running", "retrying"];
 
@@ -443,6 +527,12 @@ serve(async (req) => {
     if (body.action === "reanalyze") {
       if (!body.candidate_id) return jsonResponse({ success: false, error: "candidate_id is required" }, 400);
       const result = await reanalyze(adminClient, body.candidate_id, user.id);
+      return jsonResponse({ success: true, action: body.action, ...result });
+    }
+
+    if (body.action === "force_prepare") {
+      if (!body.candidate_id) return jsonResponse({ success: false, error: "candidate_id is required" }, 400);
+      const result = await forcePrepare(adminClient, body.candidate_id, user.id);
       return jsonResponse({ success: true, action: body.action, ...result });
     }
 

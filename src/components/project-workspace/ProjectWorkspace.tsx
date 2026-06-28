@@ -31,7 +31,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { ArrowLeft, ExternalLink, CalendarDays, Sparkles, Trash2, Loader2 } from "lucide-react";
+import { ArrowLeft, ExternalLink, CalendarDays, Trash2, Loader2 } from "lucide-react";
+import { ProjectWorkspaceIntelligenceView } from "@/components/IntelligenceReportView";
 
 type PursuitStatus = "reviewing" | "pursuing" | "passed" | "submitted";
 
@@ -113,7 +114,19 @@ export function ProjectWorkspace({
   const [deletingProject, setDeletingProject] = useState(false);
 
   const candidateId = project.source_opportunity_candidate_id as string | undefined;
-  const { overview, documents, reportReady } = useOpportunityDossier(candidateId);
+  const {
+    overview,
+    documents,
+    reportReady,
+    candidate,
+    report,
+    findings,
+    citationsByFinding,
+    activeTask,
+    linkedProject,
+    analysisWorkActive,
+    reload,
+  } = useOpportunityDossier(candidateId);
 
   const setTab = useCallback(
     (key: TabKey) => {
@@ -203,16 +216,6 @@ export function ProjectWorkspace({
               </SelectContent>
             </Select>
 
-            {candidateId && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => navigate(`/opportunities/${candidateId}`)}
-              >
-                <Sparkles className="h-4 w-4 mr-2" />
-                View Intelligence
-              </Button>
-            )}
             {project.source_url && (
               <Button
                 variant="outline"
@@ -297,8 +300,16 @@ export function ProjectWorkspace({
 
       {activeTab === "intelligence" && (
         <IntelligenceTab
-          candidateId={candidateId}
-          onNavigate={navigate}
+          candidate={candidate}
+          report={report}
+          findings={findings}
+          citationsByFinding={citationsByFinding}
+          documents={documents}
+          activeTask={activeTask}
+          linkedProject={linkedProject}
+          reportReady={reportReady}
+          analysisWorkActive={analysisWorkActive}
+          reload={reload}
         />
       )}
 
@@ -471,30 +482,48 @@ function DocumentsTab({
 // ── Intelligence Tab ────────────────────────────────────────────────────────────
 
 function IntelligenceTab({
-  candidateId,
-  onNavigate,
+  candidate,
+  report,
+  findings,
+  citationsByFinding,
+  documents,
+  activeTask,
+  linkedProject,
+  reportReady,
+  analysisWorkActive,
+  reload,
 }: {
-  candidateId: string | undefined;
-  onNavigate: ReturnType<typeof useNavigate>;
+  candidate: any;
+  report: any;
+  findings: any[];
+  citationsByFinding: Map<string, any[]>;
+  documents: any[];
+  activeTask: any;
+  linkedProject: any;
+  reportReady: boolean;
+  analysisWorkActive: boolean;
+  reload: () => void;
 }) {
-  return (
-    <div className="bg-card border border-border rounded-lg p-8 text-center space-y-4">
-      <h2 className="text-base font-semibold text-foreground">Full Intelligence Report</h2>
-      <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-        The complete Opportunity Intelligence report — findings, citations, risk flags, and contract requirements — is available from the Opportunity dossier.
-      </p>
-      {candidateId ? (
-        <Button
-          className="bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90"
-          onClick={() => onNavigate(`/opportunities/${candidateId}?tab=intelligence`)}
-        >
-          <Sparkles className="h-4 w-4 mr-2" />
-          Open Full Intelligence Report
-        </Button>
-      ) : (
+  if (!candidate) {
+    return (
+      <div className="bg-card border border-border rounded-lg p-8 text-center">
         <p className="text-sm text-muted-foreground">No linked opportunity found.</p>
-      )}
-    </div>
+      </div>
+    );
+  }
+  return (
+    <ProjectWorkspaceIntelligenceView
+      candidate={candidate}
+      report={report}
+      findings={findings}
+      citationsByFinding={citationsByFinding}
+      documents={documents}
+      activeTask={activeTask}
+      linkedProject={linkedProject}
+      reportReady={reportReady}
+      analysisWorkActive={analysisWorkActive}
+      reload={reload}
+    />
   );
 }
 

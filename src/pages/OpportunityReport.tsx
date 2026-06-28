@@ -41,20 +41,26 @@ import { OpportunityOverviewTab } from "@/components/OpportunityOverviewTab";
 import { OpportunityDocumentsTab } from "@/components/OpportunityDocumentsTab";
 import { resolveOIStyle, resolveOILabel } from "@/lib/opportunityDomain";
 import type { DossierFinding, DossierCitation } from "@/hooks/useOpportunityDossier";
+import {
+  FindingStatus,
+  STATUS_STYLE,
+  REPORT_SECTIONS,
+  normalizeTimeToken,
+  extractDateTimeDisplay,
+  isBidDueFinding,
+  normalizeExecutiveBulletText,
+  bidDueSourceLabel,
+  formatDate,
+  IntelSection,
+  CitationList,
+  FindingsList,
+  Pending,
+  Unknown,
+} from "@/components/IntelligenceReportView";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type FindingStatus = "found" | "unknown" | "conflict" | "not_applicable" | "needs_review";
-
-const REPORT_SECTIONS = [
-  { key: "project_overview", title: "Project Overview", icon: Sparkles },
-  { key: "scope_summary", title: "Scope Summary", icon: FileText },
-  { key: "trade_breakdown", title: "Trade Breakdown", icon: FileText },
-  { key: "key_dates", title: "Key Dates", icon: Clock },
-  { key: "bid_requirements", title: "Bid Requirements", icon: CheckCircle2 },
-  { key: "addenda_summary", title: "Addenda Summary", icon: FileText },
-  { key: "risk_flags", title: "Risk Flags", icon: AlertTriangle },
-];
+// FindingStatus, STATUS_STYLE, REPORT_SECTIONS imported from IntelligenceReportView
 
 const ACTIVE_TASK_STATUSES = ["pending", "running", "retrying"];
 const ACTIVE_ANALYSIS_STATUSES = ["queued", "analyzing"];
@@ -63,14 +69,6 @@ const ACTIVE_PROCESSING_STATUSES = ["queued", "processing"];
 const ANALYSIS_STAGES = ["metadata_refresh", "report_generation", "validation", "complete"] as const;
 type AnalysisStage = (typeof ANALYSIS_STAGES)[number];
 
-const STATUS_STYLE: Record<FindingStatus, string> = {
-  found: "bg-green-500/10 text-green-700",
-  unknown: "bg-gray-500/10 text-gray-600",
-  conflict: "bg-red-500/10 text-red-700",
-  not_applicable: "bg-gray-500/10 text-gray-600",
-  needs_review: "bg-yellow-500/10 text-yellow-700",
-};
-
 const TABS = [
   { key: "overview", label: "Overview" },
   { key: "documents", label: "Documents" },
@@ -78,86 +76,9 @@ const TABS = [
 ] as const;
 type TabKey = (typeof TABS)[number]["key"];
 
-// ─── Helpers (bid due display — kept in-file since they use IntelligenceTab-specific logic) ──
-
-const TIME_RE = /\b(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?|am|pm)\b/i;
-const MONTH_DATE_RE =
-  /\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}\b/i;
-
-const normalizeTimeToken = (text: string | null | undefined): number | null => {
-  const match = String(text ?? "").match(TIME_RE);
-  if (!match) return null;
-  let hour = Number(match[1]);
-  const minute = Number(match[2] ?? "0");
-  const meridiem = match[3].toLowerCase();
-  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
-  if (meridiem.startsWith("p") && hour !== 12) hour += 12;
-  if (meridiem.startsWith("a") && hour === 12) hour = 0;
-  return hour * 60 + minute;
-};
-
-const extractDateTimeDisplay = (text: string | null | undefined): string | null => {
-  const source = String(text ?? "").replace(/\s+/g, " ").trim();
-  if (!source) return null;
-  const formatted = formatProjectDateTimeOrNull(source);
-  if (formatted) return formatted;
-  const date = source.match(MONTH_DATE_RE)?.[0] ?? null;
-  const time = source.match(TIME_RE)?.[0] ?? null;
-  if (date && time) {
-    return `${date} at ${time.replace(/\./g, "").replace(/\s+/g, " ").toUpperCase()}`;
-  }
-  return source;
-};
-
-const isBidDueFinding = (finding: { field_key: string; label: string }): boolean => {
-  const haystack = `${finding.field_key} ${finding.label}`.toLowerCase();
-  return (
-    /bid.*due/.test(haystack) ||
-    /due.*date/.test(haystack) ||
-    /bid.*opening/.test(haystack) ||
-    /submission.*deadline/.test(haystack)
-  );
-};
-
-const isProjectOverviewBullet = (text: string | null | undefined): boolean =>
-  /^project overview\s*:/i.test(String(text ?? "").trim());
-
-const normalizeExecutiveBulletText = (
-  text: string | null | undefined,
-  index: number,
-  bidDue?: { display: string; value: string | null; source: string | null; warning?: string | null },
-): string => {
-  const value = String(text ?? "").replace(/\s+/g, " ").trim();
-  if (!value) return value;
-  const mentionsBidDue = /\b(bid\s*(due|date|deadline)|deadline)\b/i.test(value);
-  const hasStructuredBidDue = bidDue?.source && bidDue.source !== "F4 fallback" && bidDue.display !== "—";
-  if (mentionsBidDue && hasStructuredBidDue) {
-    const bulletDate = dateIdentity(value);
-    const authoritativeDate = dateIdentity(bidDue.value);
-    if (!bulletDate || !authoritativeDate || bulletDate !== authoritativeDate || bidDue.warning) {
-      return bidDue.warning
-        ? `Key Bid Facts: ${bidDue.warning}`
-        : `Key Bid Facts: Bid Due: ${bidDue.display}`;
-    }
-  }
-  if (index === 0) {
-    if (/^scope text\s*:/i.test(value)) return value.replace(/^scope text\s*:/i, "Project Overview:");
-    if (!isProjectOverviewBullet(value)) return `Project Overview: ${value}`;
-  }
-  return value;
-};
-
-const bidDueSourceLabel = (source: string | null | undefined): string | null => {
-  if (source === "manual_override") return "Manual override";
-  if (source === "deadline_candidate_override") return "Selected evidence override";
-  if (source === "portal_metadata") return "Portal metadata";
-  if (source === "candidate_metadata") return "Candidate metadata";
-  if (source === "project_metadata") return "Project metadata";
-  if (source === "f4_fallback") return "F4 fallback";
-  return null;
-};
-
-const formatDate = (value: string | null) => formatProjectDateTime(value, { fallback: "—" });
+// Helper functions imported from IntelligenceReportView:
+// normalizeTimeToken, extractDateTimeDisplay, isBidDueFinding,
+// normalizeExecutiveBulletText, bidDueSourceLabel, formatDate
 
 const isUniqueViolation = (error: any): boolean =>
   error?.code === "23505" || String(error?.message ?? "").toLowerCase().includes("duplicate key");
@@ -922,148 +843,7 @@ const IntelligenceTab = ({
   );
 };
 
-// ─── Shared sub-components ───────────────────────────────────────────────────
-
-const IntelSection = ({ title, icon, children }: { title: string; icon?: React.ReactNode; children: React.ReactNode }) => (
-  <section className="bg-card border border-border rounded-lg p-5">
-    <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-4">
-      {icon}
-      {title}
-    </h2>
-    {children}
-  </section>
-);
-
-const FindingsList = ({
-  findings,
-  citationsByFinding,
-  pendingMessage,
-  ready,
-  safeBidDue,
-  bidDueEvidence,
-}: {
-  findings: DossierFinding[];
-  citationsByFinding: Map<string, DossierCitation[]>;
-  pendingMessage: string;
-  ready: boolean;
-  safeBidDue?: { display: string; source: string | null; warning: string | null; value: string | null };
-  bidDueEvidence?: { selected: any; competing: any[] };
-}) => {
-  if (!ready) return <Pending message={pendingMessage} />;
-  if (findings.length === 0) return <Unknown message="No cited findings were generated for this section." />;
-
-  return (
-    <div className="space-y-3">
-      {findings.map((finding) => (
-        <article key={finding.id} className="border border-border rounded-md p-3 bg-background">
-          <div className="flex items-start gap-3">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-sm font-semibold text-foreground">{finding.label}</h3>
-                {finding.is_critical && (
-                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-red-500/10 text-red-700">
-                    <ShieldAlert className="h-3 w-3" />
-                    Critical
-                  </span>
-                )}
-                <span className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${STATUS_STYLE[finding.status as FindingStatus] ?? ""}`}>
-                  {finding.status.replace("_", " ")}
-                </span>
-              </div>
-              <p className="text-sm text-foreground mt-1 whitespace-pre-wrap">
-                {finding.status === "found" || finding.status === "conflict"
-                  ? finding.value_text ?? "Value captured in structured data"
-                  : finding.notes ?? "Not found in processed documents."}
-              </p>
-              {finding.id.startsWith("__structured_") && finding.notes && (
-                <p className="mt-1 text-xs text-muted-foreground">{finding.notes}</p>
-              )}
-            </div>
-          </div>
-          {!finding.id.startsWith("__structured_") && (
-            <CitationList citations={citationsByFinding.get(finding.id) ?? []} />
-          )}
-        </article>
-      ))}
-
-      {/* Bid due conflict detail (key_dates section only) */}
-      {safeBidDue?.warning && bidDueEvidence && (
-        <details className="rounded border border-yellow-300 bg-yellow-50 text-sm text-yellow-950">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 font-medium">
-            <span className="inline-flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 shrink-0" />
-              Conflicting deadline evidence detected
-            </span>
-            <span className="text-xs text-yellow-800">View Evidence ({bidDueEvidence.competing.length})</span>
-          </summary>
-          <div className="border-t border-yellow-200 px-3 py-3">
-            <div className="rounded bg-white/70 p-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-yellow-800">Selected as Authoritative</p>
-              <p className="mt-1 font-medium text-foreground">{bidDueEvidence.selected.label}</p>
-              <p className="text-sm text-foreground">{bidDueEvidence.selected.display}</p>
-              {bidDueEvidence.selected.detail && <p className="mt-1 text-xs text-muted-foreground">{bidDueEvidence.selected.detail}</p>}
-            </div>
-            {bidDueEvidence.competing.length > 0 && (
-              <div className="mt-3 space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wide text-yellow-800">Competing Evidence</p>
-                {bidDueEvidence.competing.map((ev: any) => (
-                  <div key={ev.id} className="rounded bg-white/70 p-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-medium text-foreground">{ev.label}</p>
-                      <span className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${STATUS_STYLE[ev.status as FindingStatus] ?? ""}`}>
-                        {ev.status.replace("_", " ")}
-                      </span>
-                    </div>
-                    <p className="text-sm text-foreground">{ev.display}</p>
-                    <CitationList citations={ev.citations} />
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </details>
-      )}
-    </div>
-  );
-};
-
-const CitationList = ({ citations }: { citations: DossierCitation[] }) => {
-  if (citations.length === 0) {
-    return (
-      <p className="mt-3 text-xs text-muted-foreground italic">
-        No citation attached. This item is not presented as a source-backed fact.
-      </p>
-    );
-  }
-  return (
-    <div className="mt-3 space-y-2">
-      {citations.map((c) => (
-        <details key={c.id} className="group">
-          <summary className="cursor-pointer inline-flex items-center gap-1 text-xs font-medium text-[hsl(var(--bidbox-blue))] hover:underline">
-            <FileText className="h-3 w-3" />
-            {c.citation_label ?? `${c.source_document_name}${c.page_number ? `, p. ${c.page_number}` : ""}`}
-          </summary>
-          <blockquote className="mt-2 border-l-2 border-border pl-3 text-xs text-muted-foreground leading-relaxed">
-            {c.source_excerpt}
-          </blockquote>
-        </details>
-      ))}
-    </div>
-  );
-};
-
-const Pending = ({ message }: { message: string }) => (
-  <div className="flex items-start gap-2 text-sm text-muted-foreground">
-    <Loader2 className="h-4 w-4 mt-0.5 animate-spin shrink-0" />
-    <p>{message}</p>
-  </div>
-);
-
-const Unknown = ({ message }: { message: string }) => (
-  <div className="flex items-start gap-2 text-sm text-muted-foreground">
-    <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
-    <p>{message}</p>
-  </div>
-);
+// IntelSection, CitationList, FindingsList, Pending, Unknown
+// are now imported from IntelligenceReportView.
 
 export default OpportunityReport;
