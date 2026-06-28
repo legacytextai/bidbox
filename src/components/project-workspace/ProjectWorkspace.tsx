@@ -149,7 +149,7 @@ export function ProjectWorkspace({
         .update({
           pursuit_status: value,
           pursuit_status_updated_at: new Date().toISOString(),
-        })
+        } as never)
         .eq("id", project.id);
       if (error) throw error;
     } catch (e: any) {
