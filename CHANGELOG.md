@@ -9,6 +9,8 @@ All notable changes to the BidBox project are documented in this file.
 ### Follow-up — Portal-Authoritative Bid Items + Structured Pre-Bid Fields
 - Removed the document-derived bid item fallback from the worker. Document
   processing and Project Intelligence no longer create bid items.
+- Added worker and database guardrails that reject future PlanetBids/Caltrans
+  bid-item rows unless `extraction_method = 'portal_tab'`.
 - Portal acquisition now replaces all existing bid-item methods for the
   targeted candidate with the native portal result set. If the portal returns
   zero rows, BidBox stores zero rows for that candidate.
@@ -20,6 +22,9 @@ All notable changes to the BidBox project are documented in this file.
 - Project Snapshot rendering now prefers portal pre-bid metadata over
   intelligence findings and displays independent lines instead of an AI
   sentence.
+- Project Snapshot portal facts now come directly from crawl data / normalized
+  portal fields; intelligence findings are not used for bid due, job walk,
+  engineer estimate, license, contract duration, or liquidated damages.
 - No bulk backfill or global re-acquisition was performed.
 
 ### Bid Items

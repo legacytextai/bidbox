@@ -360,16 +360,6 @@ const coerceEvidenceDeadlineToUtc = (value: string | null | undefined, timezone:
   return null;
 };
 
-const hasDocumentNameEvidence = (documents: OpportunityDocument[], keywords: string[]) =>
-  documents.some((document) => {
-    const haystack = [
-      document.file_name,
-      document.document_family,
-      document.document_class,
-    ].join(" ").toLowerCase();
-    return keywords.some((keyword) => haystack.includes(keyword));
-  });
-
 const isAffirmative = (value: unknown) => {
   if (value === true) return true;
   if (typeof value !== "string") return false;
@@ -685,11 +675,6 @@ export function OpportunityIntelligenceWorkspace({
       getFindingValue(findings.find((finding) => finding.category === "project_overview")) ||
       "Project overview is available in the full Intelligence Report.";
 
-    const estimateFinding = findFirst(findings, ["engineer estimate", "engineer's estimate", "estimated value", "estimate"]);
-    const licenseFinding = findFirst(findings, ["license"], ["bid_requirements", "project_overview"]);
-    const durationFinding = findFirst(findings, ["duration", "calendar days", "working days"], ["key_dates", "bid_requirements"]);
-    const damagesFinding = findFirst(findings, ["liquidated damages", "damages"], ["risk_flags", "bid_requirements"]);
-    const jobWalkFinding = findFirst(findings, ["job walk", "pre-bid", "prebid"], ["key_dates"]);
     const jobWalkMetadata =
       sourceOpportunity?.crawl_data?.meeting_datetime ||
       sourceOpportunity?.crawl_data?.job_walk_at ||
@@ -697,20 +682,11 @@ export function OpportunityIntelligenceWorkspace({
       sourceOpportunity?.crawl_data?.prebid_meeting_at;
     const hasJobWalkMetadata =
       Boolean(jobWalkMetadata) ||
+      isAffirmative(sourceOpportunity?.crawl_data?.pre_bid_exists) ||
       isAffirmative(sourceOpportunity?.crawl_data?.pre_bid_meeting) ||
       isAffirmative(sourceOpportunity?.crawl_data?.job_walk_exists) ||
       isAffirmative(sourceOpportunity?.crawl_data?.attendance_required) ||
       isAffirmative(sourceOpportunity?.crawl_data?.job_walk_mandatory);
-    const hasJobWalkDocumentEvidence = hasDocumentNameEvidence(opportunityDocuments, [
-      "job walk",
-      "pre-bid",
-      "pre bid",
-      "prebid",
-      "site visit",
-      "attendance list",
-      "sign in",
-      "sign-in",
-    ]);
 
     const jobWalkDate = formatSnapshotDateTime(jobWalkMetadata);
     const portalJobWalkExists =
@@ -754,30 +730,25 @@ export function OpportunityIntelligenceWorkspace({
     return {
       projectOverview,
       engineerEstimate:
-        getFindingValue(estimateFinding) ||
         formatCurrency(sourceOpportunity?.crawl_data?.estimated_value) ||
         "Not available",
       requiredLicense:
-        getFindingValue(licenseFinding) ||
         sourceOpportunity?.crawl_data?.license_requirements ||
         "Not available",
       contractDuration:
-        getFindingValue(durationFinding) ||
         sourceOpportunity?.crawl_data?.contract_duration ||
         "Not available",
       liquidatedDamages:
-        getFindingValue(damagesFinding) ||
         sourceOpportunity?.crawl_data?.liquidated_damages ||
         "Not available",
       bidDue:
         bidDueResolution.display || "Not available",
       jobWalk:
         (jobWalkParts.length > 0 ? jobWalkParts.join("\n") : null) ||
-        normalizeDateTimeText(getFindingValue(jobWalkFinding)) ||
         formatProjectDateTimeOrNull(project.job_walk_at) ||
-        (hasJobWalkMetadata || hasJobWalkDocumentEvidence ? "Needs Review" : "Not available"),
+        (hasJobWalkMetadata ? "Unknown" : "Not available"),
     };
-  }, [bidDueResolution.display, findings, intelligenceReport, opportunityDocuments, project.job_walk_at, sourceOpportunity]);
+  }, [bidDueResolution.display, findings, intelligenceReport, project.job_walk_at, sourceOpportunity]);
 
   const highlighted = useMemo(() => {
     const found = findings.filter((finding) =>

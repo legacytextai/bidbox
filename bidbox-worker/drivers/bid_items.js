@@ -48,6 +48,16 @@ function normalizeBidItem(item, defaults = {}, index = 0) {
   };
 }
 
+function assertPortalAuthoritativeRows(rows, defaults = {}) {
+  for (const row of rows) {
+    const portal = String(row.source_portal ?? defaults.sourcePortal ?? '').toLowerCase();
+    if (!['planetbids', 'caltrans'].includes(portal)) continue;
+    if (row.extraction_method !== 'portal_tab') {
+      throw new Error(`${portal} bid items must be portal-authoritative; refusing ${row.extraction_method}`);
+    }
+  }
+}
+
 async function replaceBidItemsForCandidate({
   supabase,
   candidateId,
@@ -70,6 +80,7 @@ async function replaceBidItemsForCandidate({
   const rows = (items ?? [])
     .map((item, index) => normalizeBidItem(item, { ...defaults, candidateId }, index))
     .filter(Boolean);
+  assertPortalAuthoritativeRows(rows, defaults);
 
   if (rows.length === 0) {
     log(`Bid items: no ${methodList.join('/')} rows to store`);

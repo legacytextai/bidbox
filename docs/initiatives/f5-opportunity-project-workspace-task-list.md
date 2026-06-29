@@ -386,7 +386,7 @@ Status: ✅ COMPLETE
 Implementation notes:
 - PlanetBids document acquisition now attempts to open the Line Items/Bid Items tab after login and extracts visible table rows into the canonical bid item model.
 - P0 correctness follow-up: the worker now also captures PlanetBids line-item API responses triggered by the tab and normalizes common API payload shapes. This keeps native bid-item extraction from depending only on rendered table DOM.
-- P0 follow-up: bid items are portal-authoritative only. Document-derived and AI-derived bid-item fallback extraction has been removed from the worker, and the dossier reads only `portal_tab` rows.
+- P0 follow-up: bid items are portal-authoritative only. Document-derived and AI-derived bid-item fallback extraction has been removed from the worker, the dossier reads only `portal_tab` rows, and worker/database guardrails reject future PlanetBids/Caltrans non-portal bid-item rows.
 - Extraction is best-effort and non-blocking; failures are logged and document acquisition continues.
 - Re-analysis replaces prior portal-native PlanetBids bid items for the candidate.
 
