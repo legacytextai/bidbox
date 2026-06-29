@@ -1,45 +1,57 @@
-## Goal
-Simplify Opportunity cards: one universal "View Project" CTA, subtle "On Calendar" indicator, full-card clickability, and a more prominent Estimated Value above the bid due date.
+I'm using knowledge.
 
-## Changes (scope: `src/pages/Opportunities.tsx` only)
+## Investigation Report — Pursuit Status Select Failure
 
-### 1. Single, unified CTA
-Replace the 4 conditional buttons (View Intelligence Report orange, Retry Analysis blue, View Analysis Progress, View Opportunity) with **one** button on every card:
+### Symptoms
+- Select on `/projects/:id` header shows toast "Failed to update pursuit status" only when picking **Reviewing**.
+- Picking **Pursuing** or **Passed** appears to silently revert to **Submitted**.
+- Only **Submitted** persists.
 
-- Label: **View Project**
-- Style: faint light-blue — `bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-100` (no icon, no orange, no outline variants)
-- All cards navigate to `/opportunities/:id` (the report/workspace already handles state — queued, analyzing, ready, failed, converted — so a single destination is safe). Converted candidates still resolve through that route's existing redirect to the linked project.
-
-### 2. "Added to Calendar" indicator (subtle but recognizable)
-For candidates where `status === "converted"` and `converted_project_id` is present, add a small inline marker next to the title:
+### Root Cause
+The database `CHECK` constraint on `public.projects.pursuit_status` does **not** match the UI's pursuit vocabulary.
 
 ```text
-┌ Calendar (lucide) icon, 12px, muted blue (`text-blue-600`)
-└ tiny label "On Calendar" — `text-[10px] uppercase tracking-wide font-medium text-blue-600`
+DB allows:  active | submitted | won | lost | archived
+UI sends:   reviewing | pursuing | passed | submitted
 ```
 
-Placement: directly under the agency line, before the portal pill. No pill background, no border — just icon + tiny label. Keeps cards clean while making converted ones instantly scannable.
+So **every** value except `submitted` violates the constraint and the update is rejected with Postgres error `23514` (check constraint `projects_pursuit_status_check`).
 
-### 3. Full-card click
-Wrap the card `<div>` with `role="button"`, `tabIndex={0}`, `onClick={() => navigate(\`/opportunities/${candidate.id}\`)}`, plus keyboard handler (Enter/Space). Add `cursor-pointer hover:border-blue-300 hover:shadow-sm transition` to the card classes. The external-link `<a>` already calls `stopPropagation`; the button will also `stopPropagation` (though its action is the same nav, so this just avoids double-navigation).
+Why only Reviewing shows a toast:
+- `handlePursuitStatusChange` in `src/components/project-workspace/ProjectWorkspace.tsx` does optimistic update + revert on error and always toasts. The toast does fire for Pursuing/Passed too, but the optimistic state also snaps back to the previously persisted value (`submitted`), so visually the dropdown "switches back to Submitted." Reviewing is the case the user paused on long enough to notice the toast. The underlying failure is identical for all three.
 
-### 4. Prominent Estimated Value
-Restructure the meta block so order under the portal pill is:
+Additionally, default column value is `'active'` — also not in the UI vocabulary, so new rows are out of sync as well (41 rows currently `active`, 1 `submitted`).
 
-```text
-PLANETBIDS                          ← existing pill
-$9.1M                               ← NEW: text-2xl font-bold text-foreground
-Bid Due: 06/24/2026 at 2:00 PM PDT  ← existing, unchanged
-Source: Long Beach Unified ...      ← existing, unchanged
-```
+### Files Involved
+- `src/components/project-workspace/ProjectWorkspace.tsx` — UI options: reviewing / pursuing / passed / submitted.
+- DB constraint `projects_pursuit_status_check` defined in an older migration.
 
-Only render the large value line when `formatEstimatedValue(candidate.crawl_data)` returns a value. Remove the old "Estimated Value: $X" line from the meta paragraph block.
+### Proposed Fix (single migration, no UI change)
 
-## Out of scope
-- No DB or business-logic changes.
-- No changes to `/opportunities/:id` routing target — already exists and handles all lifecycle states.
-- No changes to other pages.
+Bring the database in line with the new four-state UI vocabulary, which is what the product currently expects.
 
-## Verification
-- TS/build passes.
-- Visual check: All cards show identical light-blue "View Project" button; only converted ones display the small "On Calendar" marker; clicking anywhere on the card navigates; cards with estimated value show it large above bid due.
+1. **Migration** `20260629000001_align_pursuit_status_vocabulary.sql`:
+   - Drop constraint `projects_pursuit_status_check`.
+   - Backfill existing rows:
+     - `active` → `reviewing`
+     - `won`, `lost`, `archived` (if any appear later) → `passed`
+     - `submitted` → unchanged.
+   - Re-add constraint:
+     ```sql
+     ALTER TABLE public.projects
+       ADD CONSTRAINT projects_pursuit_status_check
+       CHECK (pursuit_status = ANY (ARRAY['reviewing','pursuing','passed','submitted']));
+     ```
+   - Change column default to `'reviewing'`.
+
+2. **Hardening (optional, same migration)**: also ensure `pursuit_status` is `NOT NULL` and set any stray NULLs to `reviewing`.
+
+3. **Verification**:
+   - `SELECT pursuit_status, count(*) FROM projects GROUP BY 1;` shows only the four allowed values.
+   - In-app: switch between Reviewing / Pursuing / Passed / Submitted on the workspace header — each persists, no toast, `pursuit_status_updated_at` updates.
+
+4. **No code changes** required in `ProjectWorkspace.tsx`; existing optimistic update + toast logic is correct once the DB accepts the values.
+
+### Out of Scope
+- `project_lifecycle_status` is a separate column with its own vocabulary and is unaffected.
+- No RLS / policy changes — existing update policy already covers this column.
