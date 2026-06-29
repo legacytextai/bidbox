@@ -813,10 +813,21 @@ const Opportunities = () => {
           )}
 
           {/* Meta */}
-          <div className="text-sm text-muted-foreground space-y-0.5">
-            <p>Bid Due: {formatBidDate(candidate.bid_due_at)}</p>
+          <div className="space-y-1">
+            <p className="text-sm text-foreground font-medium">
+              Bid Due: {formatBidDate(candidate.bid_due_at)}
+            </p>
+            {(() => {
+              const countdown = daysUntilBidDue(candidate.bid_due_at);
+              if (!countdown) return null;
+              return (
+                <p className={`text-center text-lg font-semibold ${countdown.colorClass}`}>
+                  {countdown.text}
+                </p>
+              );
+            })()}
             {candidate.source_name && (
-              <p className="text-xs">Source: {candidate.source_name}</p>
+              <p className="text-xs text-muted-foreground">Source: {candidate.source_name}</p>
             )}
           </div>
         </div>
