@@ -7,7 +7,6 @@ import { Plus, Copy, CheckCircle2, Lock } from "lucide-react";
 import { Layout } from "@/components/Layout";
 import { formatInProjectTimezone } from "@/lib/timezoneUtils";
 import { useSubscription } from "@/hooks/useSubscription";
-import { getProjectDisplayStatus } from "@/lib/projectStatus";
 import { ENFORCE_FREE_PROJECT_LIMIT, FREE_PROJECT_LIMIT } from "@/lib/featureFlags";
 
 
@@ -244,18 +243,21 @@ const Projects = () => {
                       </span>
                     </div>
                     {(() => {
-                      const displayStatus = getProjectDisplayStatus(project);
+                      const status = project.pursuit_status ?? "";
+                      const label = status.charAt(0).toUpperCase() + status.slice(1);
+                      const className =
+                        status === "pursuing"
+                          ? "bg-green-500/10 text-green-600"
+                          : status === "passed"
+                          ? "bg-destructive/10 text-destructive"
+                          : status === "reviewing"
+                          ? "bg-gray-500/10 text-gray-600"
+                          : status === "submitted"
+                          ? "bg-blue-500/10 text-blue-600"
+                          : "bg-gray-500/10 text-gray-600";
                       return (
-                        <span
-                          className={`px-2 py-1 text-xs font-medium rounded ${
-                            displayStatus.color === 'green'
-                              ? "bg-green-500/10 text-green-600"
-                              : displayStatus.color === 'red'
-                              ? "bg-destructive/10 text-destructive"
-                              : "bg-gray-500/10 text-gray-600"
-                          }`}
-                        >
-                          {displayStatus.label}
+                        <span className={`px-2 py-1 text-xs font-medium rounded ${className}`}>
+                          {label || "—"}
                         </span>
                       );
                     })()}
