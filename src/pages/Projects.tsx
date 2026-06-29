@@ -186,13 +186,19 @@ const Projects = () => {
         </div>
       ) : (
         <div className="p-8">
-          <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center justify-between mb-8 gap-4">
             <h1 className="text-3xl font-bold text-foreground">My Projects</h1>
-            {ENFORCE_FREE_PROJECT_LIMIT && !isSubscribed && (
-              <p className="text-sm text-muted-foreground">
-                {projects.length}/{FREE_PROJECT_LIMIT} free projects used
-              </p>
-            )}
+            <div className="flex items-center gap-3">
+              {ENFORCE_FREE_PROJECT_LIMIT && !isSubscribed && (
+                <p className="text-sm text-muted-foreground">
+                  {projects.length}/{FREE_PROJECT_LIMIT} free projects used
+                </p>
+              )}
+              <Button onClick={handleNewProject} size="sm" variant="outline" className="gap-1.5">
+                {isOverLimit ? <Lock className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                New Project
+              </Button>
+            </div>
           </div>
 
           {/* Tab navigation — identical to OpportunityReport / ProjectWorkspace */}
