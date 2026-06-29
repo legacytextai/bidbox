@@ -181,9 +181,30 @@ const Projects = () => {
               </p>
             )}
           </div>
-          
+
+          {/* Tab navigation — identical to OpportunityReport / ProjectWorkspace */}
+          <div className="flex border-b border-border mb-8 gap-0">
+            {TABS.map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === tab.key
+                    ? "border-foreground text-foreground"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {filteredProjects.length === 0 && (
+            <p className="text-sm text-muted-foreground mb-6">No projects in this tab.</p>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {projects.map((project) => {
+            {filteredProjects.map((project) => {
               const tz = project.timezone || "America/Los_Angeles";
               const countdown = daysUntilBidDue(project.bid_due_at, tz);
               return (
