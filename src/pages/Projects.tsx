@@ -319,32 +319,6 @@ const Projects = () => {
               );
             })}
 
-            
-            <div
-              onClick={handleNewProject}
-              className={`bg-card border-2 border-dashed rounded-lg p-6 transition-all cursor-pointer flex flex-col items-center justify-center min-h-[200px] ${
-                canCreateProject
-                  ? "border-border hover:border-[hsl(var(--bidbox-blue))] hover:bg-accent/5"
-                  : "border-border hover:border-[hsl(var(--bidbox-blue))] hover:bg-accent/5"
-              }`}
-            >
-              {isOverLimit ? (
-                <>
-                  <Lock className="h-12 w-12 text-[hsl(var(--bidbox-blue))] mb-2" />
-                  <p className="text-lg font-semibold text-[hsl(var(--bidbox-blue))]">
-                    Upgrade to Add More
-                  </p>
-                  <p className="text-sm text-[hsl(var(--bidbox-blue))] text-center mt-1">
-                    Free plan limited to {FREE_PROJECT_LIMIT} projects
-                  </p>
-                </>
-              ) : (
-                <>
-                  <Plus className="h-12 w-12 text-[hsl(var(--bidbox-blue))] mb-2" />
-                  <p className="text-lg font-semibold text-foreground">New Project</p>
-                </>
-              )}
-            </div>
           </div>
         </div>
       )}
