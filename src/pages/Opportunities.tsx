@@ -162,16 +162,16 @@ const NO_VALUE_SENTINEL = "__none__";
 
 const PT_TZ = "America/Los_Angeles";
 
-type DateFilter = "all" | "this_week" | "this_month";
+type SortKey = "due_asc" | "due_desc" | "added_desc" | "added_asc";
 
-const DATE_FILTERS: { label: string; value: DateFilter }[] = [
-  { label: "All Dates", value: "all" },
-  { label: "This Week", value: "this_week" },
-  { label: "This Month", value: "this_month" },
+const SORT_OPTIONS: { label: string; value: SortKey }[] = [
+  { label: "Bid Due (Soonest First)", value: "due_asc" },
+  { label: "Bid Due (Latest First)", value: "due_desc" },
+  { label: "Recently Added", value: "added_desc" },
+  { label: "Oldest Added", value: "added_asc" },
 ];
 
-function matchesDateFilter(iso: string | null, df: DateFilter): boolean {
-  if (df === "all") return true;
+function _unusedDateFilterPlaceholder(iso: string | null): boolean {
   if (!iso) return false;
   const d = new Date(iso);
   if (isNaN(d.getTime())) return false;
