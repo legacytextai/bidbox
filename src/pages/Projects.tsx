@@ -109,7 +109,8 @@ const Projects = () => {
         bid_due_at,
         public_token,
         timezone,
-        is_ready_to_bid
+        is_ready_to_bid,
+        pursuit_status
       `)
       .order("bid_due_at", { ascending: true });
 
