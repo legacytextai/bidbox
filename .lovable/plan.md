@@ -1,29 +1,45 @@
-## Fix Today Bucket Visibility on Opportunities Page
+## Goal
+Simplify Opportunity cards: one universal "View Project" CTA, subtle "On Calendar" indicator, full-card clickability, and a more prominent Estimated Value above the bid due date.
 
-### Problem
-1. The `getBucket()` function treats any bid whose time has already passed today as "overdue" instead of "today". A bid due at 9 AM today shows in Overdue when it is now 3 PM.
-2. Empty buckets are skipped entirely (`if (items.length === 0) return null`), so users never see a "Due Today" section when there are no bids due today — making it unclear whether the section is missing due to a bug or simply empty.
+## Changes (scope: `src/pages/Opportunities.tsx` only)
 
-### Changes
+### 1. Single, unified CTA
+Replace the 4 conditional buttons (View Intelligence Report orange, Retry Analysis blue, View Analysis Progress, View Opportunity) with **one** button on every card:
 
-**File:** `src/pages/Opportunities.tsx`
+- Label: **View Project**
+- Style: faint light-blue — `bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-100` (no icon, no orange, no outline variants)
+- All cards navigate to `/opportunities/:id` (the report/workspace already handles state — queued, analyzing, ready, failed, converted — so a single destination is safe). Converted candidates still resolve through that route's existing redirect to the linked project.
 
-#### 1. Update `getBucket()` logic
-- Define "overdue" as strictly **before today's calendar date** in PT (yesterday or earlier).
-- Define "today" as any bid whose **calendar date equals today** in PT, regardless of whether the clock time has passed.
-- All downstream week/month buckets remain unchanged.
+### 2. "Added to Calendar" indicator (subtle but recognizable)
+For candidates where `status === "converted"` and `converted_project_id` is present, add a small inline marker next to the title:
 
-#### 2. Always render "Due Today" and "This Week" buckets
-- Remove the `items.length === 0` early-return for the `today` and `this_week` buckets.
-- Show a count badge with `(0)` when empty.
-- Render a small placeholder line (e.g., "—") inside the collapsible content when the bucket is empty, so the user can confirm at a glance there is nothing due.
-- Other buckets (`overdue`, `next_week`, `later_this_month`, `next_month`, `future`, `no_date`) continue to be hidden when empty to avoid clutter.
+```text
+┌ Calendar (lucide) icon, 12px, muted blue (`text-blue-600`)
+└ tiny label "On Calendar" — `text-[10px] uppercase tracking-wide font-medium text-blue-600`
+```
 
-### Technical Details
-- Uses existing `toZonedTime` and `PT_TZ = "America/Los_Angeles"` utilities.
-- No new dependencies or UI components.
-- Minimal surface area: ~15 lines changed in `getBucket()` and the render loop.
+Placement: directly under the agency line, before the portal pill. No pill background, no border — just icon + tiny label. Keeps cards clean while making converted ones instantly scannable.
 
-### Out of Scope
-- No changes to filters, sorting, or card rendering.
-- No changes to bucket labels or collapsible open/close defaults.
+### 3. Full-card click
+Wrap the card `<div>` with `role="button"`, `tabIndex={0}`, `onClick={() => navigate(\`/opportunities/${candidate.id}\`)}`, plus keyboard handler (Enter/Space). Add `cursor-pointer hover:border-blue-300 hover:shadow-sm transition` to the card classes. The external-link `<a>` already calls `stopPropagation`; the button will also `stopPropagation` (though its action is the same nav, so this just avoids double-navigation).
+
+### 4. Prominent Estimated Value
+Restructure the meta block so order under the portal pill is:
+
+```text
+PLANETBIDS                          ← existing pill
+$9.1M                               ← NEW: text-2xl font-bold text-foreground
+Bid Due: 06/24/2026 at 2:00 PM PDT  ← existing, unchanged
+Source: Long Beach Unified ...      ← existing, unchanged
+```
+
+Only render the large value line when `formatEstimatedValue(candidate.crawl_data)` returns a value. Remove the old "Estimated Value: $X" line from the meta paragraph block.
+
+## Out of scope
+- No DB or business-logic changes.
+- No changes to `/opportunities/:id` routing target — already exists and handles all lifecycle states.
+- No changes to other pages.
+
+## Verification
+- TS/build passes.
+- Visual check: All cards show identical light-blue "View Project" button; only converted ones display the small "On Calendar" marker; clicking anywhere on the card navigates; cards with estimated value show it large above bid due.
