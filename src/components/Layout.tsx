@@ -14,7 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Menu, FolderOpen, Settings, LogOut } from "lucide-react";
+import { Menu, Settings, LogOut } from "lucide-react";
 import { SidebarProvider, useSidebar } from "@/components/ui/sidebar";
 import AppSidebar from "@/components/SidebarNav";
 
@@ -75,12 +75,6 @@ const AuthButtons = () => {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56 bg-card">
-          <DropdownMenuItem asChild>
-            <Link to="/projects" className="flex items-center cursor-pointer">
-              <FolderOpen className="mr-2 h-4 w-4" />
-              Projects
-            </Link>
-          </DropdownMenuItem>
           <DropdownMenuItem asChild>
             <Link to="/settings" className="flex items-center cursor-pointer">
               <Settings className="mr-2 h-4 w-4" />
