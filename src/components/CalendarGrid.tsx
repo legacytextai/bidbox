@@ -26,6 +26,7 @@ interface Project {
   bid_due_at: string;
   job_walk_at: string | null;
   is_ready_to_bid: boolean;
+  pursuit_status?: string | null;
 }
 
 interface CalendarEvent {
@@ -36,6 +37,7 @@ interface CalendarEvent {
   type: 'bid_due' | 'job_walk';
   datetime: string;
   isReadyToBid: boolean;
+  pursuitStatus: string;
 }
 
 interface CalendarGridProps {
