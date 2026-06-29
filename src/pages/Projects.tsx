@@ -22,11 +22,14 @@ interface Project {
   submission_count?: number;
 }
 
-function formatBidDateTime(iso: string | null, timezone: string): string {
-  if (!iso) return "—";
+function formatBidDateParts(iso: string | null, timezone: string): { date: string; time: string } | null {
+  if (!iso) return null;
   const d = new Date(iso);
-  if (isNaN(d.getTime())) return "—";
-  return formatInProjectTimezone(d.toISOString(), timezone, "MM/dd/yyyy 'at' h:mm a zzz");
+  if (isNaN(d.getTime())) return null;
+  return {
+    date: formatInProjectTimezone(d.toISOString(), timezone, "MM/dd/yyyy"),
+    time: formatInProjectTimezone(d.toISOString(), timezone, "h:mm a zzz"),
+  };
 }
 
 function daysUntilBidDue(iso: string | null, timezone: string): { text: string; colorClass: string; bgClass: string } | null {
@@ -213,16 +216,28 @@ const Projects = () => {
                 </div>
 
                 {/* Bid due + countdown — anchored above CTA */}
-                <div className="flex items-center gap-2 mb-3">
-                  <p className="text-sm text-foreground font-medium">
-                    Bid Due: {formatBidDateTime(project.bid_due_at, tz)}
-                  </p>
-                  {countdown && (
-                    <span className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full ${countdown.bgClass} ${countdown.colorClass}`}>
-                      {countdown.text}
-                    </span>
-                  )}
-                </div>
+                {(() => {
+                  const parts = formatBidDateParts(project.bid_due_at, tz);
+                  return (
+                    <div className="mb-3">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm text-foreground font-medium">
+                          Bid Due: {parts?.date ?? "—"}
+                        </p>
+                        {countdown && (
+                          <span className={`inline-block whitespace-nowrap text-[10px] font-semibold px-2 py-0.5 rounded-full ${countdown.bgClass} ${countdown.colorClass}`}>
+                            {countdown.text}
+                          </span>
+                        )}
+                      </div>
+                      {parts?.time && (
+                        <p className="text-sm text-muted-foreground">
+                          Time: {parts.time}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 <Button
                   variant="outline"
