@@ -66,6 +66,7 @@ function StatusIcon({ status }: { status: TaskStatus }) {
 
 export function ActiveScansPanel({ taskIds, onDismiss, isQueuing = false }: Props) {
   const [tasks, setTasks] = useState<ScanTask[]>([]);
+  const [expanded, setExpanded] = useState(false);
 
   // Initial fetch
   useEffect(() => {
