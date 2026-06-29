@@ -116,8 +116,20 @@ function formatBidDate(iso: string | null): string {
   return formatInProjectTimezone(
     d.toISOString(),
     "America/Los_Angeles",
-    "MM/dd/yyyy 'at' h:mm a zzz"
+    "MM/dd/yyyy"
   );
+}
+
+function daysUntilBidDue(iso: string | null): { text: string; colorClass: string } | null {
+  if (!iso) return null;
+  const due = new Date(iso);
+  if (isNaN(due.getTime())) return null;
+  const now = Date.now();
+  if (due.getTime() <= now) return { text: "Closed", colorClass: "text-muted-foreground" };
+  const days = Math.ceil((due.getTime() - now) / (1000 * 60 * 60 * 24));
+  if (days <= 3) return { text: `${days} day${days === 1 ? "" : "s"}`, colorClass: "text-red-600" };
+  if (days <= 7) return { text: `${days} days`, colorClass: "text-amber-500" };
+  return { text: `${days} days`, colorClass: "text-green-600" };
 }
 
 function formatEstimatedValue(crawlData: any): string | null {
@@ -801,10 +813,21 @@ const Opportunities = () => {
           )}
 
           {/* Meta */}
-          <div className="text-sm text-muted-foreground space-y-0.5">
-            <p>Bid Due: {formatBidDate(candidate.bid_due_at)}</p>
+          <div className="space-y-1">
+            <p className="text-sm text-foreground font-medium">
+              Bid Due: {formatBidDate(candidate.bid_due_at)}
+            </p>
+            {(() => {
+              const countdown = daysUntilBidDue(candidate.bid_due_at);
+              if (!countdown) return null;
+              return (
+                <p className={`text-center text-lg font-semibold ${countdown.colorClass}`}>
+                  {countdown.text}
+                </p>
+              );
+            })()}
             {candidate.source_name && (
-              <p className="text-xs">Source: {candidate.source_name}</p>
+              <p className="text-xs text-muted-foreground">Source: {candidate.source_name}</p>
             )}
           </div>
         </div>
