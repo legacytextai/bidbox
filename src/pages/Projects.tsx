@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Copy, CheckCircle2, Lock } from "lucide-react";
 import { Layout } from "@/components/Layout";
-import { formatProjectDateTime } from "@/lib/timezoneUtils";
+import { formatInProjectTimezone } from "@/lib/timezoneUtils";
 import { useSubscription } from "@/hooks/useSubscription";
 import { getProjectDisplayStatus } from "@/lib/projectStatus";
 import { ENFORCE_FREE_PROJECT_LIMIT, FREE_PROJECT_LIMIT } from "@/lib/featureFlags";
