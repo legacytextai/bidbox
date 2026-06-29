@@ -749,64 +749,67 @@ const Opportunities = () => {
         }}
         className="bg-card border border-border rounded-lg p-6 flex flex-col gap-3 cursor-pointer hover:border-blue-300 hover:shadow-sm transition focus:outline-none focus:ring-2 focus:ring-blue-300"
       >
-        {/* Title + external link */}
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-base text-foreground leading-snug">
-              {candidate.raw_title ?? "Untitled Opportunity"}
-            </h3>
-            {candidate.agency && (
-              <p className="mt-2 flex items-center gap-1.5 text-sm font-medium text-foreground">
-                <Building2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                {candidate.agency}
-              </p>
-            )}
-            {onCalendar && (
-              <p className="mt-1.5 flex items-center gap-1 text-[10px] uppercase tracking-wide font-medium text-blue-600">
-                <CalendarCheck2 className="h-3 w-3 shrink-0" />
-                On Calendar
-              </p>
-            )}
-          </div>
-          <a
-            href={candidate.source_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            className="shrink-0 text-muted-foreground hover:text-foreground"
-            title="Open source page"
-          >
-            <ExternalLink className="h-4 w-4" />
-          </a>
-        </div>
-
-        {/* Portal pill */}
-        {candidate.portal_type && (
-          <div className="flex items-center gap-2 flex-wrap">
-            <span
-              className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${
-                PORTAL_STYLES[candidate.portal_type] ?? "bg-gray-500/10 text-gray-600"
-              }`}
+        {/* Top content — grows to push button to bottom */}
+        <div className="flex-1 flex flex-col gap-3">
+          {/* Title + external link */}
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex-1 min-w-0">
+              <h3 className="font-semibold text-base text-foreground leading-snug">
+                {candidate.raw_title ?? "Untitled Opportunity"}
+              </h3>
+              {candidate.agency && (
+                <p className="mt-2 flex items-center gap-1.5 text-sm font-medium text-foreground">
+                  <Building2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  {candidate.agency}
+                </p>
+              )}
+              {onCalendar && (
+                <p className="mt-1.5 flex items-center gap-1 text-[10px] uppercase tracking-wide font-medium text-blue-600">
+                  <CalendarCheck2 className="h-3 w-3 shrink-0" />
+                  On Calendar
+                </p>
+              )}
+            </div>
+            <a
+              href={candidate.source_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="shrink-0 text-muted-foreground hover:text-foreground"
+              title="Open source page"
             >
-              {candidate.portal_type}
-            </span>
+              <ExternalLink className="h-4 w-4" />
+            </a>
           </div>
-        )}
 
-        {/* Estimated value — prominent */}
-        {estimatedValue && (
-          <p className="text-2xl font-bold text-foreground leading-none">{estimatedValue}</p>
-        )}
-
-        {/* Meta */}
-        <div className="text-sm text-muted-foreground space-y-0.5">
-          <p>Bid Due: {formatBidDate(candidate.bid_due_at)}</p>
-          {candidate.source_name && (
-            <p className="text-xs">Source: {candidate.source_name}</p>
+          {/* Portal pill */}
+          {candidate.portal_type && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span
+                className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${
+                  PORTAL_STYLES[candidate.portal_type] ?? "bg-gray-500/10 text-gray-600"
+                }`}
+              >
+                {candidate.portal_type}
+              </span>
+            </div>
           )}
+
+          {/* Estimated value — prominent */}
+          {estimatedValue && (
+            <p className="text-2xl font-bold text-foreground leading-none">{estimatedValue}</p>
+          )}
+
+          {/* Meta */}
+          <div className="text-sm text-muted-foreground space-y-0.5">
+            <p>Bid Due: {formatBidDate(candidate.bid_due_at)}</p>
+            {candidate.source_name && (
+              <p className="text-xs">Source: {candidate.source_name}</p>
+            )}
+          </div>
         </div>
 
-        {/* CTA — unified */}
+        {/* CTA — unified, always at bottom */}
         <Button
           size="sm"
           onClick={(e) => {
