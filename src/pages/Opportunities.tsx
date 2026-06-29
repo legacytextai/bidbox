@@ -907,8 +907,10 @@ const Opportunities = () => {
               <div className="flex gap-2 flex-wrap">
                 {FILTERS.map((f) => {
                   const count = f.value === "all"
-                    ? candidates.length
-                    : candidates.filter(isAnalyzedCandidate).length;
+                    ? candidates.filter((c) => !isClosedCandidate(c)).length
+                    : f.value === "analyzed"
+                    ? candidates.filter((c) => !isClosedCandidate(c) && isAnalyzedCandidate(c)).length
+                    : candidates.filter(isClosedCandidate).length;
                   return (
                     <button
                       key={f.value}
