@@ -198,7 +198,14 @@ function normalizeDateTimeText(value: string | null | undefined): string | null 
 function isAffirmative(value: unknown): boolean {
   if (value === true) return true;
   if (typeof value !== "string") return false;
-  return /^(yes|true|required|mandatory)$/i.test(value.trim());
+  if (isNegative(value)) return false;
+  return /\b(yes|true|required|mandatory|must|attendance required)\b/i.test(value.trim());
+}
+
+function isNegative(value: unknown): boolean {
+  if (value === false) return true;
+  if (typeof value !== "string") return false;
+  return /\b(no|false|optional|not required|not mandatory)\b/i.test(value.trim());
 }
 
 function isBidDueFinding(finding: { field_key: string; label: string }): boolean {
@@ -361,12 +368,20 @@ export function buildOpportunityOverviewData(input: AdapterInput): OpportunityOv
       (signal) => haystack.includes(signal),
     );
   });
-  let jobWalk: string | null = normalizeDateTimeText(jobWalkFinding?.value_text);
-  if (!jobWalk) {
-    jobWalk =
-      normalizeDateTimeText(crawl?.job_walk_at) ||
-      normalizeDateTimeText(crawl?.pre_bid_meeting_at);
-  }
+  const jobWalkDate =
+    normalizeDateTimeText(jobWalkFinding?.value_text) ||
+    normalizeDateTimeText(crawl?.job_walk_at) ||
+    normalizeDateTimeText(crawl?.pre_bid_meeting_at);
+  const jobWalkDetailParts = [
+    isAffirmative(crawl?.job_walk_mandatory) || isAffirmative(crawl?.attendance_required)
+      ? "Mandatory"
+      : isNegative(crawl?.job_walk_mandatory) || isNegative(crawl?.attendance_required)
+        ? "Optional"
+        : null,
+    jobWalkDate,
+    crawl?.job_walk_location ? `Location: ${String(crawl.job_walk_location).replace(/\s+/g, " ").trim()}` : null,
+  ].filter((part): part is string => Boolean(part));
+  let jobWalk: string | null = jobWalkDetailParts.length > 0 ? jobWalkDetailParts.join(" | ") : null;
   if (!jobWalk) {
     const hasMetadataEvidence =
       isAffirmative(crawl?.pre_bid_meeting) ||

@@ -14,8 +14,9 @@ function normalizeCaltransListingUrl(listingUrl) {
 
 function parseMoney(raw) {
   if (!raw) return null;
-  const cleaned = raw.replace(/[$,]/g, '').trim();
-  const value = Number(cleaned);
+  const match = String(raw).match(/\$?\s*(\d[\d,]*(?:\.\d+)?)/);
+  if (!match) return null;
+  const value = Number(match[1].replace(/,/g, ''));
   return Number.isFinite(value) ? value : null;
 }
 
@@ -68,7 +69,7 @@ function parseCaltransCard(card) {
   const advertisedAtRaw = firstMatch(text, /Date Advertised\s+(\d{4}-\d{2}-\d{2})/);
   const bidDueRaw = firstMatch(text, /Bids Open\s+(\d{4}-\d{2}-\d{2})(?:\s+\([^)]+\))?/);
   const bidDueLabel = firstMatch(text, /(Bids Open\s+\d{4}-\d{2}-\d{2}(?:\s+\([^)]+\))?)/);
-  const estimateRaw = firstMatch(text, /Estimate:\s*([$0-9,.]+)/);
+  const estimateRaw = firstMatch(text, /Estimate:\s*([^\n]+)/);
   const estimateValue = parseMoney(estimateRaw);
   const location = firstMatch(text, /(^In\s+[^\n]+(?:\n(?!The Contractor|Subs\/Suppliers|Planholders|Bid Book|List of Bid Items|\[\d+\]|Download Files)[^\n]+)*)/m);
   const licenseRequirements = firstMatch(text, /(The Contractor must have[^\n]+)/);

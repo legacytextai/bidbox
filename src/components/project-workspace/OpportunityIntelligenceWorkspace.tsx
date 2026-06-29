@@ -362,7 +362,14 @@ const hasDocumentNameEvidence = (documents: OpportunityDocument[], keywords: str
 const isAffirmative = (value: unknown) => {
   if (value === true) return true;
   if (typeof value !== "string") return false;
-  return /^(yes|true|required|mandatory)$/i.test(value.trim());
+  if (isNegative(value)) return false;
+  return /\b(yes|true|required|mandatory|must|attendance required)\b/i.test(value.trim());
+};
+
+const isNegative = (value: unknown) => {
+  if (value === false) return true;
+  if (typeof value !== "string") return false;
+  return /\b(no|false|optional|not required|not mandatory)\b/i.test(value.trim());
 };
 
 const isCriticalRequirementFinding = (finding: IntelligenceFinding) => {
@@ -693,9 +700,22 @@ export function OpportunityIntelligenceWorkspace({
       "sign-in",
     ]);
 
-    const jobWalkValue =
+    const jobWalkDate =
       normalizeDateTimeText(getFindingValue(jobWalkFinding)) ||
       normalizeDateTimeText(jobWalkMetadata);
+    const jobWalkParts = [
+      isAffirmative(sourceOpportunity?.crawl_data?.job_walk_mandatory) ||
+      isAffirmative(sourceOpportunity?.crawl_data?.attendance_required)
+        ? "Mandatory"
+        : isNegative(sourceOpportunity?.crawl_data?.job_walk_mandatory) ||
+            isNegative(sourceOpportunity?.crawl_data?.attendance_required)
+          ? "Optional"
+          : null,
+      jobWalkDate,
+      sourceOpportunity?.crawl_data?.job_walk_location
+        ? `Location: ${String(sourceOpportunity.crawl_data.job_walk_location).replace(/\s+/g, " ").trim()}`
+        : null,
+    ].filter((part): part is string => Boolean(part));
 
     return {
       projectOverview,
@@ -718,7 +738,7 @@ export function OpportunityIntelligenceWorkspace({
       bidDue:
         bidDueResolution.display || "Not available",
       jobWalk:
-        normalizeDateTimeText(jobWalkValue) ||
+        (jobWalkParts.length > 0 ? jobWalkParts.join(" | ") : null) ||
         formatProjectDateTimeOrNull(project.job_walk_at) ||
         (hasJobWalkMetadata || hasJobWalkDocumentEvidence ? "Needs Review" : "Not available"),
     };

@@ -385,6 +385,7 @@ Status: ✅ COMPLETE
 
 Implementation notes:
 - PlanetBids document acquisition now attempts to open the Line Items/Bid Items tab after login and extracts visible table rows into the canonical bid item model.
+- P0 correctness follow-up: the worker now also captures PlanetBids line-item API responses triggered by the tab and normalizes common API payload shapes. This keeps native bid-item extraction from depending only on rendered table DOM.
 - Extraction is best-effort and non-blocking; failures are logged and document acquisition continues.
 - Re-analysis replaces prior portal-native PlanetBids bid items for the candidate.
 
@@ -411,9 +412,10 @@ Subtasks:
 Status: ✅ COMPLETE
 
 Implementation notes:
-- Caltrans document acquisition now extracts bid item rows from structured tables or a narrow Contractors Corner bid-items text block when present.
+- Caltrans document acquisition now expands the live Contractors Corner `Bid items (n)` panel before extraction, then reads the rendered structured table or a narrow bid-items text block when present.
 - Contract number, detail URL, and source metadata are preserved with each row.
 - Extraction/storage failures are isolated from document acquisition.
+- P0 correctness validation: live detail-page validation for Caltrans contract `11-431854` extracted 57 native rows with item number, item code, description, unit, and estimated quantity.
 
 Subtasks:
 ### 13.1. Audit Caltrans Bid Item Sources

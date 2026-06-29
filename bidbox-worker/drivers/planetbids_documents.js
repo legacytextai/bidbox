@@ -132,6 +132,35 @@ function parseEstimatedValueDetails(raw) {
   };
 }
 
+function parseBooleanSignal(value) {
+  if (value === true || value === false) return value;
+  const text = cleanText(value).toLowerCase();
+  if (!text) return null;
+  if (/\b(optional|not required|not mandatory|no|false)\b/.test(text)) return false;
+  if (/\b(mandatory|required|yes|true|must|required attendance|attendance required)\b/.test(text)) return true;
+  return null;
+}
+
+function normalizeJobWalkMetadata(raw) {
+  const dateTime = firstPresent(raw.job_walk_at, raw.pre_bid_meeting_at);
+  const details = firstPresent(raw.job_walk_details);
+  const attendanceRequired = firstPresent(raw.attendance_required);
+  const location = firstPresent(raw.job_walk_location, raw.pre_bid_meeting_location);
+  const mandatory = parseBooleanSignal(attendanceRequired) ?? parseBooleanSignal(details);
+  const exists = Boolean(dateTime || details || attendanceRequired || location || raw.pre_bid_meeting);
+
+  return {
+    job_walk_exists: exists || null,
+    job_walk_mandatory: mandatory,
+    job_walk_at: dateTime ?? null,
+    pre_bid_meeting_at: firstPresent(raw.pre_bid_meeting_at, dateTime),
+    job_walk_details: [details, location ? `Location: ${location}` : null].filter(Boolean).join(' | ') || null,
+    job_walk_location: location ?? null,
+    attendance_required: attendanceRequired ?? null,
+    pre_bid_meeting: raw.pre_bid_meeting || exists || null,
+  };
+}
+
 function normalizeManifestItem(item) {
   const a = item?.attributes ?? item ?? {};
   const filename = String(a.filename ?? a.fileName ?? a.file_name ?? a.fileTitle ?? a.file_title ?? 'document');
@@ -163,6 +192,150 @@ function normalizeManifestJson(json, bearerToken, log) {
     .map((doc) => ({ ...doc, bearer_token: bearerToken }));
   log(`Manifest returned ${docs.length} downloadable document(s)`);
   return docs;
+}
+
+function cleanText(value) {
+  return String(value ?? '').replace(/\s+/g, ' ').trim();
+}
+
+function firstPresent(...values) {
+  for (const value of values) {
+    const cleaned = cleanText(value);
+    if (cleaned) return cleaned;
+  }
+  return null;
+}
+
+function findDeepValue(value, keyPatterns, path = []) {
+  if (value === null || value === undefined || path.length > 8) return null;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = findDeepValue(item, keyPatterns, path);
+      if (found !== null && found !== undefined && cleanText(found)) return found;
+    }
+    return null;
+  }
+  if (typeof value !== 'object') return null;
+
+  for (const [key, child] of Object.entries(value)) {
+    if (keyPatterns.some((pattern) => pattern.test(key)) && cleanText(child)) return child;
+  }
+  for (const child of Object.values(value)) {
+    const found = findDeepValue(child, keyPatterns, path.concat('child'));
+    if (found !== null && found !== undefined && cleanText(found)) return found;
+  }
+  return null;
+}
+
+function findBidItemArrays(value, path = []) {
+  if (value === null || value === undefined || path.length > 8) return [];
+  if (Array.isArray(value)) {
+    const objectItems = value.filter((item) => item && typeof item === 'object' && !Array.isArray(item));
+    const itemLikeCount = objectItems.filter((item) => {
+      const source = item.attributes && typeof item.attributes === 'object' ? { ...item, ...item.attributes } : item;
+      return Boolean(firstPresent(
+        findDeepValue(source, [/description/i, /item.*name/i, /work.*description/i]),
+        source.description,
+        source.item_description,
+        source.itemDescription,
+        source.name
+      ));
+    }).length;
+    const pathHint = path.join('.').toLowerCase();
+    if (objectItems.length > 0 && itemLikeCount > 0 && (/line|item|bid/.test(pathHint) || itemLikeCount >= Math.min(2, objectItems.length))) {
+      return [objectItems];
+    }
+    return objectItems.flatMap((item, index) => findBidItemArrays(item, path.concat(String(index))));
+  }
+  if (typeof value !== 'object') return [];
+  return Object.entries(value).flatMap(([key, child]) => findBidItemArrays(child, path.concat(key)));
+}
+
+function normalizePlanetBidsApiItem(item, index) {
+  const attrs = item?.attributes && typeof item.attributes === 'object' ? item.attributes : {};
+  const source = { ...item, ...attrs };
+  const description = firstPresent(
+    source.description,
+    source.item_description,
+    source.itemDescription,
+    source.lineItemDescription,
+    source.bidItemDescription,
+    source.workDescription,
+    source.name,
+    source.title,
+    findDeepValue(source, [/description/i, /item.*name/i, /work.*description/i])
+  );
+  if (!description) return null;
+
+  return {
+    item_number: firstPresent(
+      source.item_number,
+      source.itemNumber,
+      source.lineItemNumber,
+      source.bidItemNumber,
+      source.number,
+      source.sequence,
+      source.seq,
+      findDeepValue(source, [/item.*(number|no)$/i, /^number$/i, /sequence/i])
+    ),
+    item_code: firstPresent(
+      source.item_code,
+      source.itemCode,
+      source.lineItemCode,
+      source.bidItemCode,
+      source.code,
+      findDeepValue(source, [/item.*code/i, /^code$/i])
+    ),
+    description,
+    unit_of_measure: firstPresent(
+      source.unit_of_measure,
+      source.unitOfMeasure,
+      source.uom,
+      source.unit,
+      findDeepValue(source, [/unit.*measure/i, /^uom$/i, /^unit$/i])
+    ),
+    quantity_raw: firstPresent(
+      source.quantity_raw,
+      source.quantityRaw,
+      source.quantity,
+      source.qty,
+      source.estimatedQuantity,
+      findDeepValue(source, [/quantity/i, /^qty$/i])
+    ),
+    reference: firstPresent(source.reference, source.ref, source.specSection, source.specificationSection),
+    raw_text: cleanText(JSON.stringify(source)).substring(0, 1000),
+    metadata: {
+      source_parser: 'planetbids_api_response',
+      api_index: index,
+      api_type: source.type ?? null,
+      source_id: source.id ?? null,
+    },
+  };
+}
+
+function extractPlanetBidsBidItemsFromJson(json) {
+  const arrays = findBidItemArrays(json);
+  const rows = [];
+  const seen = new Set();
+
+  for (const array of arrays) {
+    for (const item of array) {
+      const normalized = normalizePlanetBidsApiItem(item, rows.length);
+      if (!normalized) continue;
+      const key = [
+        normalized.item_number,
+        normalized.item_code,
+        normalized.description,
+        normalized.quantity_raw,
+        normalized.unit_of_measure,
+      ].map((part) => cleanText(part).toLowerCase()).join('|');
+      if (seen.has(key)) continue;
+      seen.add(key);
+      rows.push(normalized);
+    }
+  }
+
+  return rows;
 }
 
 function planetBidsAuthHeaders(bearerToken) {
@@ -656,11 +829,24 @@ async function openDocumentsTab(page, log) {
 }
 
 async function extractPlanetBidsBidItems(page, candidate, log) {
+  const bidItemResponses = [];
+  const responseListener = async (res) => {
+    try {
+      const url = res.url();
+      if (!url.includes(API_HOST) || !res.ok()) return;
+      if (!/(line|bid).{0,30}item|item.{0,30}(line|bid)/i.test(url)) return;
+      const json = await res.json().catch(() => null);
+      if (json) bidItemResponses.push({ url, json });
+    } catch (_) {}
+  };
+
+  page.on('response', responseListener);
   const lineItemsTab = page
-    .getByText(/^(Line Items|Bid Items|Bid Line Items)$/i)
+    .getByText(/^(Line Items|Bid Items|Bid Line Items|Items)$/i)
     .first();
 
-  if (!(await lineItemsTab.isVisible({ timeout: 3000 }).catch(() => false))) {
+  if (!(await lineItemsTab.isVisible({ timeout: 5000 }).catch(() => false))) {
+    page.off('response', responseListener);
     log('PlanetBids Line Items tab not visible; bid item extraction skipped');
     return [];
   }
@@ -668,7 +854,8 @@ async function extractPlanetBidsBidItems(page, candidate, log) {
   log('Opening PlanetBids Line Items tab');
   await lineItemsTab.click();
   await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(2500);
+  page.off('response', responseListener);
 
   const rows = await page.evaluate(() => {
     const clean = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
@@ -720,8 +907,38 @@ async function extractPlanetBidsBidItems(page, candidate, log) {
     return [];
   });
 
+  const apiRows = bidItemResponses.flatMap((response) => {
+    const parsed = extractPlanetBidsBidItemsFromJson(response.json);
+    return parsed.map((row) => ({
+      ...row,
+      metadata: {
+        ...(row.metadata ?? {}),
+        api_url: response.url,
+      },
+    }));
+  });
+
+  if (apiRows.length > 0) {
+    log(`PlanetBids bid item API rows discovered: ${apiRows.length}`);
+  }
+
+  const combinedRows = [];
+  const seen = new Set();
+  for (const row of [...rows, ...apiRows]) {
+    const key = [
+      row.item_number,
+      row.item_code,
+      row.description,
+      row.quantity_raw,
+      row.unit_of_measure,
+    ].map((part) => cleanText(part).toLowerCase()).join('|');
+    if (!row.description || seen.has(key)) continue;
+    seen.add(key);
+    combinedRows.push(row);
+  }
+
   const bidId = candidate.crawl_data?.bid_id ?? extractBidId(candidate.source_url);
-  const normalized = rows.map((row, index) => ({
+  const normalized = combinedRows.map((row, index) => ({
     ...row,
     source_portal: 'planetbids',
     source_opportunity_id: bidId,
@@ -782,8 +999,13 @@ async function extractPortalMetadata(page, log) {
         'Date/Time',
         'Meeting Date',
         'Meeting Time',
+        'Location',
+        'Meeting Location',
+        'Address',
+        'Venue',
         'Attendance Required',
         'Attendance Mandatory',
+        'Mandatory',
         'Meeting Type',
         'Meeting Link',
         'Additional Details',
@@ -846,7 +1068,13 @@ async function extractPortalMetadata(page, log) {
       const combinedMeetingDateTime = meetingDate && meetingTime ? `${meetingDate} ${meetingTime}` : meetingDate || meetingTime || null;
       const attendanceRequired =
         scopedField('Attendance Required') ||
-        scopedField('Attendance Mandatory');
+        scopedField('Attendance Mandatory') ||
+        scopedField('Mandatory');
+      const location =
+        scopedField('Meeting Location') ||
+        scopedField('Location') ||
+        scopedField('Address') ||
+        scopedField('Venue');
       const meetingType = scopedField('Meeting Type');
       const meetingLink = scopedField('Meeting Link');
       const additionalDetails = scopedField('Additional Details');
@@ -856,6 +1084,8 @@ async function extractPortalMetadata(page, log) {
         job_walk_at: dateTime || combinedMeetingDateTime || null,
         pre_bid_meeting_at: dateTime || combinedMeetingDateTime || null,
         job_walk_details: [section.header, meetingType, additionalDetails].filter(Boolean).join(' | ') || section.header,
+        job_walk_location: location || null,
+        pre_bid_meeting_location: location || null,
         attendance_required: attendanceRequired || null,
         meeting_type: meetingType || null,
         meeting_link: meetingLink || null,
@@ -942,6 +1172,14 @@ async function extractPortalMetadata(page, log) {
         field('Site Visit Date') ||
         null,
       pre_bid_meeting_at: preBidSection.pre_bid_meeting_at || null,
+      job_walk_location:
+        preBidSection.job_walk_location ||
+        field('Job Walk Location') ||
+        field('Pre-Bid Meeting Location') ||
+        field('Prebid Meeting Location') ||
+        field('Site Visit Location') ||
+        field('Meeting Location') ||
+        null,
       job_walk_details:
         preBidSection.job_walk_details ||
         field('Job Walk') ||
@@ -955,6 +1193,7 @@ async function extractPortalMetadata(page, log) {
         field('Attendance Required') ||
         field('Attendance Mandatory') ||
         field('Mandatory Attendance') ||
+        field('Mandatory') ||
         null,
       pre_bid_meeting: preBidSection.pre_bid_meeting || null,
       meeting_type: preBidSection.meeting_type || null,
@@ -969,6 +1208,7 @@ async function extractPortalMetadata(page, log) {
   });
 
   const estimate = parseEstimatedValueDetails(raw.estimated_value_raw);
+  const jobWalkMetadata = normalizeJobWalkMetadata(raw);
   const metadata = {
     estimated_value: estimate.estimated_value,
     estimated_value_raw: estimate.estimated_value_raw,
@@ -981,11 +1221,7 @@ async function extractPortalMetadata(page, log) {
     bid_validity: raw.bid_validity ?? null,
     delivery_dates: raw.delivery_dates ?? null,
     project_address: raw.project_address ?? null,
-    job_walk_at: raw.job_walk_at ?? null,
-    pre_bid_meeting_at: raw.pre_bid_meeting_at ?? null,
-    job_walk_details: raw.job_walk_details ?? null,
-    attendance_required: raw.attendance_required ?? null,
-    pre_bid_meeting: raw.pre_bid_meeting ?? null,
+    ...jobWalkMetadata,
     meeting_type: raw.meeting_type ?? null,
     meeting_link: raw.meeting_link ?? null,
     additional_details: raw.additional_details ?? null,
@@ -1399,7 +1635,8 @@ async function storeExtractedArchiveDocuments({ supabase, taskId, candidateId, p
 
 async function acquirePlanetBidsDocuments({ supabase, task, candidate, log }) {
   const { documents: manifestDocs, portalMetadata, bidItems = [] } = await getAuthenticatedManifest(candidate, log);
-  await mergeCandidatePortalMetadata(supabase, candidate, portalMetadata, log);
+  const updatedCrawlData = await mergeCandidatePortalMetadata(supabase, candidate, portalMetadata, log);
+  if (updatedCrawlData) candidate.crawl_data = updatedCrawlData;
   await replaceBidItemsForCandidate({
     supabase,
     candidateId: candidate.id,
@@ -1455,4 +1692,5 @@ async function acquirePlanetBidsDocuments({ supabase, task, candidate, log }) {
 module.exports = {
   acquirePlanetBidsDocuments,
   DOCUMENT_BUCKET,
+  extractPlanetBidsBidItemsFromJson,
 };

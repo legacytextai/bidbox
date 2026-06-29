@@ -131,6 +131,47 @@ function parseEstimatedValue(raw) {
   return parseEstimatedValueDetails(raw).estimated_value;
 }
 
+function cleanText(value) {
+  return String(value ?? '').replace(/\s+/g, ' ').trim();
+}
+
+function firstPresent(...values) {
+  for (const value of values) {
+    const cleaned = cleanText(value);
+    if (cleaned) return cleaned;
+  }
+  return null;
+}
+
+function parseBooleanSignal(value) {
+  if (value === true || value === false) return value;
+  const text = cleanText(value).toLowerCase();
+  if (!text) return null;
+  if (/\b(optional|not required|not mandatory|no|false)\b/.test(text)) return false;
+  if (/\b(mandatory|required|yes|true|must|required attendance|attendance required)\b/.test(text)) return true;
+  return null;
+}
+
+function normalizeJobWalkMetadata(raw) {
+  const dateTime = firstPresent(raw.section_scoped_job_walk_at, raw.job_walk_at, raw.pre_bid_meeting_at);
+  const details = firstPresent(raw.section_scoped_job_walk_details, raw.job_walk_details);
+  const attendanceRequired = firstPresent(raw.section_scoped_attendance_required, raw.attendance_required);
+  const location = firstPresent(raw.job_walk_location, raw.pre_bid_meeting_location);
+  const mandatory = parseBooleanSignal(attendanceRequired) ?? parseBooleanSignal(details);
+  const exists = Boolean(dateTime || details || attendanceRequired || location || raw.pre_bid_meeting);
+
+  return {
+    job_walk_exists: exists || null,
+    job_walk_mandatory: mandatory,
+    job_walk_at: dateTime ?? null,
+    pre_bid_meeting_at: firstPresent(raw.pre_bid_meeting_at, dateTime),
+    job_walk_details: [details, location ? `Location: ${location}` : null].filter(Boolean).join(' | ') || null,
+    job_walk_location: location ?? null,
+    attendance_required: attendanceRequired ?? null,
+    pre_bid_meeting: raw.pre_bid_meeting || exists || null,
+  };
+}
+
 function isPlanetBidsApiResponse(res) {
   return res.url().includes('api-external.prod.planetbids.com') && res.status() >= 200 && res.status() < 300;
 }
@@ -373,8 +414,13 @@ async function scrapePlanetBids(payload, log) {
                   'Date/Time',
                   'Meeting Date',
                   'Meeting Time',
+                  'Location',
+                  'Meeting Location',
+                  'Address',
+                  'Venue',
                   'Attendance Required',
                   'Attendance Mandatory',
+                  'Mandatory',
                   'Meeting Type',
                   'Meeting Link',
                   'Additional Details',
@@ -437,7 +483,13 @@ async function scrapePlanetBids(payload, log) {
                 const combinedMeetingDateTime = meetingDate && meetingTime ? `${meetingDate} ${meetingTime}` : meetingDate || meetingTime || null;
                 const attendanceRequired =
                   scopedField('Attendance Required') ||
-                  scopedField('Attendance Mandatory');
+                  scopedField('Attendance Mandatory') ||
+                  scopedField('Mandatory');
+                const location =
+                  scopedField('Meeting Location') ||
+                  scopedField('Location') ||
+                  scopedField('Address') ||
+                  scopedField('Venue');
                 const meetingType = scopedField('Meeting Type');
                 const meetingLink = scopedField('Meeting Link');
                 const additionalDetails = scopedField('Additional Details');
@@ -447,6 +499,8 @@ async function scrapePlanetBids(payload, log) {
                   job_walk_at: dateTime || combinedMeetingDateTime || null,
                   pre_bid_meeting_at: dateTime || combinedMeetingDateTime || null,
                   job_walk_details: [section.header, meetingType, additionalDetails].filter(Boolean).join(' | ') || section.header,
+                  job_walk_location: location || null,
+                  pre_bid_meeting_location: location || null,
                   attendance_required: attendanceRequired || null,
                   meeting_type: meetingType || null,
                   meeting_link: meetingLink || null,
@@ -576,6 +630,14 @@ async function scrapePlanetBids(payload, log) {
                 field('Attendance Required') ||
                 field('Attendance Mandatory') ||
                 field('Mandatory Attendance') ||
+                field('Mandatory') ||
+                null;
+              const job_walk_location =
+                field('Job Walk Location') ||
+                field('Pre-Bid Meeting Location') ||
+                field('Prebid Meeting Location') ||
+                field('Site Visit Location') ||
+                field('Meeting Location') ||
                 null;
               const preBidSection = extractPreBidSection();
 
@@ -602,6 +664,8 @@ async function scrapePlanetBids(payload, log) {
                 job_walk_at,
                 pre_bid_meeting_at: preBidSection.pre_bid_meeting_at || null,
                 job_walk_details,
+                job_walk_location: preBidSection.job_walk_location || job_walk_location,
+                pre_bid_meeting_location: preBidSection.pre_bid_meeting_location || null,
                 attendance_required,
                 pre_bid_meeting: preBidSection.pre_bid_meeting || null,
                 meeting_type: preBidSection.meeting_type || null,
@@ -629,6 +693,7 @@ async function scrapePlanetBids(payload, log) {
             }
 
             const estimate = parseEstimatedValueDetails(raw.estimated_value_raw);
+            const jobWalkMetadata = normalizeJobWalkMetadata(raw);
             const crawl_data = {
               bid_id: bidId,
               due_date_raw: raw.due_date_raw,
@@ -643,11 +708,7 @@ async function scrapePlanetBids(payload, log) {
               bid_validity: raw.bid_validity,
               delivery_dates: raw.delivery_dates,
               project_address: raw.project_address,
-              job_walk_at: raw.section_scoped_job_walk_at || raw.job_walk_at,
-              pre_bid_meeting_at: raw.pre_bid_meeting_at,
-              job_walk_details: raw.section_scoped_job_walk_details || raw.job_walk_details,
-              attendance_required: raw.section_scoped_attendance_required || raw.attendance_required,
-              pre_bid_meeting: raw.pre_bid_meeting,
+              ...jobWalkMetadata,
               meeting_type: raw.meeting_type,
               meeting_link: raw.meeting_link,
               additional_details: raw.additional_details,

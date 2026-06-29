@@ -4,6 +4,49 @@ All notable changes to the BidBox project are documented in this file.
 
 ---
 
+## P0 Data Correctness — Portal Data Extraction Repair
+
+### Bid Items
+- Fixed Caltrans native bid-item extraction by expanding the real Contractors
+  Corner `Bid items (n)` panel before parsing. The live portal uses a
+  `panel-heading` div, not a button/link, so the previous worker could finish
+  acquisition without reading the rendered bid-item table.
+- Hardened PlanetBids native bid-item extraction by capturing line-item API
+  responses after opening the Line Items/Bid Items tab and normalizing common
+  API shapes in addition to visible table rows.
+- Kept persistence through the existing `opportunity_bid_items` replacement
+  path; no schema changes.
+
+### Job Walk / Pre-Bid
+- Fixed worker metadata preservation so final acquisition status updates do not
+  overwrite richer portal metadata extracted earlier in the same run.
+- Normalized PlanetBids pre-bid/job-walk metadata into `job_walk_exists`,
+  `job_walk_mandatory`, `job_walk_at`, `job_walk_location`,
+  `attendance_required`, and `job_walk_details`.
+- Updated existing Project Snapshot adapters to display mandatory/optional
+  status, date/time, and location from structured metadata instead of falling
+  back to "Needs Review" when the source is explicit.
+
+### Caltrans Engineer's Estimate
+- Strengthened deterministic Caltrans estimate parsing on both listing cards
+  and detail pages. The parser now reads the full `Estimate:` label value and
+  derives `estimated_value` / `engineer_estimate` without relying on AI output.
+
+### Validation
+- `npm run build` passes.
+- Worker syntax checks pass for PlanetBids and Caltrans drivers.
+- Parser smoke tests pass for PlanetBids API-shaped bid items and Caltrans
+  estimate extraction.
+- Live Caltrans validation on 2026-06-29 found 11 active advertisements and
+  parsed structured estimates for multiple contracts, including `04-1W7104`,
+  `03-2J9804`, `08-1P6004`, `11-431854`, and `04-0W1404`.
+- Live Caltrans detail validation for `11-431854` extracted 57 native bid-item
+  rows from the Bid Items panel.
+- Full live PlanetBids acquisition validation requires Browserbase and
+  PlanetBids credentials, which were not present in the local shell.
+
+---
+
 ## F5 Phase 4 — Project Workspace Refactor + Bid Readiness Foundation (M1)
 
 ### Refactor — Modular Project Workspace

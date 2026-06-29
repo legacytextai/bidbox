@@ -81,7 +81,9 @@ function firstMatch(text, regex) {
 
 function parseMoney(raw) {
   if (!raw) return null;
-  const value = Number(String(raw).replace(/[$,]/g, '').trim());
+  const match = String(raw).match(/\$?\s*(\d[\d,]*(?:\.\d+)?)/);
+  if (!match) return null;
+  const value = Number(match[1].replace(/,/g, '').trim());
   return Number.isFinite(value) ? value : null;
 }
 
@@ -220,6 +222,46 @@ async function waitForDetailPage(page) {
   await page.waitForTimeout(1500);
 }
 
+async function expandCaltransBidItems(page, log) {
+  log('Expanding Caltrans Bid Items');
+  const clicked = await page.evaluate(() => {
+    const clean = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
+    const visible = (el) => {
+      const style = window.getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0 && rect.height > 0;
+    };
+    const controls = Array.from(document.querySelectorAll('button, a, summary, [role="button"], [data-toggle="collapse"], .panel-heading, [id*="bidItems" i]'))
+      .filter((el) => visible(el) && /^Bid items?$/i.test(clean(el.textContent ?? el.getAttribute('aria-label') ?? '')));
+    const countControls = Array.from(document.querySelectorAll('.panel-heading, [id*="bidItems" i], button, a, summary, [role="button"], [data-toggle="collapse"]'))
+      .filter((el) => visible(el) && /^Bid items?\s*\(\d+\)$/i.test(clean(el.textContent ?? el.getAttribute('aria-label') ?? '')));
+
+    for (const control of [...controls, ...countControls]) {
+      control.scrollIntoView({ block: 'center', inline: 'nearest' });
+      control.click();
+      return true;
+    }
+
+    const headings = Array.from(document.querySelectorAll('h1,h2,h3,h4,h5,strong,b,span,div'))
+      .filter((el) => visible(el) && /^Bid items?$/i.test(clean(el.textContent)));
+    for (const heading of headings) {
+      const target = heading.closest('button, a, summary, [role="button"], [data-toggle="collapse"]') ?? heading;
+      target.scrollIntoView({ block: 'center', inline: 'nearest' });
+      target.click();
+      return true;
+    }
+
+    return false;
+  }).catch(() => false);
+  if (clicked) {
+    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+    await page.waitForTimeout(1000);
+  } else {
+    log('Caltrans Bid Items control not clicked; attempting extraction from current detail DOM');
+  }
+  return clicked;
+}
+
 function parseCaltransMetadataFromText(text, candidate) {
   const body = String(text ?? '').replace(/\r/g, '');
   const contractNumber = firstMatch(body, /Advertisement Details\s*\n\s*([0-9]{2}-[A-Z0-9]+)/i)
@@ -236,7 +278,7 @@ function parseCaltransMetadataFromText(text, candidate) {
   const bidDueRaw = firstMatch(body, /Bids Open\s+(\d{4}-\d{2}-\d{2})/i)
     ?? candidate.crawl_data?.bid_due_raw
     ?? null;
-  const estimateRaw = firstMatch(body, /Estimate:\s*([$0-9,.]+)/i)
+  const estimateRaw = firstMatch(body, /Estimate:\s*([^\n]+)/i)
     ?? candidate.crawl_data?.engineer_estimate_raw
     ?? candidate.crawl_data?.estimated_value_raw
     ?? null;
@@ -279,9 +321,15 @@ function parseCaltransMetadataFromText(text, candidate) {
 }
 
 async function extractCaltransBidItems(page, candidate, log) {
+  await expandCaltransBidItems(page, log);
   const items = await page.evaluate(() => {
     const clean = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
-    const tables = Array.from(document.querySelectorAll('table'));
+    const visible = (el) => {
+      const style = window.getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0 && rect.height > 0;
+    };
+    const tables = Array.from(document.querySelectorAll('table')).filter(visible);
     const candidates = [];
 
     const headerIndex = (headers, patterns) => headers.findIndex((header) => patterns.some((pattern) => pattern.test(header)));

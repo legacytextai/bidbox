@@ -716,6 +716,16 @@ async function runProjectAnalysisAcquisition(task, supabase) {
     completed_at: completedAt,
   };
 
+  const { data: latestCandidate, error: latestCandidateError } = await supabase
+    .from('opportunity_candidates')
+    .select('crawl_data')
+    .eq('id', candidate.id)
+    .maybeSingle();
+  if (latestCandidateError) {
+    log(`Latest crawl_data lookup failed before acquisition summary update: ${latestCandidateError.message}`);
+  }
+  const latestCrawlData = latestCandidate?.crawl_data ?? candidate.crawl_data ?? {};
+
   await supabase
     .from('opportunity_candidates')
     .update({
@@ -732,7 +742,7 @@ async function runProjectAnalysisAcquisition(task, supabase) {
         : 'processing_documents',
       opportunity_intelligence_error: userFacingAcquisitionError,
       crawl_data: {
-        ...(candidate.crawl_data ?? {}),
+        ...latestCrawlData,
         acquisition_summary: acquisitionSummary,
       },
     })
