@@ -107,10 +107,12 @@ export type Database = {
           id: string
           payload: Json
           priority: number
+          refresh_window: string | null
           result: Json | null
           started_at: string | null
           status: string
           task_type: string
+          trigger_reason: string | null
           updated_at: string
         }
         Insert: {
@@ -120,10 +122,12 @@ export type Database = {
           id?: string
           payload?: Json
           priority?: number
+          refresh_window?: string | null
           result?: Json | null
           started_at?: string | null
           status?: string
           task_type: string
+          trigger_reason?: string | null
           updated_at?: string
         }
         Update: {
@@ -133,11 +137,31 @@ export type Database = {
           id?: string
           payload?: Json
           priority?: number
+          refresh_window?: string | null
           result?: Json | null
           started_at?: string | null
           status?: string
           task_type?: string
+          trigger_reason?: string | null
           updated_at?: string
+        }
+        Relationships: []
+      }
+      app_settings: {
+        Row: {
+          key: string
+          updated_at: string
+          value: Json
+        }
+        Insert: {
+          key: string
+          updated_at?: string
+          value?: Json
+        }
+        Update: {
+          key?: string
+          updated_at?: string
+          value?: Json
         }
         Relationships: []
       }
@@ -355,6 +379,105 @@ export type Database = {
         }
         Relationships: []
       }
+      opportunity_bid_items: {
+        Row: {
+          created_at: string
+          description: string
+          extracted_at: string
+          extraction_method: string
+          extraction_status: string
+          id: string
+          item_code: string | null
+          item_number: string | null
+          metadata: Json
+          opportunity_candidate_id: string
+          opportunity_document_id: string | null
+          quantity: number | null
+          quantity_raw: string | null
+          raw_text: string | null
+          reference: string | null
+          section_name: string | null
+          section_number: string | null
+          source_opportunity_id: string | null
+          source_order: number
+          source_portal: string | null
+          source_url: string | null
+          unit_of_measure: string | null
+          unit_price: number | null
+          unit_price_raw: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description: string
+          extracted_at?: string
+          extraction_method: string
+          extraction_status?: string
+          id?: string
+          item_code?: string | null
+          item_number?: string | null
+          metadata?: Json
+          opportunity_candidate_id: string
+          opportunity_document_id?: string | null
+          quantity?: number | null
+          quantity_raw?: string | null
+          raw_text?: string | null
+          reference?: string | null
+          section_name?: string | null
+          section_number?: string | null
+          source_opportunity_id?: string | null
+          source_order?: number
+          source_portal?: string | null
+          source_url?: string | null
+          unit_of_measure?: string | null
+          unit_price?: number | null
+          unit_price_raw?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          extracted_at?: string
+          extraction_method?: string
+          extraction_status?: string
+          id?: string
+          item_code?: string | null
+          item_number?: string | null
+          metadata?: Json
+          opportunity_candidate_id?: string
+          opportunity_document_id?: string | null
+          quantity?: number | null
+          quantity_raw?: string | null
+          raw_text?: string | null
+          reference?: string | null
+          section_name?: string | null
+          section_number?: string | null
+          source_opportunity_id?: string | null
+          source_order?: number
+          source_portal?: string | null
+          source_url?: string | null
+          unit_of_measure?: string | null
+          unit_price?: number | null
+          unit_price_raw?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "opportunity_bid_items_opportunity_candidate_id_fkey"
+            columns: ["opportunity_candidate_id"]
+            isOneToOne: false
+            referencedRelation: "opportunity_candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "opportunity_bid_items_opportunity_document_id_fkey"
+            columns: ["opportunity_document_id"]
+            isOneToOne: false
+            referencedRelation: "opportunity_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       opportunity_candidates: {
         Row: {
           agency: string | null
@@ -381,6 +504,16 @@ export type Database = {
           document_processing_status: string
           id: string
           last_crawled_at: string | null
+          last_metadata_changed_at: string | null
+          last_metadata_refreshed_at: string | null
+          metadata_refresh_count: number
+          metadata_refresh_source: string | null
+          metadata_refresh_trigger: string | null
+          opportunity_intelligence_error: string | null
+          opportunity_intelligence_ready_at: string | null
+          opportunity_intelligence_status: string
+          opportunity_intelligence_task_id: string | null
+          opportunity_lifecycle_status: string
           portal_type: string | null
           qualification_score: number | null
           qualified_at: string | null
@@ -419,6 +552,16 @@ export type Database = {
           document_processing_status?: string
           id?: string
           last_crawled_at?: string | null
+          last_metadata_changed_at?: string | null
+          last_metadata_refreshed_at?: string | null
+          metadata_refresh_count?: number
+          metadata_refresh_source?: string | null
+          metadata_refresh_trigger?: string | null
+          opportunity_intelligence_error?: string | null
+          opportunity_intelligence_ready_at?: string | null
+          opportunity_intelligence_status?: string
+          opportunity_intelligence_task_id?: string | null
+          opportunity_lifecycle_status?: string
           portal_type?: string | null
           qualification_score?: number | null
           qualified_at?: string | null
@@ -457,6 +600,16 @@ export type Database = {
           document_processing_status?: string
           id?: string
           last_crawled_at?: string | null
+          last_metadata_changed_at?: string | null
+          last_metadata_refreshed_at?: string | null
+          metadata_refresh_count?: number
+          metadata_refresh_source?: string | null
+          metadata_refresh_trigger?: string | null
+          opportunity_intelligence_error?: string | null
+          opportunity_intelligence_ready_at?: string | null
+          opportunity_intelligence_status?: string
+          opportunity_intelligence_task_id?: string | null
+          opportunity_lifecycle_status?: string
           portal_type?: string | null
           qualification_score?: number | null
           qualified_at?: string | null
@@ -490,6 +643,13 @@ export type Database = {
             columns: ["converted_project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "opportunity_candidates_opportunity_intelligence_task_id_fkey"
+            columns: ["opportunity_intelligence_task_id"]
+            isOneToOne: false
+            referencedRelation: "agent_tasks"
             referencedColumns: ["id"]
           },
           {
@@ -1007,10 +1167,18 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          last_refresh_completed_at: string | null
+          last_refresh_error: string | null
+          last_refresh_failed_at: string | null
+          last_refresh_queued_at: string | null
+          last_refresh_started_at: string | null
+          last_refresh_status: string
           last_scanned_at: string | null
           listing_url: string
           name: string
           portal_type: string
+          refresh_cadence_hours: number
+          refresh_enabled: boolean
           scan_enabled: boolean
           scan_interval_hours: number
           updated_at: string
@@ -1018,10 +1186,18 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          last_refresh_completed_at?: string | null
+          last_refresh_error?: string | null
+          last_refresh_failed_at?: string | null
+          last_refresh_queued_at?: string | null
+          last_refresh_started_at?: string | null
+          last_refresh_status?: string
           last_scanned_at?: string | null
           listing_url: string
           name: string
           portal_type: string
+          refresh_cadence_hours?: number
+          refresh_enabled?: boolean
           scan_enabled?: boolean
           scan_interval_hours?: number
           updated_at?: string
@@ -1029,10 +1205,18 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          last_refresh_completed_at?: string | null
+          last_refresh_error?: string | null
+          last_refresh_failed_at?: string | null
+          last_refresh_queued_at?: string | null
+          last_refresh_started_at?: string | null
+          last_refresh_status?: string
           last_scanned_at?: string | null
           listing_url?: string
           name?: string
           portal_type?: string
+          refresh_cadence_hours?: number
+          refresh_enabled?: boolean
           scan_enabled?: boolean
           scan_interval_hours?: number
           updated_at?: string
@@ -1278,6 +1462,8 @@ export type Database = {
       }
       projects: {
         Row: {
+          added_to_calendar_at: string | null
+          added_to_calendar_by: string | null
           agency: string | null
           bid_due_at: string
           bid_due_override_at: string | null
@@ -1307,7 +1493,15 @@ export type Database = {
           opportunity_intelligence_report_id: string | null
           origin: string
           portal_type: string | null
+          project_intelligence_error: string | null
+          project_intelligence_ready_at: string | null
+          project_intelligence_status: string
+          project_intelligence_task_id: string | null
+          project_lifecycle_status: string
           public_token: string
+          pursuit_status: string
+          pursuit_status_updated_at: string | null
+          pursuit_status_updated_by: string | null
           scope_text: string | null
           source_opportunity_candidate_id: string | null
           source_url: string | null
@@ -1317,6 +1511,8 @@ export type Database = {
           view_count: number
         }
         Insert: {
+          added_to_calendar_at?: string | null
+          added_to_calendar_by?: string | null
           agency?: string | null
           bid_due_at: string
           bid_due_override_at?: string | null
@@ -1346,7 +1542,15 @@ export type Database = {
           opportunity_intelligence_report_id?: string | null
           origin?: string
           portal_type?: string | null
+          project_intelligence_error?: string | null
+          project_intelligence_ready_at?: string | null
+          project_intelligence_status?: string
+          project_intelligence_task_id?: string | null
+          project_lifecycle_status?: string
           public_token?: string
+          pursuit_status?: string
+          pursuit_status_updated_at?: string | null
+          pursuit_status_updated_by?: string | null
           scope_text?: string | null
           source_opportunity_candidate_id?: string | null
           source_url?: string | null
@@ -1356,6 +1560,8 @@ export type Database = {
           view_count?: number
         }
         Update: {
+          added_to_calendar_at?: string | null
+          added_to_calendar_by?: string | null
           agency?: string | null
           bid_due_at?: string
           bid_due_override_at?: string | null
@@ -1385,7 +1591,15 @@ export type Database = {
           opportunity_intelligence_report_id?: string | null
           origin?: string
           portal_type?: string | null
+          project_intelligence_error?: string | null
+          project_intelligence_ready_at?: string | null
+          project_intelligence_status?: string
+          project_intelligence_task_id?: string | null
+          project_lifecycle_status?: string
           public_token?: string
+          pursuit_status?: string
+          pursuit_status_updated_at?: string | null
+          pursuit_status_updated_by?: string | null
           scope_text?: string | null
           source_opportunity_candidate_id?: string | null
           source_url?: string | null
@@ -1395,6 +1609,13 @@ export type Database = {
           view_count?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "projects_added_to_calendar_by_fkey"
+            columns: ["added_to_calendar_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "projects_gc_id_fkey"
             columns: ["gc_id"]
@@ -1407,6 +1628,20 @@ export type Database = {
             columns: ["opportunity_intelligence_report_id"]
             isOneToOne: false
             referencedRelation: "opportunity_intelligence_reports"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "projects_project_intelligence_task_id_fkey"
+            columns: ["project_intelligence_task_id"]
+            isOneToOne: false
+            referencedRelation: "agent_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "projects_pursuit_status_updated_by_fkey"
+            columns: ["pursuit_status_updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
