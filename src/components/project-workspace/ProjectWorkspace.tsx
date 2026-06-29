@@ -52,10 +52,10 @@ const PURSUIT_STATUS_LABELS: Record<PursuitStatus, string> = {
 };
 
 const PURSUIT_STATUS_STYLES: Record<PursuitStatus, string> = {
-  reviewing: "bg-muted text-muted-foreground",
-  pursuing: "bg-blue-50 text-blue-700 border-blue-200",
-  passed: "bg-gray-100 text-gray-500",
-  submitted: "bg-green-50 text-green-700 border-green-200",
+  reviewing: "bg-gray-500/10 text-gray-600",
+  pursuing: "bg-green-500/10 text-green-600",
+  passed: "bg-red-500/10 text-red-600",
+  submitted: "bg-blue-500/10 text-blue-600",
 };
 
 type TabKey =
