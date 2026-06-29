@@ -83,7 +83,14 @@ interface Candidate {
 const FILTERS: { label: string; value: string }[] = [
   { label: "All", value: "all" },
   { label: "Analyzed", value: "analyzed" },
+  { label: "Closed", value: "closed" },
 ];
+
+const isClosedCandidate = (c: { bid_due_at: string | null }) => {
+  if (!c.bid_due_at) return false;
+  const t = new Date(c.bid_due_at).getTime();
+  return !isNaN(t) && t < Date.now();
+};
 
 const isAnalyzedCandidate = (c: {
   analysis_status: string;
@@ -690,7 +697,13 @@ const Opportunities = () => {
   const filtered = useMemo(
     () =>
       candidates.filter((c) => {
-        if (activeFilter === "analyzed" && !isAnalyzedCandidate(c)) return false;
+        const closed = isClosedCandidate(c);
+        if (activeFilter === "closed") {
+          if (!closed) return false;
+        } else {
+          if (closed) return false;
+          if (activeFilter === "analyzed" && !isAnalyzedCandidate(c)) return false;
+        }
         return matchesFacets(c);
       }),
     [candidates, activeFilter, matchesFacets],
@@ -894,8 +907,10 @@ const Opportunities = () => {
               <div className="flex gap-2 flex-wrap">
                 {FILTERS.map((f) => {
                   const count = f.value === "all"
-                    ? candidates.length
-                    : candidates.filter(isAnalyzedCandidate).length;
+                    ? candidates.filter((c) => !isClosedCandidate(c)).length
+                    : f.value === "analyzed"
+                    ? candidates.filter((c) => !isClosedCandidate(c) && isAnalyzedCandidate(c)).length
+                    : candidates.filter(isClosedCandidate).length;
                   return (
                     <button
                       key={f.value}
