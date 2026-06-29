@@ -826,9 +826,6 @@ const Opportunities = () => {
                 </p>
               );
             })()}
-            {candidate.source_name && (
-              <p className="text-xs text-muted-foreground">Source: {candidate.source_name}</p>
-            )}
           </div>
         </div>
 
