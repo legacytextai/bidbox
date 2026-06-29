@@ -13,6 +13,7 @@ interface Project {
   bid_due_at: string;
   job_walk_at: string | null;
   is_ready_to_bid: boolean;
+  pursuit_status: string | null;
 }
 
 const CalendarDashboard = () => {
