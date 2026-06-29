@@ -820,10 +820,18 @@ const Opportunities = () => {
             {(() => {
               const countdown = daysUntilBidDue(candidate.bid_due_at);
               if (!countdown) return null;
+              const bgMap: Record<string, string> = {
+                "text-red-600": "bg-red-50",
+                "text-amber-500": "bg-amber-50",
+                "text-green-600": "bg-green-50",
+                "text-muted-foreground": "bg-muted",
+              };
               return (
-                <p className={`text-center text-lg font-semibold ${countdown.colorClass}`}>
-                  {countdown.text}
-                </p>
+                <div className="flex justify-center">
+                  <span className={`inline-block text-xs font-semibold px-2.5 py-0.5 rounded-full ${bgMap[countdown.colorClass] ?? "bg-muted"} ${countdown.colorClass}`}>
+                    {countdown.text}
+                  </span>
+                </div>
               );
             })()}
           </div>
