@@ -1,28 +1,90 @@
-## What's happening
+## Goal
+Add subtle, sleek previous/next navigation arrows on the OpportunityReport page (`/opportunities/:id`) so the user can flip between analyzed opportunities in chronological order (by bid due date) without going back to the list.
 
-The progress bar disappeared because of two separate issues, not because the scan finished.
+## Confirmed understanding
+- Left arrow → previous opportunity (earlier bid due date)
+- Right arrow → next opportunity (later bid due date)
+- Visual style: very subtle, sleek, **not** chunky buttons. No filled background, no border-box. Just a faint chevron icon with low-opacity muted color, gentle hover (slight opacity boost + small translate-x nudge), and a circular focus ring for accessibility.
+- Placement: directly under the "Back to Opportunities" button, above the H1 title. Arrows sit at the **far left and far right edges** of the page content column, so they frame the title without crowding it.
 
-### 1. Worker has stalled (backend)
-- `agent_tasks` shows **68 `planetbids_scan` rows still `pending`**, all created at `2026-06-29 17:13:56 UTC`.
-- None have been updated since they were queued — the Railway worker has not picked up a single one.
-- The previous run (yesterday 21:58–22:22 UTC) completed all 68 sources normally, so this is a current worker outage, not a code regression.
+## Scope
+Frontend-only edit to `src/pages/OpportunityReport.tsx`. No schema, no API, no business logic changes.
 
-### 2. UI rehydration window is too short (frontend)
-- `src/pages/Opportunities.tsx` only rehydrates the `ActiveScansPanel` for scan tasks created within the **last 60 minutes** (`sinceIso = now - 1h`).
-- The scan queued at 17:13 UTC; reloading after 18:13 UTC returns zero rows from that query, so `scanActive` stays `false` and the panel is hidden — even though 68 tasks are still pending.
+## Implementation
 
-## Proposed fix
+### 1. Build the sibling list
+Inside `OpportunityReport`, add a `useEffect` that fetches a lightweight ordered list of analyzed candidate IDs the same way `Opportunities.tsx` does:
 
-**Frontend (Opportunities.tsx)**
-- Widen the rehydration lookback from 1h to **6h** so a stuck or long-running scan still surfaces the panel on reload.
-- No other UI logic changes; auto-dismiss after completion still works because it only fires once all tasks reach a terminal state.
+```ts
+const [siblingIds, setSiblingIds] = useState<string[]>([]);
 
-**Backend (worker) — separate from this code change**
-- Investigate why the Railway worker is not consuming `pending` `planetbids_scan` tasks (process down, crashed loop, env config). This is operational, not a code edit to this repo.
-- Once the worker is healthy, the 68 pending tasks will drain and the (now-visible) panel will progress to 100%.
+useEffect(() => {
+  supabase
+    .from("opportunity_candidates")
+    .select("id, bid_due_at")
+    .eq("analysis_status", "ready")          // only analyzed/ready ones
+    .order("bid_due_at", { ascending: true, nullsFirst: false })
+    .then(({ data }) => setSiblingIds((data ?? []).map(r => r.id)));
+}, []);
+```
 
-## Files touched
+Compute prev/next:
+```ts
+const idx = siblingIds.indexOf(id!);
+const prevId = idx > 0 ? siblingIds[idx - 1] : null;
+const nextId = idx >= 0 && idx < siblingIds.length - 1 ? siblingIds[idx + 1] : null;
+```
 
-- `src/pages/Opportunities.tsx` — change the `sinceIso` constant in the rehydration `useEffect` from 60 minutes to 6 hours.
+(If the current candidate isn't in the list yet — e.g. still loading — both arrows render disabled.)
 
-No schema changes, no edge function changes, no migrations.
+### 2. Render the sleek arrows
+Between the `Back to Opportunities` button (line 535–537) and the title row (line 539), insert a flex row that spans the content width:
+
+```tsx
+<div className="flex items-center justify-between mb-3">
+  <button
+    onClick={() => prevId && navigate(`/opportunities/${prevId}`)}
+    disabled={!prevId}
+    aria-label="Previous opportunity"
+    className="group inline-flex items-center gap-1.5 text-xs text-muted-foreground/60
+               hover:text-foreground transition-all disabled:opacity-20
+               disabled:cursor-not-allowed"
+  >
+    <ChevronLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
+    <span className="opacity-0 group-hover:opacity-100 transition-opacity">Previous</span>
+  </button>
+
+  <button
+    onClick={() => nextId && navigate(`/opportunities/${nextId}`)}
+    disabled={!nextId}
+    aria-label="Next opportunity"
+    className="group inline-flex items-center gap-1.5 text-xs text-muted-foreground/60
+               hover:text-foreground transition-all disabled:opacity-20
+               disabled:cursor-not-allowed"
+  >
+    <span className="opacity-0 group-hover:opacity-100 transition-opacity">Next</span>
+    <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+  </button>
+</div>
+```
+
+Design notes:
+- No border, no background — just chevron + hidden label that fades in on hover.
+- Default state is whisper-quiet (`text-muted-foreground/60`), darkens to `text-foreground` on hover.
+- Chevron nudges 2px outward on hover for tactile feel.
+- Disabled state drops to 20% opacity (still visible so user knows it's the boundary).
+
+### 3. Imports
+Add `ChevronLeft, ChevronRight` to the existing `lucide-react` import block.
+
+## Out of scope
+- No keyboard shortcuts (← / →) — can add later if desired.
+- No prefetching of neighboring reports.
+- No change to the "Back to Opportunities" button itself.
+
+## Testing
+1. Open any analyzed opportunity. Arrows render under the back button, at far left/right.
+2. Click right chevron — navigates to the next opportunity in bid-due order; URL updates; report reloads.
+3. Click left chevron — navigates to previous.
+4. On the earliest/latest opportunity, the respective arrow shows disabled at 20% opacity.
+5. Hover reveals the "Previous"/"Next" label and the chevron nudges outward.
