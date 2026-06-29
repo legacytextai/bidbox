@@ -194,10 +194,17 @@ const Projects = () => {
                   {projects.length}/{FREE_PROJECT_LIMIT} free projects used
                 </p>
               )}
-              <Button onClick={handleNewProject} size="sm" variant="outline" className="gap-1.5">
-                {isOverLimit ? <Lock className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+              <button
+                onClick={handleNewProject}
+                className="group inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors duration-200 hover:text-foreground"
+              >
+                {isOverLimit ? (
+                  <Lock className="h-4 w-4 text-bidbox-blue transition-transform duration-200 group-hover:translate-x-0.5" />
+                ) : (
+                  <Plus className="h-4 w-4 text-bidbox-blue transition-transform duration-200 group-hover:translate-x-0.5" />
+                )}
                 New Project
-              </Button>
+              </button>
             </div>
           </div>
 
