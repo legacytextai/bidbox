@@ -912,29 +912,34 @@ const Opportunities = () => {
                 })}
               </div>
               <div className="flex items-center gap-2 flex-wrap">
-                {DATE_FILTERS.map((df) => (
-                  <button
-                    key={df.value}
-                    onClick={() => setDateFilter(df.value)}
-                    className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                      dateFilter === df.value
-                        ? "bg-muted text-foreground"
-                        : "text-muted-foreground hover:bg-accent"
-                    }`}
-                  >
-                    {df.label}
-                  </button>
-                ))}
-                <FacetMultiSelect
-                  label="County"
-                  icon={<Filter className="h-3.5 w-3.5" />}
-                  options={countyOptions}
-                  hasNone={hasNoCounty}
-                  noneLabel="(No county)"
-                  value={countyFilter}
-                  onChange={setCountyFilter}
-                  searchPlaceholder="Search counties..."
-                />
+                <Popover open={sortMenuOpen} onOpenChange={setSortMenuOpen}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-9 gap-2">
+                      <Filter className="h-3.5 w-3.5" />
+                      <span>Filter</span>
+                      <ChevronDown className="h-3.5 w-3.5 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="p-1 w-[220px]" align="end">
+                    {SORT_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.value}
+                        onClick={() => {
+                          setSortKey(opt.value);
+                          setSortMenuOpen(false);
+                        }}
+                        className={`w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded-md hover:bg-accent ${
+                          sortKey === opt.value ? "text-foreground font-medium" : "text-muted-foreground"
+                        }`}
+                      >
+                        <Check
+                          className={`h-4 w-4 ${sortKey === opt.value ? "opacity-100" : "opacity-0"}`}
+                        />
+                        <span>{opt.label}</span>
+                      </button>
+                    ))}
+                  </PopoverContent>
+                </Popover>
                 <FacetMultiSelect
                   label="Agency"
                   icon={<Building2 className="h-3.5 w-3.5" />}
@@ -949,11 +954,7 @@ const Opportunities = () => {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => {
-                      setCountyFilter([]);
-                      setAgencyFilter([]);
-                      setDateFilter("all");
-                    }}
+                    onClick={() => setAgencyFilter([])}
                     className="text-sm text-muted-foreground hover:text-foreground"
                   >
                     Clear filters
