@@ -4,7 +4,7 @@ const {
   extractSupportedArchiveEntries,
   isArchiveFile,
 } = require('./archive_extraction');
-const { replaceBidItemsForCandidate } = require('./bid_items');
+const { replacePortalBidItemsForCandidate } = require('./bid_items');
 
 const DOCUMENT_BUCKET = 'opportunity-documents';
 const CALTRANS_ORIGIN = 'https://ppmoe.dot.ca.gov';
@@ -996,11 +996,10 @@ async function acquireCaltransDocuments({ supabase, task, candidate, log }) {
       log(`Caltrans bid item extraction failed: ${e.message}`);
       return [];
     });
-    await replaceBidItemsForCandidate({
+    await replacePortalBidItemsForCandidate({
       supabase,
       candidateId: candidate.id,
       items: bidItems,
-      methods: ['portal_tab'],
       defaults: {
         sourcePortal: 'caltrans',
         sourceOpportunityId: extractContractNumber(candidate),

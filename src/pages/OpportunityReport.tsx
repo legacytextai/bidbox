@@ -298,7 +298,36 @@ const OpportunityReport = () => {
       if (!text) return null;
       return formatProjectDateTimeOrNull(text) ?? text;
     };
-    const isAffirmative = (v: unknown) => v === true || (typeof v === "string" && /^(yes|true|required|mandatory)$/i.test(v.trim()));
+    const isNegative = (v: unknown) =>
+      v === false || (typeof v === "string" && /\b(no|false|optional|not required|not mandatory)\b/i.test(v.trim()));
+    const isAffirmative = (v: unknown) =>
+      v === true || (typeof v === "string" && !isNegative(v) && /\b(yes|true|required|mandatory|must|attendance required)\b/i.test(v.trim()));
+    const cleanDisplayText = (v: unknown) => String(v ?? "").replace(/\s+/g, " ").trim() || null;
+    const metadataDateTime =
+      normalizeDateTimeText(crawl?.meeting_datetime) ||
+      normalizeDateTimeText(jobWalkAt) ||
+      normalizeDateTimeText(crawl?.pre_bid_meeting_at);
+    const portalJobWalkExists =
+      isAffirmative(crawl?.pre_bid_exists) ||
+      isAffirmative(crawl?.pre_bid_meeting) ||
+      isAffirmative(crawl?.job_walk_exists) ||
+      Boolean(metadataDateTime || crawl?.meeting_link || crawl?.meeting_location || crawl?.additional_details);
+    if (portalJobWalkExists) {
+      const attendanceLabel =
+        isAffirmative(crawl?.attendance_required) || isAffirmative(crawl?.job_walk_mandatory)
+          ? "Required"
+          : isNegative(crawl?.attendance_required) || isNegative(crawl?.job_walk_mandatory)
+            ? "Optional"
+            : "Unknown";
+      const location = cleanDisplayText(crawl?.meeting_location ?? crawl?.job_walk_location) ?? (crawl?.meeting_link ? "Virtual" : "Unknown");
+      return [
+        attendanceLabel,
+        metadataDateTime?.replace(/\s+at\s+/i, "\n") ?? "Unknown",
+        location,
+        crawl?.meeting_link ? `Meeting Link: ${cleanDisplayText(crawl.meeting_link)}` : null,
+        crawl?.additional_details ? `Additional Details: ${cleanDisplayText(crawl.additional_details)}` : null,
+      ].filter(Boolean).join("\n");
+    }
     const finding = findings.find(
       (f) =>
         (f.status === "found" || f.status === "needs_review" || f.status === "conflict") &&
@@ -307,8 +336,6 @@ const OpportunityReport = () => {
     );
     const citedDisplay = normalizeDateTimeText(finding?.value_text);
     if (citedDisplay) return citedDisplay;
-    const metadataDisplay = normalizeDateTimeText(jobWalkAt) || normalizeDateTimeText(crawl?.pre_bid_meeting_at);
-    if (metadataDisplay) return metadataDisplay;
     const hasMetadataEvidence =
       isAffirmative(crawl?.pre_bid_meeting) ||
       isAffirmative(crawl?.attendance_required) ||

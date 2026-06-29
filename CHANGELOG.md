@@ -6,6 +6,22 @@ All notable changes to the BidBox project are documented in this file.
 
 ## P0 Data Correctness — Portal Data Extraction Repair
 
+### Follow-up — Portal-Authoritative Bid Items + Structured Pre-Bid Fields
+- Removed the document-derived bid item fallback from the worker. Document
+  processing and Project Intelligence no longer create bid items.
+- Portal acquisition now replaces all existing bid-item methods for the
+  targeted candidate with the native portal result set. If the portal returns
+  zero rows, BidBox stores zero rows for that candidate.
+- Opportunity dossier reads only `extraction_method = 'portal_tab'`, and the
+  UI empty state now says `No native bid items available.`
+- PlanetBids pre-bid/job-walk metadata is normalized into independent portal
+  fields: `pre_bid_exists`, `attendance_required`, `meeting_datetime`,
+  `meeting_location`, `meeting_link`, and `additional_details`.
+- Project Snapshot rendering now prefers portal pre-bid metadata over
+  intelligence findings and displays independent lines instead of an AI
+  sentence.
+- No bulk backfill or global re-acquisition was performed.
+
 ### Bid Items
 - Fixed Caltrans native bid-item extraction by expanding the real Contractors
   Corner `Bid items (n)` panel before parsing. The live portal uses a

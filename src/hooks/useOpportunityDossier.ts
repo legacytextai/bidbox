@@ -188,6 +188,7 @@ export function useOpportunityDossier(id: string | undefined): UseOpportunityDos
         .from("opportunity_bid_items")
         .select("id, item_number, item_code, description, quantity, quantity_raw, unit_of_measure, section_name, extraction_method, extraction_status, source_order")
         .eq("opportunity_candidate_id", id)
+        .eq("extraction_method", "portal_tab")
         .order("source_order", { ascending: true })
         .order("created_at", { ascending: true }),
       sb

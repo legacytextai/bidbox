@@ -25,7 +25,6 @@ export function OpportunityOverviewTab({ data }: Props) {
       data.importantRequirements.length > 0);
   const briefing = buildBriefing(data);
   const visibleBidItems = showAllBidItems ? data.bidItems : data.bidItems.slice(0, 12);
-  const hasDocumentDerivedBidItems = data.bidItems.some((item) => item.extractionMethod !== "portal_tab");
 
   return (
     <div className="space-y-5">
@@ -116,11 +115,6 @@ export function OpportunityOverviewTab({ data }: Props) {
       <OverviewSection title="Bid Items">
         {data.bidItemsAvailable ? (
           <div className="space-y-4">
-            {hasDocumentDerivedBidItems && (
-              <div className="rounded border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-900">
-                Some bid items were derived conservatively from source documents and should be reviewed against the bid package.
-              </div>
-            )}
             <div className="overflow-x-auto">
               <table className="w-full min-w-[680px] border-collapse text-sm">
                 <thead>
@@ -165,7 +159,7 @@ export function OpportunityOverviewTab({ data }: Props) {
           </div>
         ) : (
           <p className="text-sm text-muted-foreground">
-            No structured bid items were found for this opportunity.
+            No native bid items available.
           </p>
         )}
       </OverviewSection>
@@ -275,7 +269,7 @@ function SnapshotField({ label, value }: { label: string; value: string | null |
   return (
     <div>
       <dt className="text-xs text-muted-foreground mb-1">{label}</dt>
-      <dd className="text-sm font-medium text-foreground">{value ?? "N/A"}</dd>
+      <dd className="whitespace-pre-line text-sm font-medium text-foreground">{value ?? "N/A"}</dd>
     </div>
   );
 }

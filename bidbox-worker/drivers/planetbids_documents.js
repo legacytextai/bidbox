@@ -3,7 +3,7 @@ const {
   extractSupportedArchiveEntries,
   isArchiveFile,
 } = require('./archive_extraction');
-const { replaceBidItemsForCandidate } = require('./bid_items');
+const { replacePortalBidItemsForCandidate } = require('./bid_items');
 
 const DOCUMENT_BUCKET = 'opportunity-documents';
 const API_HOST = 'api-external.prod.planetbids.com';
@@ -146,18 +146,26 @@ function normalizeJobWalkMetadata(raw) {
   const details = firstPresent(raw.job_walk_details);
   const attendanceRequired = firstPresent(raw.attendance_required);
   const location = firstPresent(raw.job_walk_location, raw.pre_bid_meeting_location);
+  const link = firstPresent(raw.meeting_link);
+  const additionalDetails = firstPresent(raw.additional_details);
+  const preBidExists = parseBooleanSignal(raw.pre_bid_meeting) ?? Boolean(dateTime || details || attendanceRequired || location || link || additionalDetails);
   const mandatory = parseBooleanSignal(attendanceRequired) ?? parseBooleanSignal(details);
-  const exists = Boolean(dateTime || details || attendanceRequired || location || raw.pre_bid_meeting);
+  const exists = Boolean(preBidExists || dateTime || details || attendanceRequired || location || link || additionalDetails);
 
   return {
+    pre_bid_exists: preBidExists || null,
+    meeting_datetime: dateTime ?? null,
+    meeting_location: location ?? null,
+    meeting_link: link ?? null,
+    additional_details: additionalDetails ?? null,
     job_walk_exists: exists || null,
     job_walk_mandatory: mandatory,
     job_walk_at: dateTime ?? null,
     pre_bid_meeting_at: firstPresent(raw.pre_bid_meeting_at, dateTime),
-    job_walk_details: [details, location ? `Location: ${location}` : null].filter(Boolean).join(' | ') || null,
+    job_walk_details: [details, additionalDetails, location ? `Location: ${location}` : null].filter(Boolean).join(' | ') || null,
     job_walk_location: location ?? null,
     attendance_required: attendanceRequired ?? null,
-    pre_bid_meeting: raw.pre_bid_meeting || exists || null,
+    pre_bid_meeting: raw.pre_bid_meeting || preBidExists || null,
   };
 }
 
@@ -1172,6 +1180,12 @@ async function extractPortalMetadata(page, log) {
         field('Site Visit Date') ||
         null,
       pre_bid_meeting_at: preBidSection.pre_bid_meeting_at || null,
+      pre_bid_meeting:
+        preBidSection.pre_bid_meeting ||
+        field('Pre-Bid Meeting') ||
+        field('Prebid Meeting') ||
+        field('Job Walk') ||
+        null,
       job_walk_location:
         preBidSection.job_walk_location ||
         field('Job Walk Location') ||
@@ -1195,7 +1209,6 @@ async function extractPortalMetadata(page, log) {
         field('Mandatory Attendance') ||
         field('Mandatory') ||
         null,
-      pre_bid_meeting: preBidSection.pre_bid_meeting || null,
       meeting_type: preBidSection.meeting_type || null,
       meeting_link: preBidSection.meeting_link || null,
       additional_details: preBidSection.additional_details || null,
@@ -1637,11 +1650,10 @@ async function acquirePlanetBidsDocuments({ supabase, task, candidate, log }) {
   const { documents: manifestDocs, portalMetadata, bidItems = [] } = await getAuthenticatedManifest(candidate, log);
   const updatedCrawlData = await mergeCandidatePortalMetadata(supabase, candidate, portalMetadata, log);
   if (updatedCrawlData) candidate.crawl_data = updatedCrawlData;
-  await replaceBidItemsForCandidate({
+  await replacePortalBidItemsForCandidate({
     supabase,
     candidateId: candidate.id,
     items: bidItems,
-    methods: ['portal_tab'],
     defaults: {
       sourcePortal: 'planetbids',
       sourceOpportunityId: candidate.crawl_data?.bid_id ?? extractBidId(candidate.source_url),

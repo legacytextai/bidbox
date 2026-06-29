@@ -166,6 +166,17 @@ const normalizeDateTimeText = (value: string | null | undefined) => {
   return formatProjectDateTimeOrNull(text) ?? text;
 };
 
+const formatSnapshotDateTime = (value: string | null | undefined) => {
+  const formatted = normalizeDateTimeText(value);
+  if (!formatted) return null;
+  return formatted.replace(/\s+at\s+/i, "\n");
+};
+
+const cleanDisplayText = (value: unknown) => {
+  const text = String(value ?? "").replace(/\s+/g, " ").trim();
+  return text || null;
+};
+
 const formatCurrency = (value: unknown) => {
   if (typeof value === "number" && Number.isFinite(value)) {
     return value.toLocaleString("en-US", {
@@ -680,6 +691,7 @@ export function OpportunityIntelligenceWorkspace({
     const damagesFinding = findFirst(findings, ["liquidated damages", "damages"], ["risk_flags", "bid_requirements"]);
     const jobWalkFinding = findFirst(findings, ["job walk", "pre-bid", "prebid"], ["key_dates"]);
     const jobWalkMetadata =
+      sourceOpportunity?.crawl_data?.meeting_datetime ||
       sourceOpportunity?.crawl_data?.job_walk_at ||
       sourceOpportunity?.crawl_data?.pre_bid_meeting_at ||
       sourceOpportunity?.crawl_data?.prebid_meeting_at;
@@ -700,22 +712,44 @@ export function OpportunityIntelligenceWorkspace({
       "sign-in",
     ]);
 
-    const jobWalkDate =
-      normalizeDateTimeText(getFindingValue(jobWalkFinding)) ||
-      normalizeDateTimeText(jobWalkMetadata);
-    const jobWalkParts = [
-      isAffirmative(sourceOpportunity?.crawl_data?.job_walk_mandatory) ||
-      isAffirmative(sourceOpportunity?.crawl_data?.attendance_required)
-        ? "Mandatory"
-        : isNegative(sourceOpportunity?.crawl_data?.job_walk_mandatory) ||
-            isNegative(sourceOpportunity?.crawl_data?.attendance_required)
+    const jobWalkDate = formatSnapshotDateTime(jobWalkMetadata);
+    const portalJobWalkExists =
+      isAffirmative(sourceOpportunity?.crawl_data?.pre_bid_exists) ||
+      isAffirmative(sourceOpportunity?.crawl_data?.pre_bid_meeting) ||
+      isAffirmative(sourceOpportunity?.crawl_data?.job_walk_exists) ||
+      Boolean(
+        jobWalkDate ||
+          sourceOpportunity?.crawl_data?.meeting_link ||
+          sourceOpportunity?.crawl_data?.meeting_location ||
+          sourceOpportunity?.crawl_data?.additional_details,
+      );
+    const attendanceLabel =
+      isAffirmative(sourceOpportunity?.crawl_data?.attendance_required) ||
+      isAffirmative(sourceOpportunity?.crawl_data?.job_walk_mandatory)
+        ? "Required"
+        : isNegative(sourceOpportunity?.crawl_data?.attendance_required) ||
+            isNegative(sourceOpportunity?.crawl_data?.job_walk_mandatory)
           ? "Optional"
-          : null,
-      jobWalkDate,
-      sourceOpportunity?.crawl_data?.job_walk_location
-        ? `Location: ${String(sourceOpportunity.crawl_data.job_walk_location).replace(/\s+/g, " ").trim()}`
-        : null,
-    ].filter((part): part is string => Boolean(part));
+          : portalJobWalkExists
+            ? "Unknown"
+            : null;
+    const locationText = cleanDisplayText(
+      sourceOpportunity?.crawl_data?.meeting_location ?? sourceOpportunity?.crawl_data?.job_walk_location,
+    );
+    const resolvedLocation = locationText ?? (sourceOpportunity?.crawl_data?.meeting_link ? "Virtual" : null);
+    const jobWalkParts = portalJobWalkExists
+      ? [
+          attendanceLabel,
+          jobWalkDate ?? "Unknown",
+          resolvedLocation ?? "Unknown",
+          sourceOpportunity?.crawl_data?.meeting_link
+            ? `Meeting Link: ${cleanDisplayText(sourceOpportunity.crawl_data.meeting_link)}`
+            : null,
+          sourceOpportunity?.crawl_data?.additional_details
+            ? `Additional Details: ${cleanDisplayText(sourceOpportunity.crawl_data.additional_details)}`
+            : null,
+        ].filter((part): part is string => Boolean(part))
+      : [];
 
     return {
       projectOverview,
@@ -738,7 +772,8 @@ export function OpportunityIntelligenceWorkspace({
       bidDue:
         bidDueResolution.display || "Not available",
       jobWalk:
-        (jobWalkParts.length > 0 ? jobWalkParts.join(" | ") : null) ||
+        (jobWalkParts.length > 0 ? jobWalkParts.join("\n") : null) ||
+        normalizeDateTimeText(getFindingValue(jobWalkFinding)) ||
         formatProjectDateTimeOrNull(project.job_walk_at) ||
         (hasJobWalkMetadata || hasJobWalkDocumentEvidence ? "Needs Review" : "Not available"),
     };
@@ -1199,7 +1234,7 @@ export function OpportunityIntelligenceWorkspace({
           </div>
           <div className="rounded-md border border-border p-3">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">Job Walk</p>
-            <p className="font-medium">{snapshot.jobWalk}</p>
+            <p className="whitespace-pre-line font-medium">{snapshot.jobWalk}</p>
             {project.job_walk_override_at && (
               <p className="mt-1 text-xs text-[hsl(var(--bidbox-blue))]">
                 Manual Override
