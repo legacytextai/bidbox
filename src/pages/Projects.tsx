@@ -22,6 +22,30 @@ interface Project {
   submission_count?: number;
 }
 
+function formatBidDateTime(iso: string | null, timezone: string): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "—";
+  return formatInProjectTimezone(d.toISOString(), timezone, "MM/dd/yyyy 'at' h:mm a zzz");
+}
+
+function daysUntilBidDue(iso: string | null, timezone: string): { text: string; colorClass: string; bgClass: string } | null {
+  if (!iso) return null;
+  const due = new Date(iso);
+  if (isNaN(due.getTime())) return null;
+  const nowYmd = formatInProjectTimezone(new Date().toISOString(), timezone, "yyyy-MM-dd");
+  const dueYmd = formatInProjectTimezone(due.toISOString(), timezone, "yyyy-MM-dd");
+  const toUTC = (ymd: string) =>
+    Date.UTC(Number(ymd.slice(0, 4)), Number(ymd.slice(5, 7)) - 1, Number(ymd.slice(8, 10)));
+  const days = Math.round((toUTC(dueYmd) - toUTC(nowYmd)) / 86_400_000);
+  if (days < 0) return { text: "Closed", colorClass: "text-muted-foreground", bgClass: "bg-muted" };
+  if (days === 0) return { text: "Today", colorClass: "text-red-600", bgClass: "bg-red-50" };
+  if (days === 1) return { text: "Tomorrow", colorClass: "text-red-600", bgClass: "bg-red-50" };
+  if (days <= 3) return { text: `${days} days`, colorClass: "text-red-600", bgClass: "bg-red-50" };
+  if (days <= 7) return { text: `${days} days`, colorClass: "text-amber-500", bgClass: "bg-amber-50" };
+  return { text: `${days} days`, colorClass: "text-green-600", bgClass: "bg-green-50" };
+}
+
 const Projects = () => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
