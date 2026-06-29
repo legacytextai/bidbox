@@ -161,30 +161,41 @@ export function ActiveScansPanel({ taskIds, onDismiss, isQueuing = false }: Prop
   if (taskIds.length === 0 && !isQueuing) return null;
 
   return (
-    <div className="bg-card border border-border rounded-lg p-5 mb-6">
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          {allDone && !isQueuing ? (
-            <CheckCircle2 className="h-5 w-5 text-green-600" />
+    <div className="bg-card border border-border rounded-lg px-4 py-2 mb-6">
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="flex items-center gap-2 flex-1 min-w-0 text-left"
+          aria-expanded={expanded}
+        >
+          {expanded ? (
+            <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
           ) : (
-            <Loader2 className="h-5 w-5 text-[hsl(var(--bidbox-blue))] animate-spin" />
+            <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
           )}
-          <h2 className="font-semibold text-foreground">
+          {allDone && !isQueuing ? (
+            <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
+          ) : (
+            <Loader2 className="h-4 w-4 text-[hsl(var(--bidbox-blue))] animate-spin shrink-0" />
+          )}
+          <span className="text-sm font-semibold text-foreground shrink-0">
             {total === 0 && isQueuing
               ? "Scanning… queuing sources"
               : allDone && !isQueuing
-              ? `Scan Complete — ${total} sources scanned`
+              ? `Scan Complete — ${total} sources`
               : `Scanning… ${Math.min(completed + 1, total)} / ${total}`}
-          </h2>
-        </div>
-        <Button variant="ghost" size="sm" onClick={onDismiss} className="h-7 px-2">
+          </span>
+          <Progress value={percent} className="h-1.5 flex-1 ml-2" />
+        </button>
+        <Button variant="ghost" size="sm" onClick={onDismiss} className="h-7 px-2 shrink-0">
           <X className="h-4 w-4" />
         </Button>
       </div>
 
-      <Progress value={percent} className="h-2 mb-4" />
+      {expanded && (
+      <div className="max-h-48 overflow-y-auto space-y-3 mt-3">
 
-      <div className="max-h-48 overflow-y-auto space-y-3">
         {tasks.length === 0 ? (
           <p className="text-sm text-muted-foreground">Queuing tasks…</p>
         ) : (
