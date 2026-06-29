@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, XCircle, Loader2, Clock, X } from "lucide-react";
+import { CheckCircle2, XCircle, Loader2, Clock, X, ChevronDown, ChevronRight } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
