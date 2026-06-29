@@ -731,24 +731,23 @@ const Opportunities = () => {
 
 
   const renderCard = (candidate: Candidate, _index: number) => {
-    const oiStatus = resolveOIStatus(candidate);
-    const oiActive = isOIActive(oiStatus);
-    const oiFailed = oiStatus === "failed" || candidate.document_acquisition_status === "failed";
-    const acquisitionActive =
-      candidate.document_acquisition_status === "queued" ||
-      candidate.document_acquisition_status === "acquiring";
-    const bidClosed = isBidClosed(candidate.bid_due_at);
-    const retryDisabled =
-      analyzingId === candidate.id || acquisitionActive || bidClosed;
-    const retryLabel =
-      analyzingId === candidate.id
-        ? "Queueing..."
-        : "Retry Analysis";
+    const onCalendar = candidate.status === "converted" && !!candidate.converted_project_id;
+    const estimatedValue = formatEstimatedValue(candidate.crawl_data);
+    const goToOpportunity = () => navigate(`/opportunities/${candidate.id}`);
 
     return (
       <div
         key={candidate.id}
-        className="bg-card border border-border rounded-lg p-6 flex flex-col gap-3"
+        role="button"
+        tabIndex={0}
+        onClick={goToOpportunity}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            goToOpportunity();
+          }
+        }}
+        className="bg-card border border-border rounded-lg p-6 flex flex-col gap-3 cursor-pointer hover:border-blue-300 hover:shadow-sm transition focus:outline-none focus:ring-2 focus:ring-blue-300"
       >
         {/* Title + external link */}
         <div className="flex items-start justify-between gap-2">
@@ -760,6 +759,12 @@ const Opportunities = () => {
               <p className="mt-2 flex items-center gap-1.5 text-sm font-medium text-foreground">
                 <Building2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                 {candidate.agency}
+              </p>
+            )}
+            {onCalendar && (
+              <p className="mt-1.5 flex items-center gap-1 text-[10px] uppercase tracking-wide font-medium text-blue-600">
+                <CalendarCheck2 className="h-3 w-3 shrink-0" />
+                On Calendar
               </p>
             )}
           </div>
@@ -788,75 +793,34 @@ const Opportunities = () => {
           </div>
         )}
 
+        {/* Estimated value — prominent */}
+        {estimatedValue && (
+          <p className="text-2xl font-bold text-foreground leading-none">{estimatedValue}</p>
+        )}
+
         {/* Meta */}
         <div className="text-sm text-muted-foreground space-y-0.5">
           <p>Bid Due: {formatBidDate(candidate.bid_due_at)}</p>
-          {(() => {
-            const ev = formatEstimatedValue(candidate.crawl_data);
-            return ev ? <p>Estimated Value: {ev}</p> : null;
-          })()}
           {candidate.source_name && (
             <p className="text-xs">Source: {candidate.source_name}</p>
           )}
         </div>
 
-        {/* CTA */}
-        {isAnalyzedCandidate(candidate) ? (
-          <Button
-            size="sm"
-            onClick={() => navigate(`/opportunities/${candidate.id}`)}
-            className="w-full bg-orange-500 text-white hover:bg-orange-600"
-          >
-            <Sparkles className="h-4 w-4 mr-2" />
-            View Intelligence Report
-          </Button>
-        ) : oiFailed ? (
-          <Button
-            size="sm"
-            disabled={retryDisabled}
-            onClick={() => handleAnalyzeProject(candidate)}
-            className="w-full bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90 disabled:opacity-40"
-          >
-            {analyzingId === candidate.id ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <RotateCcw className="h-4 w-4 mr-2" />
-            )}
-            {bidClosed ? "Bid Closed" : retryLabel}
-          </Button>
-        ) : oiActive || candidate.analysis_status !== "not_requested" ? (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => navigate(`/opportunities/${candidate.id}`)}
-            className="w-full"
-          >
-            <Sparkles className="h-4 w-4 mr-2" />
-            View Analysis Progress
-          </Button>
-        ) : candidate.status === "converted" && candidate.converted_project_id ? (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => navigate(`/projects/${candidate.converted_project_id}`)}
-          >
-            View Project
-          </Button>
-        ) : (
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={bidClosed}
-            onClick={() => navigate(`/opportunities/${candidate.id}`)}
-            className="w-full"
-          >
-            <ExternalLink className="h-4 w-4 mr-2" />
-            {bidClosed ? "Bid Closed" : "View Opportunity"}
-          </Button>
-        )}
+        {/* CTA — unified */}
+        <Button
+          size="sm"
+          onClick={(e) => {
+            e.stopPropagation();
+            goToOpportunity();
+          }}
+          className="w-full bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-100 shadow-none"
+        >
+          View Project
+        </Button>
       </div>
     );
   };
+
 
   return (
     <Layout showSidebar={true}>
