@@ -697,7 +697,13 @@ const Opportunities = () => {
   const filtered = useMemo(
     () =>
       candidates.filter((c) => {
-        if (activeFilter === "analyzed" && !isAnalyzedCandidate(c)) return false;
+        const closed = isClosedCandidate(c);
+        if (activeFilter === "closed") {
+          if (!closed) return false;
+        } else {
+          if (closed) return false;
+          if (activeFilter === "analyzed" && !isAnalyzedCandidate(c)) return false;
+        }
         return matchesFacets(c);
       }),
     [candidates, activeFilter, matchesFacets],
