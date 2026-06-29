@@ -233,9 +233,9 @@ const Projects = () => {
                 className="bg-card border border-border rounded-lg p-6 hover:shadow-lg transition-all cursor-pointer flex flex-col min-h-[220px]"
               >
                 <div className="flex-1">
-                  <div className="flex items-start justify-between mb-2">
-                    <div>
-                      <h3 className="font-semibold text-lg text-foreground">
+                  <div className="flex items-start justify-between mb-2 gap-2">
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-semibold text-lg text-foreground break-words">
                         {project.name}
                       </h3>
                       <span
@@ -262,7 +262,7 @@ const Projects = () => {
                           ? "bg-blue-500/10 text-blue-600"
                           : "bg-gray-500/10 text-gray-600";
                       return (
-                        <span className={`px-2 py-1 text-xs font-medium rounded ${className}`}>
+                        <span className={`shrink-0 whitespace-nowrap px-2 py-1 text-xs font-medium rounded ${className}`}>
                           {label || "—"}
                         </span>
                       );
