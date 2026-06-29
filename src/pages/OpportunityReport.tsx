@@ -23,6 +23,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
   ExternalLink,
   CalendarPlus,
   Loader2,
