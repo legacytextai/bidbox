@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -19,8 +19,18 @@ interface Project {
   public_token: string;
   timezone: string;
   is_ready_to_bid: boolean | null;
+  pursuit_status: string | null;
   submission_count?: number;
 }
+
+type TabKey = "all" | "live" | "submitted" | "passed";
+
+const TABS: { key: TabKey; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "live", label: "Live" },
+  { key: "submitted", label: "Submitted" },
+  { key: "passed", label: "Passed" },
+];
 
 function formatBidDateParts(iso: string | null, timezone: string): { date: string; time: string } | null {
   if (!iso) return null;
