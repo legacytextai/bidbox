@@ -54,7 +54,11 @@ const CalendarGrid = ({ projects }: CalendarGridProps) => {
   // Transform projects into calendar events
   const calendarEvents: CalendarEvent[] = projects.flatMap((project) => {
     const events: CalendarEvent[] = [];
-    
+    const pursuitStatus = (project.pursuit_status || "reviewing").toLowerCase();
+
+    // Hide passed projects from the calendar entirely
+    if (pursuitStatus === "passed") return events;
+
     if (project.bid_due_at) {
       events.push({
         id: `${project.id}-bid`,
@@ -64,9 +68,10 @@ const CalendarGrid = ({ projects }: CalendarGridProps) => {
         type: 'bid_due',
         datetime: project.bid_due_at,
         isReadyToBid: project.is_ready_to_bid,
+        pursuitStatus,
       });
     }
-    
+
     if (project.job_walk_at) {
       events.push({
         id: `${project.id}-walk`,
@@ -76,9 +81,10 @@ const CalendarGrid = ({ projects }: CalendarGridProps) => {
         type: 'job_walk',
         datetime: project.job_walk_at,
         isReadyToBid: project.is_ready_to_bid,
+        pursuitStatus,
       });
     }
-    
+
     return events;
   });
 
