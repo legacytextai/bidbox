@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -19,8 +19,18 @@ interface Project {
   public_token: string;
   timezone: string;
   is_ready_to_bid: boolean | null;
+  pursuit_status: string | null;
   submission_count?: number;
 }
+
+type TabKey = "all" | "live" | "submitted" | "passed";
+
+const TABS: { key: TabKey; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "live", label: "Live" },
+  { key: "submitted", label: "Submitted" },
+  { key: "passed", label: "Passed" },
+];
 
 function formatBidDateParts(iso: string | null, timezone: string): { date: string; time: string } | null {
   if (!iso) return null;
@@ -53,6 +63,21 @@ const Projects = () => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<TabKey>("live");
+
+  const filteredProjects = useMemo(() => {
+    if (activeTab === "all") return projects;
+    if (activeTab === "submitted") return projects.filter((p) => p.pursuit_status === "submitted");
+    if (activeTab === "passed") return projects.filter((p) => p.pursuit_status === "passed");
+    // live: not past bid date AND not passed
+    const now = Date.now();
+    return projects.filter((p) => {
+      if (p.pursuit_status === "passed") return false;
+      if (!p.bid_due_at) return true;
+      const t = new Date(p.bid_due_at).getTime();
+      return Number.isNaN(t) || t >= now;
+    });
+  }, [projects, activeTab]);
   const navigate = useNavigate();
   const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -99,7 +124,8 @@ const Projects = () => {
         bid_due_at,
         public_token,
         timezone,
-        is_ready_to_bid
+        is_ready_to_bid,
+        pursuit_status
       `)
       .order("bid_due_at", { ascending: true });
 
@@ -169,9 +195,30 @@ const Projects = () => {
               </p>
             )}
           </div>
-          
+
+          {/* Tab navigation — identical to OpportunityReport / ProjectWorkspace */}
+          <div className="flex border-b border-border mb-8 gap-0">
+            {TABS.map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === tab.key
+                    ? "border-foreground text-foreground"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {filteredProjects.length === 0 && (
+            <p className="text-sm text-muted-foreground mb-6">No projects in this tab.</p>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {projects.map((project) => {
+            {filteredProjects.map((project) => {
               const tz = project.timezone || "America/Los_Angeles";
               const countdown = daysUntilBidDue(project.bid_due_at, tz);
               return (
