@@ -676,11 +676,6 @@ const Opportunities = () => {
 
   const matchesFacets = useCallback(
     (c: Candidate) => {
-      if (countyFilter.length > 0) {
-        const cty = getCandidateCounty(c);
-        const key = cty ?? NO_VALUE_SENTINEL;
-        if (!countyFilter.includes(key)) return false;
-      }
       if (agencyFilter.length > 0) {
         const ag = (c.agency ?? "").trim();
         const key = ag || NO_VALUE_SENTINEL;
@@ -688,10 +683,10 @@ const Opportunities = () => {
       }
       return true;
     },
-    [countyFilter, agencyFilter],
+    [agencyFilter],
   );
 
-  // Filter by tab + county/agency facets.
+  // Filter by tab + agency facet.
   const filtered = useMemo(
     () =>
       candidates.filter((c) => {
@@ -701,7 +696,23 @@ const Opportunities = () => {
     [candidates, activeFilter, matchesFacets],
   );
 
-  // Separate auto-Red / low-relevance into Filtered Out; sort remainder by bid date.
+  const buildComparator = useCallback((key: SortKey) => {
+    return (a: Candidate, b: Candidate): number => {
+      if (key === "added_desc") return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      if (key === "added_asc") return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      const aDue = a.bid_due_at ? new Date(a.bid_due_at).getTime() : null;
+      const bDue = b.bid_due_at ? new Date(b.bid_due_at).getTime() : null;
+      if (aDue === null && bDue === null) {
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      }
+      if (aDue === null) return 1;
+      if (bDue === null) return -1;
+      if (key === "due_desc") return bDue - aDue;
+      return aDue - bDue;
+    };
+  }, []);
+
+  // Separate auto-Red / low-relevance into Filtered Out; sort remainder.
   const { visibleCards, filteredOutCards } = useMemo(() => {
     const isFilteredOut = (candidate: Candidate) =>
       activeFilter === "all" &&
@@ -715,15 +726,16 @@ const Opportunities = () => {
       else visible.push(c);
     }
 
-    const datePassed = visible
-      .filter((c) => matchesDateFilter(c.bid_due_at, dateFilter))
-      .sort(compareByDueAsc);
-    filteredOut.sort(compareByDueAsc);
+    const cmp = buildComparator(sortKey);
+    visible.sort(cmp);
+    filteredOut.sort(cmp);
 
-    return { visibleCards: datePassed, filteredOutCards: filteredOut };
-  }, [filtered, activeFilter, dateFilter]);
+    return { visibleCards: visible, filteredOutCards: filteredOut };
+  }, [filtered, activeFilter, sortKey, buildComparator]);
 
-  const hasActiveFacetFilters = countyFilter.length > 0 || agencyFilter.length > 0 || dateFilter !== "all";
+  const hasActiveFacetFilters = agencyFilter.length > 0;
+
+
 
 
   const renderCard = (candidate: Candidate, _index: number) => {
