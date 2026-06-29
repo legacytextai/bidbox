@@ -171,26 +171,11 @@ const SORT_OPTIONS: { label: string; value: SortKey }[] = [
   { label: "Oldest Added", value: "added_asc" },
 ];
 
-function _unusedDateFilterPlaceholder(iso: string | null): boolean {
-  if (!iso) return false;
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return false;
-  const nowPt = toZonedTime(new Date(), PT_TZ);
-  const duePt = toZonedTime(d, PT_TZ);
-  const startOfToday = new Date(nowPt);
-  startOfToday.setHours(0, 0, 0, 0);
-  if (df === "this_week") {
-    const endOfNextWeek = new Date(startOfToday);
-    const daysUntilSunday = (7 - nowPt.getDay()) % 7 || 7;
-    endOfNextWeek.setDate(endOfNextWeek.getDate() + daysUntilSunday);
-    endOfNextWeek.setHours(23, 59, 59, 999);
-    return duePt.getTime() >= startOfToday.getTime() && duePt.getTime() <= endOfNextWeek.getTime();
-  }
-  if (df === "this_month") {
-    const endOfMonth = new Date(nowPt.getFullYear(), nowPt.getMonth() + 1, 0, 23, 59, 59, 999);
-    return duePt.getTime() >= startOfToday.getTime() && duePt.getTime() <= endOfMonth.getTime();
-  }
-  return true;
+function _unused(iso: string | null) {
+  void iso;
+  void PT_TZ;
+  void toZonedTime;
+  return false;
 }
 
 function getCandidateCounty(c: { crawl_data: any | null }): string | null {
