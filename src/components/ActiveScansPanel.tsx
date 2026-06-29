@@ -250,6 +250,7 @@ export function ActiveScansPanel({ taskIds, onDismiss, isQueuing = false }: Prop
           ))
         )}
       </div>
+      )}
     </div>
   );
 }
