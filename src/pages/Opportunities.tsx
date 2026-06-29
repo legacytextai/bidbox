@@ -162,36 +162,15 @@ const NO_VALUE_SENTINEL = "__none__";
 
 const PT_TZ = "America/Los_Angeles";
 
-type DateFilter = "all" | "this_week" | "this_month";
+type SortKey = "due_asc" | "due_desc" | "added_desc" | "added_asc";
 
-const DATE_FILTERS: { label: string; value: DateFilter }[] = [
-  { label: "All Dates", value: "all" },
-  { label: "This Week", value: "this_week" },
-  { label: "This Month", value: "this_month" },
+const SORT_OPTIONS: { label: string; value: SortKey }[] = [
+  { label: "Bid Due (Soonest First)", value: "due_asc" },
+  { label: "Bid Due (Latest First)", value: "due_desc" },
+  { label: "Recently Added", value: "added_desc" },
+  { label: "Oldest Added", value: "added_asc" },
 ];
 
-function matchesDateFilter(iso: string | null, df: DateFilter): boolean {
-  if (df === "all") return true;
-  if (!iso) return false;
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return false;
-  const nowPt = toZonedTime(new Date(), PT_TZ);
-  const duePt = toZonedTime(d, PT_TZ);
-  const startOfToday = new Date(nowPt);
-  startOfToday.setHours(0, 0, 0, 0);
-  if (df === "this_week") {
-    const endOfNextWeek = new Date(startOfToday);
-    const daysUntilSunday = (7 - nowPt.getDay()) % 7 || 7;
-    endOfNextWeek.setDate(endOfNextWeek.getDate() + daysUntilSunday);
-    endOfNextWeek.setHours(23, 59, 59, 999);
-    return duePt.getTime() >= startOfToday.getTime() && duePt.getTime() <= endOfNextWeek.getTime();
-  }
-  if (df === "this_month") {
-    const endOfMonth = new Date(nowPt.getFullYear(), nowPt.getMonth() + 1, 0, 23, 59, 59, 999);
-    return duePt.getTime() >= startOfToday.getTime() && duePt.getTime() <= endOfMonth.getTime();
-  }
-  return true;
-}
 
 function getCandidateCounty(c: { crawl_data: any | null }): string | null {
   const v = c.crawl_data?.county;
@@ -313,9 +292,9 @@ const Opportunities = () => {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState("all");
-  const [dateFilter, setDateFilter] = useState<DateFilter>("all");
+  const [sortKey, setSortKey] = useState<SortKey>("due_asc");
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [scanLoading, setScanLoading] = useState(false);
-  const [countyFilter, setCountyFilter] = useState<string[]>([]);
   const [agencyFilter, setAgencyFilter] = useState<string[]>([]);
   const [lastScannedAt, setLastScannedAt] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
@@ -697,11 +676,6 @@ const Opportunities = () => {
 
   const matchesFacets = useCallback(
     (c: Candidate) => {
-      if (countyFilter.length > 0) {
-        const cty = getCandidateCounty(c);
-        const key = cty ?? NO_VALUE_SENTINEL;
-        if (!countyFilter.includes(key)) return false;
-      }
       if (agencyFilter.length > 0) {
         const ag = (c.agency ?? "").trim();
         const key = ag || NO_VALUE_SENTINEL;
@@ -709,10 +683,10 @@ const Opportunities = () => {
       }
       return true;
     },
-    [countyFilter, agencyFilter],
+    [agencyFilter],
   );
 
-  // Filter by tab + county/agency facets.
+  // Filter by tab + agency facet.
   const filtered = useMemo(
     () =>
       candidates.filter((c) => {
@@ -722,7 +696,23 @@ const Opportunities = () => {
     [candidates, activeFilter, matchesFacets],
   );
 
-  // Separate auto-Red / low-relevance into Filtered Out; sort remainder by bid date.
+  const buildComparator = useCallback((key: SortKey) => {
+    return (a: Candidate, b: Candidate): number => {
+      if (key === "added_desc") return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      if (key === "added_asc") return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      const aDue = a.bid_due_at ? new Date(a.bid_due_at).getTime() : null;
+      const bDue = b.bid_due_at ? new Date(b.bid_due_at).getTime() : null;
+      if (aDue === null && bDue === null) {
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      }
+      if (aDue === null) return 1;
+      if (bDue === null) return -1;
+      if (key === "due_desc") return bDue - aDue;
+      return aDue - bDue;
+    };
+  }, []);
+
+  // Separate auto-Red / low-relevance into Filtered Out; sort remainder.
   const { visibleCards, filteredOutCards } = useMemo(() => {
     const isFilteredOut = (candidate: Candidate) =>
       activeFilter === "all" &&
@@ -736,15 +726,16 @@ const Opportunities = () => {
       else visible.push(c);
     }
 
-    const datePassed = visible
-      .filter((c) => matchesDateFilter(c.bid_due_at, dateFilter))
-      .sort(compareByDueAsc);
-    filteredOut.sort(compareByDueAsc);
+    const cmp = buildComparator(sortKey);
+    visible.sort(cmp);
+    filteredOut.sort(cmp);
 
-    return { visibleCards: datePassed, filteredOutCards: filteredOut };
-  }, [filtered, activeFilter, dateFilter]);
+    return { visibleCards: visible, filteredOutCards: filteredOut };
+  }, [filtered, activeFilter, sortKey, buildComparator]);
 
-  const hasActiveFacetFilters = countyFilter.length > 0 || agencyFilter.length > 0 || dateFilter !== "all";
+  const hasActiveFacetFilters = agencyFilter.length > 0;
+
+
 
 
   const renderCard = (candidate: Candidate, _index: number) => {
@@ -921,29 +912,34 @@ const Opportunities = () => {
                 })}
               </div>
               <div className="flex items-center gap-2 flex-wrap">
-                {DATE_FILTERS.map((df) => (
-                  <button
-                    key={df.value}
-                    onClick={() => setDateFilter(df.value)}
-                    className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                      dateFilter === df.value
-                        ? "bg-muted text-foreground"
-                        : "text-muted-foreground hover:bg-accent"
-                    }`}
-                  >
-                    {df.label}
-                  </button>
-                ))}
-                <FacetMultiSelect
-                  label="County"
-                  icon={<Filter className="h-3.5 w-3.5" />}
-                  options={countyOptions}
-                  hasNone={hasNoCounty}
-                  noneLabel="(No county)"
-                  value={countyFilter}
-                  onChange={setCountyFilter}
-                  searchPlaceholder="Search counties..."
-                />
+                <Popover open={sortMenuOpen} onOpenChange={setSortMenuOpen}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-9 gap-2">
+                      <Filter className="h-3.5 w-3.5" />
+                      <span>Filter</span>
+                      <ChevronDown className="h-3.5 w-3.5 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="p-1 w-[220px]" align="end">
+                    {SORT_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.value}
+                        onClick={() => {
+                          setSortKey(opt.value);
+                          setSortMenuOpen(false);
+                        }}
+                        className={`w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded-md hover:bg-accent ${
+                          sortKey === opt.value ? "text-foreground font-medium" : "text-muted-foreground"
+                        }`}
+                      >
+                        <Check
+                          className={`h-4 w-4 ${sortKey === opt.value ? "opacity-100" : "opacity-0"}`}
+                        />
+                        <span>{opt.label}</span>
+                      </button>
+                    ))}
+                  </PopoverContent>
+                </Popover>
                 <FacetMultiSelect
                   label="Agency"
                   icon={<Building2 className="h-3.5 w-3.5" />}
@@ -958,11 +954,7 @@ const Opportunities = () => {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => {
-                      setCountyFilter([]);
-                      setAgencyFilter([]);
-                      setDateFilter("all");
-                    }}
+                    onClick={() => setAgencyFilter([])}
                     className="text-sm text-muted-foreground hover:text-foreground"
                   >
                     Clear filters
