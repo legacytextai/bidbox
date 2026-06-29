@@ -1,36 +1,28 @@
-## Scope
-Single file: `src/pages/Projects.tsx`. Restyle the project cards on `My Projects` to match the Opportunities card pattern.
+## What's happening
 
-## Changes
+The progress bar disappeared because of two separate issues, not because the scan finished.
 
-1. **Remove**
-   - "Responses: N" line and the `submission_count` enrichment block.
+### 1. Worker has stalled (backend)
+- `agent_tasks` shows **68 `planetbids_scan` rows still `pending`**, all created at `2026-06-29 17:13:56 UTC`.
+- None have been updated since they were queued — the Railway worker has not picked up a single one.
+- The previous run (yesterday 21:58–22:22 UTC) completed all 68 sources normally, so this is a current worker outage, not a code regression.
 
-2. **Keep (unchanged)**
-   - Project name (top-left).
-   - Status pill top-right (LIVE / CLOSED) via `getProjectDisplayStatus`.
-   - "Ready to Submit" / "Not Ready to Submit" pill under the title.
-   - Card click → navigate to `/projects/:id`.
+### 2. UI rehydration window is too short (frontend)
+- `src/pages/Opportunities.tsx` only rehydrates the `ActiveScansPanel` for scan tasks created within the **last 60 minutes** (`sinceIso = now - 1h`).
+- The scan queued at 17:13 UTC; reloading after 18:13 UTC returns zero rows from that query, so `scanActive` stays `false` and the panel is hidden — even though 68 tasks are still pending.
 
-3. **Bid Date + countdown pill** (new, mirrors Opportunities)
-   - Format: `Bid Due: MM/dd/yyyy at h:mm a zzz` (date **and** time — unlike Opportunities which is date-only).
-   - Inline to the right of the date: small rounded-full pill (`text-[10px] font-semibold px-2 py-0.5`) with calendar-day countdown.
-   - Pill text rules (same as Opportunities):
-     - `< 0` → `Closed`, muted
-     - `0` → `Today`, red
-     - `1` → `Tomorrow`, red
-     - `2–3` → `N days`, red (`bg-red-50 text-red-600`)
-     - `4–7` → `N days`, amber (`bg-amber-50 text-amber-500`)
-     - `8+` → `N days`, green (`bg-green-50 text-green-600`)
-   - Reuse the calendar-day logic from `Opportunities.tsx` (`formatInProjectTimezone` → ymd → `Date.UTC` diff). Inline two small helpers (`formatBidDateTime`, `daysUntilBidDue`) at the top of `Projects.tsx`, project timezone-aware via `project.timezone || 'America/Los_Angeles'`.
+## Proposed fix
 
-4. **Copy Link CTA**
-   - Move to the bottom of the card (after Bid Due row).
-   - Anchor it so it lines up across cards: wrap upper content in a `flex flex-col` with the title/pills/value in a `flex-1` container, then the Bid Due row, then the button.
-   - Relabel: `Copy Bid Room Link` (icon unchanged).
-   - Keep `stopPropagation` so clicking the button doesn't navigate.
+**Frontend (Opportunities.tsx)**
+- Widen the rehydration lookback from 1h to **6h** so a stuck or long-running scan still surfaces the panel on reload.
+- No other UI logic changes; auto-dismiss after completion still works because it only fires once all tasks reach a terminal state.
 
-## Out of scope
-- No changes to `Opportunities.tsx`, the data layer, or `loadProjects` query shape (just drop the submission-count enrichment call).
-- No changes to the "New Project" tile.
-- No business logic changes.
+**Backend (worker) — separate from this code change**
+- Investigate why the Railway worker is not consuming `pending` `planetbids_scan` tasks (process down, crashed loop, env config). This is operational, not a code edit to this repo.
+- Once the worker is healthy, the 68 pending tasks will drain and the (now-visible) panel will progress to 100%.
+
+## Files touched
+
+- `src/pages/Opportunities.tsx` — change the `sinceIso` constant in the rehydration `useEffect` from 60 minutes to 6 hours.
+
+No schema changes, no edge function changes, no migrations.
