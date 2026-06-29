@@ -814,26 +814,26 @@ const Opportunities = () => {
 
           {/* Meta */}
           <div className="space-y-1">
-            <p className="text-sm text-foreground font-medium">
-              Bid Due: {formatBidDate(candidate.bid_due_at)}
-            </p>
-            {(() => {
-              const countdown = daysUntilBidDue(candidate.bid_due_at);
-              if (!countdown) return null;
-              const bgMap: Record<string, string> = {
-                "text-red-600": "bg-red-50",
-                "text-amber-500": "bg-amber-50",
-                "text-green-600": "bg-green-50",
-                "text-muted-foreground": "bg-muted",
-              };
-              return (
-                <div className="flex justify-center">
-                  <span className={`inline-block text-xs font-semibold px-2.5 py-0.5 rounded-full ${bgMap[countdown.colorClass] ?? "bg-muted"} ${countdown.colorClass}`}>
+            <div className="flex items-center gap-2">
+              <p className="text-sm text-foreground font-medium">
+                Bid Due: {formatBidDate(candidate.bid_due_at)}
+              </p>
+              {(() => {
+                const countdown = daysUntilBidDue(candidate.bid_due_at);
+                if (!countdown) return null;
+                const bgMap: Record<string, string> = {
+                  "text-red-600": "bg-red-50",
+                  "text-amber-500": "bg-amber-50",
+                  "text-green-600": "bg-green-50",
+                  "text-muted-foreground": "bg-muted",
+                };
+                return (
+                  <span className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full ${bgMap[countdown.colorClass] ?? "bg-muted"} ${countdown.colorClass}`}>
                     {countdown.text}
                   </span>
-                </div>
-              );
-            })()}
+                );
+              })()}
+            </div>
           </div>
         </div>
 
