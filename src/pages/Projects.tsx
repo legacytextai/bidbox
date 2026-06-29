@@ -64,6 +64,20 @@ const Projects = () => {
   const [loading, setLoading] = useState(true);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>("live");
+
+  const filteredProjects = useMemo(() => {
+    if (activeTab === "all") return projects;
+    if (activeTab === "submitted") return projects.filter((p) => p.pursuit_status === "submitted");
+    if (activeTab === "passed") return projects.filter((p) => p.pursuit_status === "passed");
+    // live: not past bid date AND not passed
+    const now = Date.now();
+    return projects.filter((p) => {
+      if (p.pursuit_status === "passed") return false;
+      if (!p.bid_due_at) return true;
+      const t = new Date(p.bid_due_at).getTime();
+      return Number.isNaN(t) || t >= now;
+    });
+  }, [projects, activeTab]);
   const navigate = useNavigate();
   const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
