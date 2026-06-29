@@ -22,11 +22,14 @@ interface Project {
   submission_count?: number;
 }
 
-function formatBidDateTime(iso: string | null, timezone: string): string {
-  if (!iso) return "—";
+function formatBidDateParts(iso: string | null, timezone: string): { date: string; time: string } | null {
+  if (!iso) return null;
   const d = new Date(iso);
-  if (isNaN(d.getTime())) return "—";
-  return formatInProjectTimezone(d.toISOString(), timezone, "MM/dd/yyyy 'at' h:mm a zzz");
+  if (isNaN(d.getTime())) return null;
+  return {
+    date: formatInProjectTimezone(d.toISOString(), timezone, "MM/dd/yyyy"),
+    time: formatInProjectTimezone(d.toISOString(), timezone, "h:mm a zzz"),
+  };
 }
 
 function daysUntilBidDue(iso: string | null, timezone: string): { text: string; colorClass: string; bgClass: string } | null {
