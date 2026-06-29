@@ -209,25 +209,25 @@ const CalendarGrid = ({ projects }: CalendarGridProps) => {
                         {dayEvents.map((event) => {
                           const isBidDue = event.type === "bid_due";
                           const label = isBidDue ? "Bid Due" : "Job Walk";
-                          
-                          // Color logic: green = ready, red = not ready, gray = job walk
-                          const eventColor = isBidDue
-                            ? event.isReadyToBid
-                              ? "bg-green-600 text-white hover:bg-green-700"
-                              : "bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                            : "bg-gray-600 text-white hover:bg-gray-700";
-                          
-                          const badgeBg = isBidDue
-                            ? event.isReadyToBid
-                              ? "bg-white/20"
-                              : "bg-destructive-foreground/20"
-                            : "bg-white/20";
-                          
-                          const subtitleColor = isBidDue
-                            ? event.isReadyToBid
-                              ? "text-white/80"
-                              : "text-destructive-foreground/80"
-                            : "text-white/80";
+
+                          // Bid Due color follows pursuit_status:
+                          //   pursuing  -> green
+                          //   submitted -> blue
+                          //   reviewing -> gray (default)
+                          // Job Walk remains gray.
+                          let eventColor = "bg-gray-600 text-white hover:bg-gray-700";
+                          if (isBidDue) {
+                            if (event.pursuitStatus === "pursuing") {
+                              eventColor = "bg-green-600 text-white hover:bg-green-700";
+                            } else if (event.pursuitStatus === "submitted") {
+                              eventColor = "bg-blue-600 text-white hover:bg-blue-700";
+                            } else {
+                              eventColor = "bg-gray-600 text-white hover:bg-gray-700";
+                            }
+                          }
+
+                          const badgeBg = "bg-white/20";
+                          const subtitleColor = "text-white/80";
 
                           return (
                             <button
