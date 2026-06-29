@@ -171,12 +171,6 @@ const SORT_OPTIONS: { label: string; value: SortKey }[] = [
   { label: "Oldest Added", value: "added_asc" },
 ];
 
-function _unused(iso: string | null) {
-  void iso;
-  void PT_TZ;
-  void toZonedTime;
-  return false;
-}
 
 function getCandidateCounty(c: { crawl_data: any | null }): string | null {
   const v = c.crawl_data?.county;
