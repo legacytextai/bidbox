@@ -292,9 +292,9 @@ const Opportunities = () => {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState("all");
-  const [dateFilter, setDateFilter] = useState<DateFilter>("all");
+  const [sortKey, setSortKey] = useState<SortKey>("due_asc");
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [scanLoading, setScanLoading] = useState(false);
-  const [countyFilter, setCountyFilter] = useState<string[]>([]);
   const [agencyFilter, setAgencyFilter] = useState<string[]>([]);
   const [lastScannedAt, setLastScannedAt] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
