@@ -83,7 +83,14 @@ interface Candidate {
 const FILTERS: { label: string; value: string }[] = [
   { label: "All", value: "all" },
   { label: "Analyzed", value: "analyzed" },
+  { label: "Closed", value: "closed" },
 ];
+
+const isClosedCandidate = (c: { bid_due_at: string | null }) => {
+  if (!c.bid_due_at) return false;
+  const t = new Date(c.bid_due_at).getTime();
+  return !isNaN(t) && t < Date.now();
+};
 
 const isAnalyzedCandidate = (c: {
   analysis_status: string;
