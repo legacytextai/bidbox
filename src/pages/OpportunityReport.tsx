@@ -562,7 +562,7 @@ const OpportunityReport = () => {
               className="group inline-flex items-center gap-1.5 text-xs text-muted-foreground/60 hover:text-foreground transition-all disabled:opacity-20 disabled:cursor-not-allowed"
             >
               <ChevronLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
-              <span className="opacity-0 group-hover:opacity-100 transition-opacity">Previous</span>
+              <span className="transition-colors">Previous</span>
             </button>
             <button
               type="button"
@@ -571,7 +571,7 @@ const OpportunityReport = () => {
               aria-label="Next opportunity"
               className="group inline-flex items-center gap-1.5 text-xs text-muted-foreground/60 hover:text-foreground transition-all disabled:opacity-20 disabled:cursor-not-allowed"
             >
-              <span className="opacity-0 group-hover:opacity-100 transition-opacity">Next</span>
+              <span className="transition-colors">Next</span>
               <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
             </button>
           </div>
