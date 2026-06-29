@@ -23,6 +23,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
   ExternalLink,
   CalendarPlus,
   Loader2,
@@ -121,7 +123,22 @@ const OpportunityReport = () => {
   const [reanalyzing, setReanalyzing] = useState(false);
   const [deletingAnalysis, setDeletingAnalysis] = useState(false);
   const [reanalysisFailureNotice, setReanalysisFailureNotice] = useState<string | null>(null);
+  const [siblingIds, setSiblingIds] = useState<string[]>([]);
   const wasAnalysisActiveRef = useRef(false);
+
+  useEffect(() => {
+    supabase
+      .from("opportunity_candidates")
+      .select("id, bid_due_at")
+      .eq("analysis_status", "ready")
+      .order("bid_due_at", { ascending: true, nullsFirst: false })
+      .then(({ data }) => setSiblingIds((data ?? []).map((r) => r.id as string)));
+  }, []);
+
+  const currentIdx = id ? siblingIds.indexOf(id) : -1;
+  const prevId = currentIdx > 0 ? siblingIds[currentIdx - 1] : null;
+  const nextId =
+    currentIdx >= 0 && currentIdx < siblingIds.length - 1 ? siblingIds[currentIdx + 1] : null;
 
   // ── Bid due derived state for Intelligence tab ───────────────────────────
 
@@ -535,6 +552,29 @@ const OpportunityReport = () => {
           <Button variant="ghost" size="sm" onClick={() => navigate("/opportunities")} className="mb-4 -ml-2">
             <ArrowLeft className="h-4 w-4 mr-2" /> Back to Opportunities
           </Button>
+
+          <div className="flex items-center justify-between mb-3">
+            <button
+              type="button"
+              onClick={() => prevId && navigate(`/opportunities/${prevId}`)}
+              disabled={!prevId}
+              aria-label="Previous opportunity"
+              className="group inline-flex items-center gap-1.5 text-xs text-muted-foreground/60 hover:text-foreground transition-all disabled:opacity-20 disabled:cursor-not-allowed"
+            >
+              <ChevronLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
+              <span className="opacity-0 group-hover:opacity-100 transition-opacity">Previous</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => nextId && navigate(`/opportunities/${nextId}`)}
+              disabled={!nextId}
+              aria-label="Next opportunity"
+              className="group inline-flex items-center gap-1.5 text-xs text-muted-foreground/60 hover:text-foreground transition-all disabled:opacity-20 disabled:cursor-not-allowed"
+            >
+              <span className="opacity-0 group-hover:opacity-100 transition-opacity">Next</span>
+              <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+            </button>
+          </div>
 
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div className="min-w-0 flex-1">
