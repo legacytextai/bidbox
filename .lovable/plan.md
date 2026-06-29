@@ -1,29 +1,43 @@
 ## Scope
-Update the opportunity card in `src/pages/Opportunities.tsx` only.
+Single file: `src/pages/Opportunities.tsx`. Fix the countdown pill on opportunity cards.
 
-## Changes
+## Problem
+`daysUntilBidDue` rounds raw millisecond diffs with `Math.ceil`, which inflates the count whenever the bid is later in the day than "now". Example with today = 6/29:
+- 7/1 (any time) → 2.x days → ceils to 3 days (should be 2)
+- 7/2 (any time) → 3.x days → ceils to 4 days (sometimes; varies by time-of-day)
+- Same-day bids show "1 day" instead of "Today"
+- Next-day bids show "1 day" instead of "Tomorrow"
 
-1. **Remove time from Bid Due**
-   - Card-level bid-due line shows date only (e.g. `06/11/2026`).
-   - Keep full datetime formatting everywhere else (detail page, reports, etc.).
+The count should be **calendar-day difference in Pacific Time**, not elapsed-time rounding.
 
-2. **Make Bid Due date black**
-   - Change from `text-muted-foreground` to `text-foreground`.
+## Fix
+Rewrite `daysUntilBidDue` to:
+1. Compute the calendar date (YYYY-MM-DD) of "now" in `America/Los_Angeles`.
+2. Compute the calendar date of the bid_due_at in `America/Los_Angeles`.
+3. Diff the two as whole days (UTC midnight of each ymd subtracted, divided by 86_400_000).
 
-3. **Add centered days-remaining countdown**
-   - Positioned directly below the Bid Due date, centered in the card.
-   - Font size: `text-lg` (smaller than the `text-2xl` estimate, larger than body text).
-   - Reads as a whole number: e.g. `8 days`.
-   - If the bid is past due, show `Closed` in muted gray.
+### Output rules (color logic unchanged)
+| Calendar-day diff | Pill text   | Color   |
+|-------------------|-------------|---------|
+| < 0               | `Closed`    | muted   |
+| 0                 | `Today`     | red     |
+| 1                 | `Tomorrow`  | red     |
+| 2 – 3             | `N days`    | red     |
+| 4 – 7             | `N days`    | amber   |
+| 8+                | `N days`    | green   |
 
-4. **Color thresholds**
-   - `0–3 days` → red (`text-red-600`)
-   - `4–7 days` → amber (`text-amber-500`)
-   - `8+ days` → green (`text-green-600`)
+`isBidClosed` keeps its current "past the actual instant" semantics — it's used for filtering/buckets, not the pill. Only the pill text/coloring changes.
 
-## Files
-- `src/pages/Opportunities.tsx` — card rendering and a new helper to compute days until bid due.
+## Implementation notes (technical)
+Use `formatInProjectTimezone(iso, "America/Los_Angeles", "yyyy-MM-dd")` (already imported) to get both calendar dates, then:
+
+```ts
+const toUTC = (ymd: string) => Date.UTC(+ymd.slice(0,4), +ymd.slice(5,7)-1, +ymd.slice(8,10));
+const days = Math.round((toUTC(dueYmd) - toUTC(nowYmd)) / 86_400_000);
+```
+
+This makes the pill a pure calendar-day comparison and produces consistent values for every card rendered in the same tick.
 
 ## Out of scope
-- No backend or database changes.
-- No changes to other pages, tabs, or the Project Workspace.
+- No changes to bucket logic, filtering, sorting, or the date format itself.
+- No changes outside `Opportunities.tsx`.

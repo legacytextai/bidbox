@@ -124,10 +124,15 @@ function daysUntilBidDue(iso: string | null): { text: string; colorClass: string
   if (!iso) return null;
   const due = new Date(iso);
   if (isNaN(due.getTime())) return null;
-  const now = Date.now();
-  if (due.getTime() <= now) return { text: "Closed", colorClass: "text-muted-foreground" };
-  const days = Math.ceil((due.getTime() - now) / (1000 * 60 * 60 * 24));
-  if (days <= 3) return { text: `${days} day${days === 1 ? "" : "s"}`, colorClass: "text-red-600" };
+  const nowYmd = formatInProjectTimezone(new Date().toISOString(), "America/Los_Angeles", "yyyy-MM-dd");
+  const dueYmd = formatInProjectTimezone(due.toISOString(), "America/Los_Angeles", "yyyy-MM-dd");
+  const toUTC = (ymd: string) =>
+    Date.UTC(Number(ymd.slice(0, 4)), Number(ymd.slice(5, 7)) - 1, Number(ymd.slice(8, 10)));
+  const days = Math.round((toUTC(dueYmd) - toUTC(nowYmd)) / 86_400_000);
+  if (days < 0) return { text: "Closed", colorClass: "text-muted-foreground" };
+  if (days === 0) return { text: "Today", colorClass: "text-red-600" };
+  if (days === 1) return { text: "Tomorrow", colorClass: "text-red-600" };
+  if (days <= 3) return { text: `${days} days`, colorClass: "text-red-600" };
   if (days <= 7) return { text: `${days} days`, colorClass: "text-amber-500" };
   return { text: `${days} days`, colorClass: "text-green-600" };
 }
