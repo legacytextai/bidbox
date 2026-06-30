@@ -26,6 +26,9 @@
  *   3. NODE_ENV=production is rejected (must be undefined, 'development', or 'test')
  *   4. ALLOW_PIPELINE_RESET=true env var required as an additional gate
  *   5. Dry-run mode is always available without any guard
+ *   6. projects FK columns are explicitly NULLed BEFORE any deletes, so projects
+ *      rows are never destroyed even if TRUNCATE CASCADE is used externally.
+ *      (ON DELETE SET NULL is honoured by DELETE but NOT by TRUNCATE.)
  *
  * Deletion order (most-dependent first, respects FK constraints):
  *   1.  saved_opportunities                 (→ opportunity_candidates)
@@ -344,6 +347,25 @@ async function main() {
 
   const deleted = {};
   let anyError = false;
+
+  // Sever FK links from projects → opportunity tables before any deletes.
+  // projects.source_opportunity_candidate_id and
+  // projects.opportunity_intelligence_report_id both carry ON DELETE SET NULL,
+  // which DELETE honours but TRUNCATE does NOT. Explicitly NULLing these first
+  // means projects rows survive even if someone runs TRUNCATE downstream.
+  process.stdout.write('  Severing projects FK links (safety guard)...');
+  const { error: projectsNullError } = await supabase
+    .from('projects')
+    .update({
+      source_opportunity_candidate_id: null,
+      opportunity_intelligence_report_id: null,
+    })
+    .not('id', 'is', null);
+  if (projectsNullError) {
+    console.log(` WARNING: ${projectsNullError.message} (continuing)`);
+  } else {
+    console.log(' done');
+  }
 
   for (const { table, label, pkColumn } of PIPELINE_TABLES) {
     try {

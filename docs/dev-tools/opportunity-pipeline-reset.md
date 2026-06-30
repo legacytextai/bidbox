@@ -82,15 +82,31 @@ The script will:
 
 ---
 
+## Critical: always use this script, not raw SQL TRUNCATE
+
+`projects` has FK columns pointing at `opportunity_candidates` and `opportunity_intelligence_reports` (`source_opportunity_candidate_id`, `opportunity_intelligence_report_id`). Both are defined `ON DELETE SET NULL`.
+
+**`DELETE` honours `ON DELETE SET NULL` — projects rows survive.**  
+**`TRUNCATE ... CASCADE` does NOT — it truncates `projects` entirely.**
+
+Running `TRUNCATE opportunity_candidates CASCADE` (or any pipeline table with CASCADE) outside this script will destroy all project records. This happened in a 2026-06-30 validation run when the migration tool timed out on a large DELETE and fell back to TRUNCATE CASCADE.
+
+The script guards against this by explicitly NULLing `projects.source_opportunity_candidate_id` and `projects.opportunity_intelligence_report_id` before any deletes run, so projects rows survive even if TRUNCATE is used downstream.
+
+**Always use this script for resets. Never run `TRUNCATE ... CASCADE` on pipeline tables manually.**
+
+---
+
 ## Safety guards
 
-Five independent gates prevent accidental data destruction:
+Six independent gates prevent accidental data destruction:
 
 1. **`--confirm` flag required** — omitting `--confirm` is treated as `--dry-run`
 2. **`ALLOW_PIPELINE_RESET=true` required** — must be set explicitly; not a default
 3. **`NODE_ENV=production` rejected** — the script refuses to run if `NODE_ENV` is set to `production`
 4. **Interactive prompt** — must type the word `reset` when prompted; any other input aborts
 5. **Post-reset verification** — the script checks every key table for zero rows and alerts if anything remains
+6. **projects FK pre-NULL** — `projects.source_opportunity_candidate_id` and `projects.opportunity_intelligence_report_id` are explicitly NULLed before any deletes, preventing `projects` destruction if TRUNCATE is ever used
 
 ---
 
