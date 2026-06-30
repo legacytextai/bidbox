@@ -608,12 +608,20 @@ See `docs/agent-architecture-task-list.md` for implementation tasks.
 > **Strategic Initiative: Opportunity Discovery → Project Intelligence → Qualification**
 >
 > **Current Status (June 2026):**
+> - OML Opportunity Metadata Layer: ✅ Complete (2026-06-30)
 > - F1 Opportunity Discovery / Analyze Project: ✅ Complete
 > - F2 Document Acquisition: ✅ Complete
 > - F3 Document Processing: ✅ Complete
 > - F4 Project Intelligence: ✅ Complete
 > - Phase G Pursuit Management & Project Workspace: 🔄 Next active task
 > - F5 Qualification Agent: ⏸ Paused until the Project Workspace bridge is stable
+
+**OML Architectural Pivot (June 2026):**
+Scanning no longer auto-triggers the F2→F3→F4 pipeline. Portal metadata
+(title, agency, bid date, estimated value, county) is persisted immediately;
+intelligence pipeline starts only when a human clicks "Analyze Project."
+See `docs/initiatives/oml-opportunity-metadata-layer.md` for full design.
+See `docs/archive/v1-auto-analysis-pipeline.md` for the preserved v1 architecture.
 
 Validated production chain for F3:
 

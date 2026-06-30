@@ -1,8 +1,12 @@
 # BidBox Initiative: Opportunity Intelligence MVP
 
-Status: Proposed  
-Date: June 2026
+Status: [SUPERSEDED by OML] — trigger wiring superseded 2026-06-30  
+Date: June 2026  
+Superseded by: `docs/initiatives/oml-opportunity-metadata-layer.md`  
 Workspace evolution: `docs/initiatives/f5-opportunity-project-workspace.md`
+
+> **Note:** The F2/F3/F4 pipeline design in this document remains valid.
+> What changed: scanning no longer auto-triggers the pipeline. See OML doc.
 
 ## Context
 
