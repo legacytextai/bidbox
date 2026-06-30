@@ -172,6 +172,15 @@ const formatSnapshotDateTime = (value: string | null | undefined) => {
   return formatted.replace(/\s+at\s+/i, "\n");
 };
 
+const splitSnapshotDateTime = (value: string | null) => {
+  if (!value) return { date: null, time: null };
+  const [date, ...timeParts] = value.split("\n");
+  return {
+    date: date?.trim() || null,
+    time: timeParts.join(" ").trim() || null,
+  };
+};
+
 const cleanDisplayText = (value: unknown) => {
   const text = String(value ?? "").replace(/\s+/g, " ").trim();
   return text || null;
@@ -676,10 +685,18 @@ export function OpportunityIntelligenceWorkspace({
       "Project overview is available in the full Intelligence Report.";
 
     const jobWalkMetadata =
+      sourceOpportunity?.crawl_data?.pre_bid_meeting_at ||
       sourceOpportunity?.crawl_data?.meeting_datetime ||
       sourceOpportunity?.crawl_data?.job_walk_at ||
-      sourceOpportunity?.crawl_data?.pre_bid_meeting_at ||
       sourceOpportunity?.crawl_data?.prebid_meeting_at;
+    const preBidMeetingLink =
+      sourceOpportunity?.crawl_data?.pre_bid_meeting_link ?? sourceOpportunity?.crawl_data?.meeting_link;
+    const preBidLocation =
+      sourceOpportunity?.crawl_data?.pre_bid_location ??
+      sourceOpportunity?.crawl_data?.meeting_location ??
+      sourceOpportunity?.crawl_data?.job_walk_location;
+    const preBidNotes =
+      sourceOpportunity?.crawl_data?.pre_bid_notes ?? sourceOpportunity?.crawl_data?.additional_details;
     const hasJobWalkMetadata =
       Boolean(jobWalkMetadata) ||
       isAffirmative(sourceOpportunity?.crawl_data?.pre_bid_exists) ||
@@ -689,41 +706,47 @@ export function OpportunityIntelligenceWorkspace({
       isAffirmative(sourceOpportunity?.crawl_data?.job_walk_mandatory);
 
     const jobWalkDate = formatSnapshotDateTime(jobWalkMetadata);
+    const jobWalkDateParts = splitSnapshotDateTime(jobWalkDate);
     const portalJobWalkExists =
       isAffirmative(sourceOpportunity?.crawl_data?.pre_bid_exists) ||
       isAffirmative(sourceOpportunity?.crawl_data?.pre_bid_meeting) ||
       isAffirmative(sourceOpportunity?.crawl_data?.job_walk_exists) ||
       Boolean(
         jobWalkDate ||
-          sourceOpportunity?.crawl_data?.meeting_link ||
-          sourceOpportunity?.crawl_data?.meeting_location ||
-          sourceOpportunity?.crawl_data?.additional_details,
+          preBidMeetingLink ||
+          preBidLocation ||
+          preBidNotes,
       );
-    const attendanceLabel =
+    const preBidMeetingLabel =
+      isAffirmative(sourceOpportunity?.crawl_data?.pre_bid_exists) ||
+      isAffirmative(sourceOpportunity?.crawl_data?.pre_bid_meeting) ||
+      isAffirmative(sourceOpportunity?.crawl_data?.job_walk_exists)
+        ? "Yes"
+        : portalJobWalkExists
+          ? "Unknown"
+          : null;
+    const attendanceRequired =
       isAffirmative(sourceOpportunity?.crawl_data?.attendance_required) ||
       isAffirmative(sourceOpportunity?.crawl_data?.job_walk_mandatory)
-        ? "Required"
+        ? "Yes"
         : isNegative(sourceOpportunity?.crawl_data?.attendance_required) ||
             isNegative(sourceOpportunity?.crawl_data?.job_walk_mandatory)
-          ? "Optional"
+          ? "No"
           : portalJobWalkExists
             ? "Unknown"
             : null;
-    const locationText = cleanDisplayText(
-      sourceOpportunity?.crawl_data?.meeting_location ?? sourceOpportunity?.crawl_data?.job_walk_location,
-    );
-    const resolvedLocation = locationText ?? (sourceOpportunity?.crawl_data?.meeting_link ? "Virtual" : null);
+    const locationText = cleanDisplayText(preBidLocation);
+    const resolvedLocation = locationText ?? (preBidMeetingLink ? "Virtual" : null);
     const jobWalkParts = portalJobWalkExists
       ? [
-          attendanceLabel,
-          jobWalkDate ?? "Unknown",
-          resolvedLocation ?? "Unknown",
-          sourceOpportunity?.crawl_data?.meeting_link
-            ? `Meeting Link: ${cleanDisplayText(sourceOpportunity.crawl_data.meeting_link)}`
-            : null,
-          sourceOpportunity?.crawl_data?.additional_details
-            ? `Additional Details: ${cleanDisplayText(sourceOpportunity.crawl_data.additional_details)}`
-            : null,
+          "Pre-Bid Meeting",
+          `Mandatory: ${preBidMeetingLabel ?? "Unknown"}`,
+          `Attendance Required: ${attendanceRequired ?? "Unknown"}`,
+          `Date: ${jobWalkDateParts.date ?? "Unknown"}`,
+          `Time: ${jobWalkDateParts.time ?? "Unknown"}`,
+          resolvedLocation ? `Location: ${resolvedLocation}` : null,
+          preBidMeetingLink ? `Meeting Link: ${cleanDisplayText(preBidMeetingLink)}` : null,
+          preBidNotes ? `Additional Details: ${cleanDisplayText(preBidNotes)}` : null,
         ].filter((part): part is string => Boolean(part))
       : [];
 
@@ -743,10 +766,13 @@ export function OpportunityIntelligenceWorkspace({
         "Not available",
       bidDue:
         bidDueResolution.display || "Not available",
-      jobWalk:
-        (jobWalkParts.length > 0 ? jobWalkParts.join("\n") : null) ||
-        formatProjectDateTimeOrNull(project.job_walk_at) ||
-        (hasJobWalkMetadata ? "Unknown" : "Not available"),
+      jobWalk: (() => {
+        if (jobWalkParts.length > 0) return jobWalkParts.join("\n");
+        if (formatProjectDateTimeOrNull(project.job_walk_at)) return formatProjectDateTimeOrNull(project.job_walk_at)!;
+        if (isNegative(sourceOpportunity?.crawl_data?.pre_bid_exists) || isNegative(sourceOpportunity?.crawl_data?.pre_bid_meeting)) return "No Pre-Bid Meeting";
+        if (hasJobWalkMetadata) return "Unknown";
+        return "Not available";
+      })(),
     };
   }, [bidDueResolution.display, findings, intelligenceReport, project.job_walk_at, sourceOpportunity]);
 

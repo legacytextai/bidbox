@@ -328,14 +328,11 @@ const OpportunityReport = () => {
         crawl?.additional_details ? `Additional Details: ${cleanDisplayText(crawl.additional_details)}` : null,
       ].filter(Boolean).join("\n");
     }
-    const finding = findings.find(
-      (f) =>
-        (f.status === "found" || f.status === "needs_review" || f.status === "conflict") &&
-        isJobWalkFinding(f) &&
-        (citationsByFinding.get(f.id)?.length ?? 0) > 0,
-    );
-    const citedDisplay = normalizeDateTimeText(finding?.value_text);
-    if (citedDisplay) return citedDisplay;
+    // Portal explicitly says no meeting — do not fall through to AI findings.
+    if (isNegative(crawl?.pre_bid_exists) || isNegative(crawl?.pre_bid_meeting)) {
+      return "No Pre-Bid Meeting";
+    }
+    // Portal is silent — AI findings may supplement, but only addenda-sourced evidence should override.
     const hasMetadataEvidence =
       isAffirmative(crawl?.pre_bid_meeting) ||
       isAffirmative(crawl?.attendance_required) ||

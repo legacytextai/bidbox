@@ -171,6 +171,15 @@ function formatSnapshotDateTime(value: string | null | undefined): string | null
   return formatted.replace(/\s+at\s+/i, "\n");
 }
 
+function splitSnapshotDateTime(value: string | null): { date: string | null; time: string | null } {
+  if (!value) return { date: null, time: null };
+  const [date, ...timeParts] = value.split("\n");
+  return {
+    date: date?.trim() || null,
+    time: timeParts.join(" ").trim() || null,
+  };
+}
+
 function isAffirmative(value: unknown): boolean {
   if (value === true) return true;
   if (typeof value !== "string") return false;
@@ -306,43 +315,68 @@ export function buildOpportunityOverviewData(input: AdapterInput): OpportunityOv
   };
 
   // Job walk resolution
+  const preBidDateTime =
+    crawl?.pre_bid_meeting_at ||
+    crawl?.meeting_datetime ||
+    crawl?.job_walk_at ||
+    crawl?.prebid_meeting_at;
   const portalJobWalkDate =
-    formatSnapshotDateTime(crawl?.meeting_datetime) ||
-    formatSnapshotDateTime(crawl?.job_walk_at) ||
-    formatSnapshotDateTime(crawl?.pre_bid_meeting_at);
+    formatSnapshotDateTime(preBidDateTime);
+  const portalJobWalkDateParts = splitSnapshotDateTime(portalJobWalkDate);
+  const preBidMeetingLink = crawl?.pre_bid_meeting_link ?? crawl?.meeting_link;
+  const preBidLocation = crawl?.pre_bid_location ?? crawl?.meeting_location ?? crawl?.job_walk_location;
+  const preBidNotes = crawl?.pre_bid_notes ?? crawl?.additional_details;
   const portalJobWalkExists =
     isAffirmative(crawl?.pre_bid_exists) ||
     isAffirmative(crawl?.pre_bid_meeting) ||
     isAffirmative(crawl?.job_walk_exists) ||
-    Boolean(portalJobWalkDate || crawl?.meeting_link || crawl?.meeting_location || crawl?.additional_details);
-  const attendanceLabel =
+    Boolean(portalJobWalkDate || preBidMeetingLink || preBidLocation || preBidNotes);
+  const preBidMeetingLabel =
+    isAffirmative(crawl?.pre_bid_exists) ||
+    isAffirmative(crawl?.pre_bid_meeting) ||
+    isAffirmative(crawl?.job_walk_exists)
+      ? "Yes"
+      : portalJobWalkExists
+        ? "Unknown"
+        : null;
+  const attendanceRequired =
     isAffirmative(crawl?.attendance_required) || isAffirmative(crawl?.job_walk_mandatory)
-      ? "Required"
+      ? "Yes"
       : isNegative(crawl?.attendance_required) || isNegative(crawl?.job_walk_mandatory)
-        ? "Optional"
+        ? "No"
         : portalJobWalkExists
           ? "Unknown"
           : null;
-  const locationText = cleanDisplayText(crawl?.meeting_location ?? crawl?.job_walk_location);
-  const resolvedLocation = locationText ?? (crawl?.meeting_link ? "Virtual" : null);
+  const locationText = cleanDisplayText(preBidLocation);
+  const resolvedLocation = locationText ?? (preBidMeetingLink ? "Virtual" : null);
   const jobWalkDetailParts = portalJobWalkExists
     ? [
-        attendanceLabel,
-        portalJobWalkDate ?? "Unknown",
-        resolvedLocation ?? "Unknown",
-        crawl?.meeting_link ? `Meeting Link: ${cleanDisplayText(crawl.meeting_link)}` : null,
-        crawl?.additional_details ? `Additional Details: ${cleanDisplayText(crawl.additional_details)}` : null,
+        "Pre-Bid Meeting",
+        `Mandatory: ${preBidMeetingLabel ?? "Unknown"}`,
+        `Attendance Required: ${attendanceRequired ?? "Unknown"}`,
+        `Date: ${portalJobWalkDateParts.date ?? "Unknown"}`,
+        `Time: ${portalJobWalkDateParts.time ?? "Unknown"}`,
+        resolvedLocation ? `Location: ${resolvedLocation}` : null,
+        preBidMeetingLink ? `Meeting Link: ${cleanDisplayText(preBidMeetingLink)}` : null,
+        preBidNotes ? `Additional Details: ${cleanDisplayText(preBidNotes)}` : null,
       ].filter((part): part is string => Boolean(part))
     : [];
   let jobWalk: string | null = jobWalkDetailParts.length > 0 ? jobWalkDetailParts.join("\n") : null;
   if (!jobWalk) {
-    const hasMetadataEvidence =
-      isAffirmative(crawl?.pre_bid_exists) ||
-      isAffirmative(crawl?.pre_bid_meeting) ||
-      isAffirmative(crawl?.attendance_required) ||
-      isAffirmative(crawl?.job_walk_exists) ||
-      isAffirmative(crawl?.job_walk_mandatory);
-    if (hasMetadataEvidence) jobWalk = "Unknown";
+    const portalExplicitlyNo =
+      isNegative(crawl?.pre_bid_exists) ||
+      isNegative(crawl?.pre_bid_meeting);
+    if (portalExplicitlyNo) {
+      jobWalk = "No Pre-Bid Meeting";
+    } else {
+      const hasMetadataEvidence =
+        isAffirmative(crawl?.pre_bid_exists) ||
+        isAffirmative(crawl?.pre_bid_meeting) ||
+        isAffirmative(crawl?.attendance_required) ||
+        isAffirmative(crawl?.job_walk_exists) ||
+        isAffirmative(crawl?.job_walk_mandatory);
+      if (hasMetadataEvidence) jobWalk = "Unknown";
+    }
   }
 
   // Executive summary: short lines from F4 (up to 3)

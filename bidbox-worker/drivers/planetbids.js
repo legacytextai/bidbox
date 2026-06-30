@@ -164,11 +164,14 @@ function normalizeJobWalkMetadata(raw) {
   const exists = Boolean(preBidExists || dateTime || details || attendanceRequired || location || link || additionalDetails);
 
   return {
-    pre_bid_exists: preBidExists || null,
+    pre_bid_exists: preBidExists ?? null,
     meeting_datetime: dateTime ?? null,
     meeting_location: location ?? null,
     meeting_link: link ?? null,
     additional_details: additionalDetails ?? null,
+    pre_bid_location: location ?? null,
+    pre_bid_meeting_link: link ?? null,
+    pre_bid_notes: additionalDetails ?? null,
     job_walk_exists: exists || null,
     job_walk_mandatory: mandatory,
     job_walk_at: dateTime ?? null,
