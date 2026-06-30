@@ -1038,7 +1038,8 @@ async function extractPortalMetadata(page, log) {
             const text = clean(current.textContent);
             const headerIndex = text.toLowerCase().indexOf(ownText.toLowerCase());
             const headerNearStart = headerIndex >= 0 && headerIndex <= Math.max(80, text.length * 0.2);
-            if (headerNearStart && fieldLabelRe.test(text) && text.length <= 5000) {
+            // Raised from 5000 to 15000: PlanetBids page components often exceed 5000 chars.
+            if (headerNearStart && fieldLabelRe.test(text) && text.length <= 15000) {
               best = current;
               break;
             }
@@ -1052,10 +1053,14 @@ async function extractPortalMetadata(page, log) {
       const section = findSectionContainer();
       if (!section) return {};
 
-      const sectionText = clean(section.container.textContent);
+      // Use innerText (preserves newlines) so the fallback regex can stop
+      // at line boundaries. clean(textContent) collapses newlines to spaces,
+      // causing [^\n]{1,300} to bleed across field boundaries.
+      const sectionText = section.container.innerText ?? clean(section.container.textContent);
       const scopedField = (label) => {
         const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const exactLabels = [...section.container.querySelectorAll('label,dt,th,strong,b,span,div')]
+        // Include td: PlanetBids may use table cells for field labels.
+        const exactLabels = [...section.container.querySelectorAll('label,dt,td,th,strong,b,span,div')]
           .filter((el) => clean(el.textContent).replace(/:$/, '').toLowerCase() === label.toLowerCase());
 
         for (const el of exactLabels) {
@@ -1067,8 +1072,9 @@ async function extractPortalMetadata(page, log) {
           if (parentMatch?.[1]) return clean(parentMatch[1]).substring(0, 500);
         }
 
+        // sectionText now uses innerText, so [^\n] correctly captures one line.
         const match = sectionText.match(new RegExp(`${escaped}\\s*:?\\s*([^\\n]{1,300})`, 'i'));
-        return match?.[1] ? clean(match[1]).substring(0, 500) : null;
+        return match?.[1] ? clean(match[1]).substring(0, 300) : null;
       };
 
       const dateTime =
@@ -1134,6 +1140,18 @@ async function extractPortalMetadata(page, log) {
     );
     const preBidSection = extractPreBidSection();
 
+    // Body-text fallback for pre-bid date/time when section-scoped
+    // extraction missed it.  bodyText = document.body.innerText preserves
+    // newlines, so [^\n]+ correctly stops after the date value.
+    const pre_bid_context_date = (() => {
+      if (preBidSection.job_walk_at) return null;
+      const idx = bodyText.search(/pre[-\s]?bid(?:\s+meeting)?|job\s+walk/i);
+      if (idx < 0) return null;
+      const excerpt = bodyText.substring(idx, idx + 800);
+      const m = excerpt.match(/Date(?:\s*[&\/]\s*|\s+(?:and|&)\s+)Time[:\s\n]+([^\n]+)/i);
+      return m ? m[1].trim() || null : null;
+    })();
+
     return {
       estimated_value_raw: findEstimateRaw(),
       license_requirements:
@@ -1182,7 +1200,7 @@ async function extractPortalMetadata(page, log) {
         field('Prebid Meeting Date') ||
         field('Site Visit Date') ||
         null,
-      pre_bid_meeting_at: preBidSection.pre_bid_meeting_at || null,
+      pre_bid_meeting_at: preBidSection.pre_bid_meeting_at || pre_bid_context_date || null,
       pre_bid_meeting:
         preBidSection.pre_bid_meeting ||
         field('Pre-Bid Meeting') ||
