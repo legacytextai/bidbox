@@ -417,112 +417,84 @@ async function scrapePlanetBids(payload, log) {
                 return m ? m[1].trim() || null : null;
               };
 
-              const extractPreBidSection = () => {
-                const clean = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
-                const sectionHeaderRe = /^(pre[-\s]?bid(?:\s+meeting)?(?:\s+information)?|prebid(?:\s+meeting)?(?:\s+information)?|job\s+walk|site\s+visit|mandatory\s+pre[-\s]?bid)$/i;
-                const fieldLabels = [
-                  'Date & Time',
-                  'Date/Time',
-                  'Meeting Date',
-                  'Meeting Time',
-                  'Location',
-                  'Meeting Location',
-                  'Address',
-                  'Venue',
-                  'Attendance Required',
-                  'Attendance Mandatory',
-                  'Mandatory',
-                  'Meeting Type',
-                  'Meeting Link',
-                  'Additional Details',
+              // Parses the "Pre-Bid Meeting Information" section from bodyText.
+              // Returns an object of lowercased label → value string pairs when the
+              // section is found, or null when the heading is absent from the page.
+              // Uses bodyText (document.body.innerText) which preserves newlines,
+              // so each field value is cleanly bounded by its own line.
+              const extractPreBidMeetingSection = () => {
+                const trimLine = (s) => String(s ?? '').trim();
+
+                // Known labels inside the Pre-Bid Meeting Information section.
+                const KNOWN_LABELS = [
+                  'pre-bid meeting',
+                  'meeting type',
+                  'date & time',
+                  'date/time',
+                  'meeting date',
+                  'meeting time',
+                  'meeting link',
+                  'attendance required',
+                  'attendance mandatory',
+                  'mandatory',
+                  'location',
+                  'meeting location',
+                  'address',
+                  'venue',
+                  'additional details',
+                  'notes',
                 ];
-                const fieldLabelRe = new RegExp(fieldLabels.map((label) => label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'i');
-                const nodes = [...document.querySelectorAll('h1,h2,h3,h4,h5,h6,legend,summary,label,dt,th,strong,b,span,div')];
+                const labelKey = (s) => trimLine(s).toLowerCase().replace(/\s+/g, ' ');
+                const labelSet = new Set(KNOWN_LABELS);
 
-                const findSectionContainer = () => {
-                  for (const node of nodes) {
-                    const ownText = clean([...node.childNodes]
-                      .filter((child) => child.nodeType === Node.TEXT_NODE)
-                      .map((child) => child.textContent)
-                      .join(' ') || node.textContent);
-                    if (!ownText || ownText.length > 120 || !sectionHeaderRe.test(ownText.replace(/:$/, ''))) continue;
+                // Heading: "Pre-Bid Meeting Information" (with or without "Information").
+                // Must occupy its own line.
+                const headingRe = /^pre[-\s]?bid\s+meeting(?:\s+information)?\s*$/im;
+                const headingMatch = bodyText.match(headingRe);
+                if (!headingMatch) return null;
 
-                    let current = node.parentElement;
-                    let best = null;
-                    for (let depth = 0; current && current !== document.body && depth < 6; depth += 1) {
-                      const text = clean(current.textContent);
-                      const headerIndex = text.toLowerCase().indexOf(ownText.toLowerCase());
-                      const headerNearStart = headerIndex >= 0 && headerIndex <= Math.max(80, text.length * 0.2);
-                      // Raised from 5000 to 15000: PlanetBids page components often exceed 5000 chars.
-                      if (headerNearStart && fieldLabelRe.test(text) && text.length <= 15000) {
-                        best = current;
-                        break;
-                      }
-                      current = current.parentElement;
+                const afterHeading = headingMatch.index + headingMatch[0].length;
+
+                // Stop at the next top-level section heading so we don't bleed into
+                // Online Q&A, Contact Information, Bid Bond, etc.
+                const STOP_RE = /^(?:online\s+q\s*&\s*a|contact\s+information|bid\s+bond|project\s+information|plan\s+holders|required\s+documents|addenda|q\s*&\s*a|documents?|submission)\s*$/im;
+                const stopMatch = bodyText.substring(afterHeading).match(STOP_RE);
+                const sectionEnd = stopMatch
+                  ? afterHeading + stopMatch.index
+                  : Math.min(afterHeading + 2000, bodyText.length);
+
+                const sectionText = bodyText.substring(afterHeading, sectionEnd);
+                const lines = sectionText.split('\n').map(trimLine).filter(Boolean);
+
+                const pairs = {};
+                for (let i = 0; i < lines.length; i++) {
+                  const line = lines[i];
+
+                  // "Label: Value" on the same line.
+                  const colonIdx = line.indexOf(':');
+                  if (colonIdx > 0 && colonIdx < 70) {
+                    const rawKey = labelKey(line.substring(0, colonIdx));
+                    const rawVal = trimLine(line.substring(colonIdx + 1));
+                    if (labelSet.has(rawKey) && rawVal) {
+                      pairs[rawKey] = rawVal;
+                      continue;
                     }
-                    if (best) return { header: ownText.replace(/:$/, ''), container: best };
-                  }
-                  return null;
-                };
-
-                const section = findSectionContainer();
-                if (!section) return {};
-
-                // Use innerText (preserves newlines) so the fallback regex can stop
-                // at line boundaries. clean(textContent) collapses newlines to spaces,
-                // causing [^\n]{1,300} to bleed across field boundaries.
-                const sectionText = section.container.innerText ?? clean(section.container.textContent);
-                const scopedField = (label) => {
-                  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                  // Include td: PlanetBids may use table cells for field labels.
-                  const exactLabels = [...section.container.querySelectorAll('label,dt,td,th,strong,b,span,div')]
-                    .filter((el) => clean(el.textContent).replace(/:$/, '').toLowerCase() === label.toLowerCase());
-
-                  for (const el of exactLabels) {
-                    const sibling = el.nextElementSibling ? clean(el.nextElementSibling.textContent) : '';
-                    if (sibling && sibling.toLowerCase() !== label.toLowerCase()) return sibling.substring(0, 500);
-
-                    const parentText = clean(el.parentElement?.textContent ?? '');
-                    const parentMatch = parentText.match(new RegExp(`^${escaped}\\s*:?\\s*(.+)$`, 'i'));
-                    if (parentMatch?.[1]) return clean(parentMatch[1]).substring(0, 500);
                   }
 
-                  // sectionText now uses innerText, so [^\n] correctly captures one line.
-                  const match = sectionText.match(new RegExp(`${escaped}\\s*:?\\s*([^\\n]{1,300})`, 'i'));
-                  return match?.[1] ? clean(match[1]).substring(0, 300) : null;
-                };
+                  // "Label" on one line, value on the next line.
+                  const lineKey = labelKey(line);
+                  if (labelSet.has(lineKey)) {
+                    const nextLine = i + 1 < lines.length ? trimLine(lines[i + 1]) : null;
+                    if (nextLine && !labelSet.has(labelKey(nextLine))) {
+                      pairs[lineKey] = nextLine;
+                      i++; // consume the value line
+                    } else {
+                      pairs[lineKey] = null; // label present, no value
+                    }
+                  }
+                }
 
-                const dateTime =
-                  scopedField('Date & Time') ||
-                  scopedField('Date/Time');
-                const meetingDate = scopedField('Meeting Date');
-                const meetingTime = scopedField('Meeting Time');
-                const combinedMeetingDateTime = meetingDate && meetingTime ? `${meetingDate} ${meetingTime}` : meetingDate || meetingTime || null;
-                const attendanceRequired =
-                  scopedField('Attendance Required') ||
-                  scopedField('Attendance Mandatory') ||
-                  scopedField('Mandatory');
-                const location =
-                  scopedField('Meeting Location') ||
-                  scopedField('Location') ||
-                  scopedField('Address') ||
-                  scopedField('Venue');
-                const meetingType = scopedField('Meeting Type');
-                const meetingLink = scopedField('Meeting Link');
-                const additionalDetails = scopedField('Additional Details');
-
-                return {
-                  pre_bid_meeting: true,
-                  job_walk_at: dateTime || combinedMeetingDateTime || null,
-                  pre_bid_meeting_at: dateTime || combinedMeetingDateTime || null,
-                  job_walk_details: [section.header, meetingType, additionalDetails].filter(Boolean).join(' | ') || section.header,
-                  job_walk_location: location || null,
-                  pre_bid_meeting_location: location || null,
-                  attendance_required: attendanceRequired || null,
-                  meeting_type: meetingType || null,
-                  meeting_link: meetingLink || null,
-                  additional_details: additionalDetails || null,
-                };
+                return pairs;
               };
 
               // FIX 1: strip navigation chrome from extracted title
@@ -656,19 +628,9 @@ async function scrapePlanetBids(payload, log) {
                 field('Site Visit Location') ||
                 field('Meeting Location') ||
                 null;
-              const preBidSection = extractPreBidSection();
-
-              // Body-text fallback for pre-bid date/time when section-scoped
-              // extraction missed it.  bodyText = document.body.innerText preserves
-              // newlines, so [^\n]+ correctly stops after the date value.
-              const pre_bid_context_date = (() => {
-                if (preBidSection.job_walk_at) return null;
-                const idx = bodyText.search(/pre[-\s]?bid(?:\s+meeting)?|job\s+walk/i);
-                if (idx < 0) return null;
-                const excerpt = bodyText.substring(idx, idx + 800);
-                const m = excerpt.match(/Date(?:\s*[&\/]\s*|\s+(?:and|&)\s+)Time[:\s\n]+([^\n]+)/i);
-                return m ? m[1].trim() || null : null;
-              })();
+              // preBidPairs is null when "Pre-Bid Meeting Information" heading is absent.
+              // preBidPairs is an object (possibly empty) when the heading is found.
+              const preBidPairs = extractPreBidMeetingSection();
 
               const commodity_codes = [
                 ...new Set((bodyText.match(/\b91\d{2,4}\b/g) ?? [])),
@@ -691,23 +653,42 @@ async function scrapePlanetBids(payload, log) {
                 delivery_dates,
                 project_address,
                 job_walk_at,
-                pre_bid_meeting_at: preBidSection.pre_bid_meeting_at || pre_bid_context_date || null,
+                // Pre-bid fields come exclusively from the section parser when the
+                // "Pre-Bid Meeting Information" heading is present.  When preBidPairs
+                // is null (heading absent) we fall back to global field() lookups,
+                // but we deliberately omit field('Pre-Bid Meeting') because its regex
+                // matches the section heading itself and captures "Information".
+                pre_bid_meeting: preBidPairs !== null
+                  ? (preBidPairs['pre-bid meeting'] ?? null)
+                  : (field('Prebid Meeting') || field('Job Walk') || null),
+                pre_bid_meeting_at: preBidPairs !== null
+                  ? (preBidPairs['date & time'] || preBidPairs['date/time'] || preBidPairs['meeting date'] || null)
+                  : null,
+                pre_bid_meeting_location: preBidPairs !== null
+                  ? (preBidPairs['meeting location'] || preBidPairs['location'] || preBidPairs['address'] || preBidPairs['venue'] || null)
+                  : null,
+                meeting_type: preBidPairs !== null ? (preBidPairs['meeting type'] || null) : null,
+                meeting_link: preBidPairs !== null ? (preBidPairs['meeting link'] || null) : null,
+                additional_details: preBidPairs !== null
+                  ? (preBidPairs['additional details'] || preBidPairs['notes'] || null)
+                  : null,
+                // attendance_required from section parser takes precedence; fall back
+                // to global field() lookups when section not found.
+                attendance_required: preBidPairs !== null
+                  ? (preBidPairs['attendance required'] || preBidPairs['attendance mandatory'] || preBidPairs['mandatory'] || null)
+                  : attendance_required,
                 job_walk_details,
-                job_walk_location: preBidSection.job_walk_location || job_walk_location,
-                pre_bid_meeting_location: preBidSection.pre_bid_meeting_location || null,
-                attendance_required,
-                pre_bid_meeting:
-                  preBidSection.pre_bid_meeting ||
-                  field('Pre-Bid Meeting') ||
-                  field('Prebid Meeting') ||
-                  field('Job Walk') ||
-                  null,
-                meeting_type: preBidSection.meeting_type || null,
-                meeting_link: preBidSection.meeting_link || null,
-                additional_details: preBidSection.additional_details || null,
-                section_scoped_job_walk_at: preBidSection.job_walk_at || null,
-                section_scoped_job_walk_details: preBidSection.job_walk_details || null,
-                section_scoped_attendance_required: preBidSection.attendance_required || null,
+                job_walk_location: preBidPairs !== null
+                  ? (preBidPairs['meeting location'] || preBidPairs['location'] || preBidPairs['address'] || job_walk_location)
+                  : job_walk_location,
+                // section_scoped_* carry only section-derived values into normalizeJobWalkMetadata.
+                section_scoped_job_walk_at: preBidPairs !== null
+                  ? (preBidPairs['date & time'] || preBidPairs['date/time'] || preBidPairs['meeting date'] || null)
+                  : null,
+                section_scoped_job_walk_details: null,
+                section_scoped_attendance_required: preBidPairs !== null
+                  ? (preBidPairs['attendance required'] || preBidPairs['attendance mandatory'] || preBidPairs['mandatory'] || null)
+                  : null,
                 county,
                 commodity_codes,
                 scope_text,
