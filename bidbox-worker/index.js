@@ -200,6 +200,86 @@ async function queueOpportunityPreparation({ supabase, candidate, sourceName, tr
   return { queued: true, duplicate: false, skipped: false, taskId: task.id };
 }
 
+// ── PRE-BID FORENSIC DEBUG REPORT ────────────────────────────────────────────
+// Persists DOM inspection + pipeline stages to agent_tasks.payload._debug_prebid.
+// Fires only for candidates with _debugPreBid or _domInspection set (bid 142972).
+// Remove after root-cause is confirmed. No pipeline logic is changed here.
+async function emitPreBidDebugReport(candidate, persistedRow, path, supabase, sourceTaskId) {
+  const dbg = candidate?._debugPreBid;
+  const dom = candidate?._domInspection;
+  if (!dbg && !dom) return;
+
+  const PRE_BID_KEYS = [
+    'pre_bid_exists','pre_bid_meeting','pre_bid_meeting_at','meeting_datetime',
+    'meeting_type','meeting_link','meeting_location','pre_bid_location',
+    'pre_bid_meeting_link','pre_bid_notes','attendance_required',
+    'job_walk_exists','job_walk_mandatory','job_walk_at',
+    'job_walk_details','job_walk_location','additional_details',
+  ];
+  const pickKeys = (obj) =>
+    Object.fromEntries(PRE_BID_KEYS.map(k => [k, (obj ?? {})[k] ?? null]));
+
+  const stage6 = pickKeys(persistedRow?.crawl_data);
+  const stage5 = dbg?.stage5_crawlData ?? null;
+  const s2 = dbg?.stage2_parserOutput ?? {};
+  const s4 = dbg?.stage4_normOutput ?? {};
+
+  let firstDivergence = 'None detected — all stages consistent';
+  const check = (label, a, b) => {
+    for (const k of PRE_BID_KEYS) {
+      const va = JSON.stringify((a ?? {})[k] ?? null);
+      const vb = JSON.stringify((b ?? {})[k] ?? null);
+      if (va !== vb) return `${label} — field "${k}": was ${va}, became ${vb}`;
+    }
+    return null;
+  };
+  firstDivergence =
+    check('Stage 2→3', s2, dbg?.stage3_normInput) ||
+    check('Stage 3→4', dbg?.stage3_normInput, s4) ||
+    check('Stage 4→5', s4, stage5) ||
+    check('Stage 5→6', stage5, stage6) ||
+    firstDivergence;
+
+  const debugPayload = {
+    _debug_prebid: {
+      recorded_at: new Date().toISOString(),
+      project: candidate.raw_title,
+      candidate_id: persistedRow?.id ?? null,
+      bid_id: candidate.crawl_data?.bid_id ?? null,
+      persist_path: path,
+      dom_inspection: dom ?? null,
+      stage1_raw_body_excerpt: dbg?.stage1_rawBodyExcerpt ?? null,
+      stage2_parser_output: dbg?.stage2_parserOutput ?? null,
+      stage3_norm_input: dbg?.stage3_normInput ?? null,
+      stage4_norm_output: dbg?.stage4_normOutput ?? null,
+      stage5_crawl_data: stage5,
+      stage6_stored_crawl_data: stage6,
+      summary: {
+        parser:     { pre_bid_meeting: s2?.pre_bid_meeting, pre_bid_meeting_at: s2?.pre_bid_meeting_at, attendance_required: s2?.attendance_required },
+        normalized: { pre_bid_exists: s4?.pre_bid_exists, meeting_datetime: s4?.meeting_datetime, attendance_required: s4?.attendance_required },
+        stored:     { pre_bid_exists: stage6.pre_bid_exists, meeting_datetime: stage6.meeting_datetime, attendance_required: stage6.attendance_required },
+        first_divergence: firstDivergence,
+      },
+    },
+  };
+
+  if (!sourceTaskId) return;
+  try {
+    const { data: taskRow } = await supabase
+      .from('agent_tasks')
+      .select('payload')
+      .eq('id', sourceTaskId)
+      .single();
+    await supabase
+      .from('agent_tasks')
+      .update({ payload: { ...(taskRow?.payload ?? {}), ...debugPayload } })
+      .eq('id', sourceTaskId);
+  } catch (e) {
+    // Debug write failure is non-fatal — swallow silently.
+  }
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 async function persistScannedCandidate({ supabase, source_id, source_name, portal_type, candidate, triggerReason, sourceTaskId, log }) {
   const portalFields = portalOwnedCandidateFields({ source_id, source_name, portal_type, candidate });
   const now = new Date().toISOString();
@@ -226,6 +306,7 @@ async function persistScannedCandidate({ supabase, source_id, source_name, porta
       .select('id, source_id, source_url, portal_type, raw_title, agency, bid_due_at, crawl_data, converted_project_id, analysis_status, document_acquisition_status, document_processing_status, opportunity_intelligence_status, last_metadata_changed_at, metadata_refresh_count')
       .single();
     if (insertError) throw new Error(`Candidate insert failed: ${insertError.message}`);
+    await emitPreBidDebugReport(candidate, inserted, 'INSERT', supabase, sourceTaskId);
     const queued = await queueOpportunityPreparation({
       supabase,
       candidate: inserted,
@@ -254,6 +335,8 @@ async function persistScannedCandidate({ supabase, source_id, source_name, porta
     .select('id, source_id, source_url, portal_type, raw_title, agency, bid_due_at, crawl_data, converted_project_id, analysis_status, document_acquisition_status, document_processing_status, opportunity_intelligence_status, last_metadata_changed_at, metadata_refresh_count')
     .single();
   if (updateError) throw new Error(`Candidate metadata refresh failed: ${updateError.message}`);
+
+  await emitPreBidDebugReport(candidate, updated, 'UPDATE', supabase, sourceTaskId);
 
   const eligibility = shouldQueueOpportunityPreparation(updated, metadataChanged);
   let preparation = { queued: false, duplicate: false, skipped: true, reason: eligibility.reason };

@@ -408,6 +408,65 @@ async function scrapePlanetBids(payload, log) {
 
             await page.waitForTimeout(1000 + Math.floor(Math.random() * 1000)); // FIX 4: jitter
 
+            // ── DOM INSPECTION (bid 142972 / Santa Ana Bikeway only) ──────────────
+            // No parsing, no regex. Captured once and persisted to agent_tasks.payload.
+            // Remove after DOM structure is confirmed.
+            let _domInspection = null;
+            if (detailUrl.includes('142972')) {
+              _domInspection = await page.evaluate(() => {
+                const HEADINGS = [
+                  'Pre-Bid Meeting Information',
+                  'Job Walk Information',
+                  'Job Walk',
+                ];
+                const results = [];
+                for (const heading of HEADINGS) {
+                  const allEls = [...document.querySelectorAll('*')];
+                  const headingEl = allEls.find((el) => {
+                    const direct = [...el.childNodes]
+                      .filter((n) => n.nodeType === Node.TEXT_NODE)
+                      .map((n) => n.textContent.trim())
+                      .join('')
+                      .trim();
+                    return direct === heading;
+                  });
+                  if (!headingEl) { results.push({ heading, found: false }); continue; }
+
+                  // First ancestor with > 1 child is the section container.
+                  let container = headingEl.parentElement;
+                  for (let d = 0; container && container !== document.body && d < 8; d++, container = container.parentElement) {
+                    if (container.children.length > 1) break;
+                  }
+
+                  const ancestors = [];
+                  let cur = headingEl.parentElement;
+                  for (let d = 0; cur && cur !== document.body && d < 8; d++, cur = cur.parentElement) {
+                    ancestors.push({ depth: d + 1, tag: cur.tagName, className: cur.className, childCount: cur.children.length, textLength: (cur.textContent || '').length });
+                  }
+
+                  results.push({
+                    heading,
+                    found: true,
+                    headingEl: { tag: headingEl.tagName, className: headingEl.className, outerHTML: headingEl.outerHTML?.substring(0, 1000) },
+                    container: container ? {
+                      tag: container.tagName,
+                      className: container.className,
+                      outerHTML: container.outerHTML?.substring(0, 4000),
+                      innerHTML: container.innerHTML?.substring(0, 4000),
+                      innerText: container.innerText?.substring(0, 2000),
+                      textContent: container.textContent?.substring(0, 2000),
+                    } : null,
+                    ancestors,
+                    children: container
+                      ? [...container.children].map((ch) => ({ tag: ch.tagName, className: ch.className, innerText: ch.innerText?.substring(0, 300), childCount: ch.children.length }))
+                      : [],
+                  });
+                }
+                return results;
+              });
+            }
+            // ─────────────────────────────────────────────────────────────────────
+
             const raw = await page.evaluate(() => {
               const bodyText = document.body.innerText;
 
@@ -845,6 +904,7 @@ async function scrapePlanetBids(payload, log) {
               bid_due_at: parseBidDueDate(raw.due_date_raw),
               crawl_data,
               _debugPreBid,
+              _domInspection,
             });
 
             log(`[${source_name}] Row ${i + 1}: bid_id=${bidId} title="${(raw.raw_title ?? '').substring(0, 60)}"`);
