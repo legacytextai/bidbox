@@ -28,12 +28,17 @@ interface QualificationProfile {
 }
 
 interface Candidate {
-  id:         string;
-  raw_title:  string | null;
-  agency:     string | null;
-  bid_due_at: string | null;
-  scope_text: string | null;
-  crawl_data: Record<string, unknown> | null;
+  id:                  string;
+  raw_title:           string | null;
+  agency:              string | null;
+  bid_due_at:          string | null;
+  scope_text:          string | null;
+  // OML normalized columns (read these; crawl_data kept for overflow/fallback only)
+  estimated_value:     number | null;
+  county:              string | null;
+  required_licenses:   string[] | null;
+  required_naics:      string[] | null;
+  crawl_data:          Record<string, unknown> | null;
 }
 
 interface QualificationResult {
@@ -69,17 +74,16 @@ function qualifyCandidate(
   candidate: Candidate,
   profile: QualificationProfile,
 ): QualificationResult {
-  // Resolve county: agency lookup first, crawl_data as fallback
+  // Resolve county: typed column first, agency lookup as fallback
   const county: string | null =
-    (candidate.crawl_data?.county as string | null) ??
+    candidate.county ??
     AGENCY_COUNTY[candidate.agency ?? ""] ??
     null;
 
-  // Resolve value: crawl_data first (only if positive number), raw_title parse as fallback
-  const rawValue = candidate.crawl_data?.estimated_value as number | null | undefined;
+  // Resolve value: typed column first (only if positive), raw_title parse as fallback
   const value: number | null =
-    (typeof rawValue === "number" && rawValue > 0)
-      ? rawValue
+    (typeof candidate.estimated_value === "number" && candidate.estimated_value > 0)
+      ? candidate.estimated_value
       : parseValueFromTitle(candidate.raw_title);
 
   // ── Red rules (first match wins, return immediately) ─────────────────────
@@ -131,12 +135,11 @@ function qualifyCandidate(
     };
   }
 
-  // Combined capability check — fires only when crawl_data carries requirement fields
-  // AND user has zero overlap across both licenses AND naics.
+  // Combined capability check — fires only when requirement fields are populated.
   // OR logic: matching on EITHER licenses or naics is sufficient to pass.
-  // Dormant until crawl-project populates required_licenses / required_naics in crawl_data.
-  const requiredLicenses = (candidate.crawl_data?.required_licenses as string[] | null) ?? [];
-  const requiredNaics    = (candidate.crawl_data?.required_naics    as string[] | null) ?? [];
+  // Dormant until crawl-project phase populates required_licenses / required_naics.
+  const requiredLicenses = candidate.required_licenses ?? [];
+  const requiredNaics    = candidate.required_naics    ?? [];
   const hasCapabilityData = requiredLicenses.length > 0 || requiredNaics.length > 0;
 
   if (hasCapabilityData) {
@@ -294,7 +297,7 @@ serve(async (req) => {
     // Load pending candidates (skip any that have been manually reviewed)
     let query = supabase
       .from("opportunity_candidates")
-      .select("id, raw_title, agency, bid_due_at, scope_text, crawl_data")
+      .select("id, raw_title, agency, bid_due_at, scope_text, estimated_value, county, required_licenses, required_naics, crawl_data")
       .eq("status", "pending");
 
     if (candidateId) {
