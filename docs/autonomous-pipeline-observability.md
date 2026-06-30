@@ -6,7 +6,10 @@ A single pg_cron job triggers the entire nightly pipeline:
 
 - Job name: `nightly-refresh-opportunities`
 - Schedule: `0 9 * * *` UTC (≈ 01:00–02:00 Pacific)
-- Calls: `POST /functions/v1/refresh-opportunities` with `{ trigger_reason: "scheduled_refresh" }`
+- Calls: `POST /functions/v1/refresh-opportunities` with `{ "trigger": "nightly_cron", "force": true }`
+
+Nightly cron refreshes intentionally bypass the per-source `refresh_cadence_hours`
+gate so an afternoon manual refresh cannot suppress the autonomous overnight run.
 
 ### Verify the scheduler exists and is active
 ```sql
@@ -69,10 +72,22 @@ GROUP BY 1,2 ORDER BY 1,2;
 curl -X POST https://ztuyjlyuzasbceepezua.supabase.co/functions/v1/refresh-opportunities \
   -H "Content-Type: application/json" \
   -H "apikey: <anon key>" \
-  -d '{"trigger_reason":"manual","force":true}'
+  -d '{"trigger":"manual","force":true}'
 ```
 
 `force: true` bypasses the per-source `refresh_cadence_hours` gate.
+
+## Nightly trigger validation
+```bash
+curl -X POST https://ztuyjlyuzasbceepezua.supabase.co/functions/v1/refresh-opportunities \
+  -H "Content-Type: application/json" \
+  -H "apikey: <anon key>" \
+  -d '{"trigger":"nightly_cron","force":true}'
+```
+
+The response should include `trigger`, `force`, `sources_considered`,
+`sources_queued`, and `skipped_due_to_cadence`. For the nightly path,
+`skipped_due_to_cadence` should be `0`.
 
 ## Definition of "the autonomous pipeline ran last night"
 1. `cron.job_run_details` shows a successful run for `nightly-refresh-opportunities` after 09:00 UTC.

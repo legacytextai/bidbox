@@ -4,6 +4,16 @@ All notable changes to the BidBox project are documented in this file.
 
 ---
 
+## Nightly Opportunity Refresh
+
+- Forced the autonomous nightly opportunity refresh path to bypass
+  `refresh_cadence_hours`, so manual daytime refreshes cannot suppress the
+  overnight source scan.
+- Updated the `nightly-refresh-opportunities` pg_cron payload to send
+  `{ "trigger": "nightly_cron", "force": true }`.
+- Added response fields for `trigger`, `force`, and `skipped_due_to_cadence`
+  while preserving existing `trigger_reason` task compatibility.
+
 ## P0 Data Correctness — Portal Data Extraction Repair
 
 ### Follow-up — Portal-Authoritative Bid Items + Structured Pre-Bid Fields

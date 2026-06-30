@@ -149,10 +149,12 @@ serve(async (req) => {
     );
 
     const body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
-    const triggerReason = body?.trigger_reason ?? "scheduled_refresh";
+    const trigger = body?.trigger ?? body?.trigger_reason ?? "scheduled_refresh";
+    const triggerReason = trigger;
     const now = new Date();
     const window = body?.refresh_window ?? refreshWindow(now);
     const force = Boolean(body?.force);
+    const bypassCadence = force || trigger === "nightly_cron";
 
     const { data: sources, error: sourcesError } = await supabase
       .from("opportunity_sources")
@@ -165,24 +167,30 @@ serve(async (req) => {
       return jsonResponse({ success: false, error: "Failed to query sources" }, 500);
     }
 
+    let skippedDueToCadence = 0;
     const eligible = (sources ?? []).filter((source: any) => {
       if (!resolveTaskType(source.portal_type)) return false;
-      if (force) return true;
+      if (bypassCadence) return true;
       const cadenceHours = Number(source.refresh_cadence_hours ?? source.scan_interval_hours ?? 24);
       const last = source.last_refresh_completed_at ?? source.last_refresh_queued_at;
       if (!last) return true;
       const ageMs = now.getTime() - new Date(last).getTime();
-      return ageMs >= cadenceHours * 60 * 60 * 1000;
+      const due = ageMs >= cadenceHours * 60 * 60 * 1000;
+      if (!due) skippedDueToCadence++;
+      return due;
     });
 
     if (eligible.length === 0) {
       const backfill = await runOneTimeBackfillIfNeeded(supabase, now.toISOString());
       return jsonResponse({
         success: true,
+        trigger,
         trigger_reason: triggerReason,
+        force,
         refresh_window: window,
         sources_considered: sources?.length ?? 0,
         sources_queued: 0,
+        skipped_due_to_cadence: skippedDueToCadence,
         queued_task_ids: [],
         message: "No eligible opportunity sources due for refresh",
         ...(backfill.ran ? { one_time_backfill: { queued: backfill.queued, skipped: backfill.skipped } } : {}),
@@ -223,11 +231,14 @@ serve(async (req) => {
       const backfill = await runOneTimeBackfillIfNeeded(supabase, now.toISOString());
       return jsonResponse({
         success: true,
+        trigger,
         trigger_reason: triggerReason,
+        force,
         refresh_window: window,
         sources_considered: sources?.length ?? 0,
         sources_due: eligible.length,
         sources_queued: 0,
+        skipped_due_to_cadence: skippedDueToCadence,
         queued_task_ids: [],
         message: "Eligible sources already have active refresh tasks",
         ...(backfill.ran ? { one_time_backfill: { queued: backfill.queued, skipped: backfill.skipped } } : {}),
@@ -261,11 +272,14 @@ serve(async (req) => {
 
     return jsonResponse({
       success: true,
+      trigger,
       trigger_reason: triggerReason,
+      force,
       refresh_window: window,
       sources_considered: sources?.length ?? 0,
       sources_due: eligible.length,
       sources_queued: tasks?.length ?? 0,
+      skipped_due_to_cadence: skippedDueToCadence,
       queued_task_ids: (tasks ?? []).map((task: any) => task.id),
       ...(backfill.ran ? { one_time_backfill: { queued: backfill.queued, skipped: backfill.skipped } } : {}),
     });
