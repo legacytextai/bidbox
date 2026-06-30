@@ -883,7 +883,6 @@ async function runDocumentProcessingTask(task, supabase) {
     }
     return {
       ...result,
-      bid_item_fallback: bidItemFallback,
       project_intelligence_task_id: projectIntelligenceTaskId,
       project_intelligence_duplicate: projectIntelligenceDuplicate,
       project_intelligence_skipped: projectIntelligenceSkipped,
