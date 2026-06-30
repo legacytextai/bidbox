@@ -253,7 +253,11 @@ function findBidItemArrays(value, path = []) {
       ));
     }).length;
     const pathHint = path.join('.').toLowerCase();
-    if (objectItems.length > 0 && itemLikeCount > 0 && (/line|item|bid/.test(pathHint) || itemLikeCount >= Math.min(2, objectItems.length))) {
+    // Accept arrays that look like bid items even with a single row (lump-sum case).
+    // The pathHint guard is broadened to catch PlanetBids endpoints like "schedule",
+    // "bidSchedule", "lineItems", "items", "rows" as well as the original "line/item/bid".
+    const pathLooksLikeItems = /line|item|bid|schedule|row/.test(pathHint);
+    if (objectItems.length > 0 && itemLikeCount > 0 && (pathLooksLikeItems || itemLikeCount >= Math.min(2, objectItems.length))) {
       return [objectItems];
     }
     return objectItems.flatMap((item, index) => findBidItemArrays(item, path.concat(String(index))));
@@ -845,7 +849,9 @@ async function extractPlanetBidsBidItems(page, candidate, log) {
     try {
       const url = res.url();
       if (!url.includes(API_HOST) || !res.ok()) return;
-      if (!/(line|bid).{0,30}item|item.{0,30}(line|bid)/i.test(url)) return;
+      // Catch PlanetBids endpoints that return bid-item data.
+      // Known patterns: /lineItems, /bid-items, /bidItems, /schedule, /bidSchedule, /items
+      if (!/(line.{0,10}item|bid.{0,10}item|item.{0,10}line|bid.{0,10}schedule|schedule.{0,10}bid|\/items|\/schedule)/i.test(url)) return;
       const json = await res.json().catch(() => null);
       if (json) bidItemResponses.push({ url, json });
     } catch (_) {}
@@ -1737,8 +1743,59 @@ async function acquirePlanetBidsDocuments({ supabase, task, candidate, log }) {
   };
 }
 
+// ── LIGHTWEIGHT BID ITEM SCAN ─────────────────────────────────────────────────
+// Visits the PlanetBids detail page, clicks the Line Items tab, and stores
+// portal-native bid items. Does NOT download documents, run F3/F4, or interact
+// with any other tabs. Called by the bid_item_scan worker task which is queued
+// immediately after a new candidate is discovered so bid items appear in the
+// UI without requiring the user to click Analyze Project first.
+
+async function runPlanetBidsBidItemScan({ supabase, candidate, log = console.log }) {
+  if (!candidate?.source_url) throw new Error('bid_item_scan: candidate missing source_url');
+  if (candidate.portal_type !== 'planetbids') {
+    throw new Error(`bid_item_scan not implemented for portal_type=${candidate.portal_type}`);
+  }
+
+  const { browser, page } = await createBrowserbasePage(log);
+  try {
+    log(`bid_item_scan: navigating to ${candidate.source_url}`);
+    await page.goto(candidate.source_url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+
+    // Attempt login if credentials are present — some agencies gate the Line Items tab
+    const email = process.env.PLANETBIDS_EMAIL;
+    const password = process.env.PLANETBIDS_PASSWORD;
+    if (email && password) {
+      await loginToPlanetBids(page, log).catch((e) => {
+        log(`bid_item_scan: login skipped (${e.message}); proceeding as public`);
+      });
+    }
+
+    const items = await extractPlanetBidsBidItems(page, candidate, log);
+    log(`bid_item_scan: extracted ${items.length} bid item(s)`);
+
+    await replacePortalBidItemsForCandidate({
+      supabase,
+      candidateId: candidate.id,
+      items,
+      defaults: {
+        sourcePortal: 'planetbids',
+        sourceOpportunityId: candidate.portal_bid_id ?? candidate.crawl_data?.bid_id ?? null,
+        sourceUrl: candidate.source_url,
+        extractionMethod: 'portal_tab',
+      },
+      log,
+    });
+
+    return { extracted: items.length };
+  } finally {
+    await browser.close().catch(() => {});
+  }
+}
+
 module.exports = {
   acquirePlanetBidsDocuments,
+  runPlanetBidsBidItemScan,
   DOCUMENT_BUCKET,
   extractPlanetBidsBidItemsFromJson,
 };

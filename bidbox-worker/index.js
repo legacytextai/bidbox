@@ -2,7 +2,7 @@ require('dotenv').config();
 const { createClient } = require('@supabase/supabase-js');
 const { scrapePlanetBids } = require('./drivers/planetbids');
 const { scrapeCaltrans } = require('./drivers/caltrans');
-const { acquirePlanetBidsDocuments } = require('./drivers/planetbids_documents');
+const { acquirePlanetBidsDocuments, runPlanetBidsBidItemScan } = require('./drivers/planetbids_documents');
 const { acquireCaltransDocuments } = require('./drivers/caltrans_documents');
 const {
   queueDocumentProcessingForCandidate,
@@ -182,9 +182,28 @@ async function persistScannedCandidate({ supabase, source_id, source_name, porta
       .single();
     if (insertError) throw new Error(`Candidate insert failed: ${insertError.message}`);
     await emitPreBidDebugReport(candidate, inserted, 'INSERT', supabase, sourceTaskId);
-    // OML: scanning no longer auto-queues F2/F3/F4 prep. A human reviews portal
-    // metadata and explicitly triggers analysis via the analyze-project entry point.
-    return { state: 'new', candidate: inserted, metadataChanged: true, preparation: { queued: false, duplicate: false, skipped: true, reason: 'oml_scan_no_auto_trigger' } };
+    // OML: F2/F3/F4 stays user-triggered. But bid items are portal-native metadata
+    // (visible on the portal page without downloading documents), so we queue a
+    // lightweight bid_item_scan task for PlanetBids candidates immediately.
+    let bidItemTask = { queued: false, reason: 'not_supported_for_portal_type' };
+    if (portal_type === 'planetbids') {
+      const { error: bitError } = await supabase.from('agent_tasks').insert({
+        task_type: 'bid_item_scan',
+        status: 'pending',
+        priority: 4,
+        trigger_reason: triggerReason,
+        payload: {
+          candidate_id: inserted.id,
+          source_url: inserted.source_url,
+          portal_type: inserted.portal_type,
+          source_name: source_name,
+        },
+      });
+      bidItemTask = bitError
+        ? { queued: false, reason: bitError.message }
+        : { queued: true };
+    }
+    return { state: 'new', candidate: inserted, metadataChanged: true, preparation: { queued: false, duplicate: false, skipped: true, reason: 'oml_scan_no_auto_trigger' }, bidItemTask };
   }
 
   const metadataChanged = changedPortalMetadata(existing, portalFields);
@@ -516,6 +535,29 @@ async function runCaltransScan(task, supabase) {
   }
 
   return { found, new: newCount, refreshed: refreshedCount, unchanged: unchangedCount, preparationQueued, preparationDuplicates, errors, errorSummary, logs };
+}
+
+async function runBidItemScan(task, supabase) {
+  const { candidate_id } = task.payload ?? {};
+  if (!candidate_id) throw new Error('bid_item_scan task missing candidate_id');
+
+  const { data: candidate, error } = await supabase
+    .from('opportunity_candidates')
+    .select('id, source_url, portal_type, portal_bid_id, crawl_data')
+    .eq('id', candidate_id)
+    .single();
+  if (error || !candidate) throw new Error(`bid_item_scan: candidate not found — ${error?.message ?? 'no row'}`);
+
+  const logs = [];
+  const log = (msg) => { logs.push(`[${new Date().toISOString()}] ${msg}`); console.log(msg); };
+
+  try {
+    const result = await runPlanetBidsBidItemScan({ supabase, candidate, log });
+    return { ...result, logs };
+  } catch (e) {
+    log(`bid_item_scan error: ${e.message}`);
+    throw e;
+  }
 }
 
 async function runProjectAnalysisAcquisition(task, supabase) {
@@ -907,7 +949,7 @@ async function claimNextTask() {
     .from('agent_tasks')
     .select('*')
     .eq('status', 'pending')
-    .in('task_type', ['planetbids_scan', 'caltrans_scan', 'project_analysis', 'document_processing', 'project_intelligence'])
+    .in('task_type', ['planetbids_scan', 'caltrans_scan', 'bid_item_scan', 'project_analysis', 'document_processing', 'project_intelligence'])
     .order('priority', { ascending: false })
     .order('created_at', { ascending: true })
     .limit(1)
@@ -945,6 +987,8 @@ async function processTask(task) {
       result = await runPlanetBidsScan(task, supabase);
     } else if (task.task_type === 'caltrans_scan') {
       result = await runCaltransScan(task, supabase);
+    } else if (task.task_type === 'bid_item_scan') {
+      result = await runBidItemScan(task, supabase);
     } else if (task.task_type === 'project_analysis') {
       result = await runProjectAnalysisAcquisition(task, supabase);
     } else if (task.task_type === 'document_processing') {
