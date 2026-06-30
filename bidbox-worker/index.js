@@ -31,13 +31,6 @@ function userFacingDocumentAcquisitionFailureMessage() {
   return 'Document acquisition failed. BidBox could not acquire source documents for this opportunity.';
 }
 
-const ACTIVE_TASK_STATUSES = ['pending', 'running', 'retrying'];
-const PREPARATION_TASK_TYPES = ['project_analysis', 'document_processing', 'project_intelligence'];
-
-function buildRefreshWindow(date = new Date()) {
-  return date.toISOString().slice(0, 13);
-}
-
 function normalizeJson(value) {
   if (Array.isArray(value)) return value.map((item) => normalizeJson(item));
   if (value && typeof value === 'object') {
@@ -70,134 +63,6 @@ function portalOwnedCandidateFields({ source_id, source_name, portal_type, candi
     bid_due_at: candidate.bid_due_at,
     crawl_data: candidate.crawl_data ?? null,
   };
-}
-
-async function hasActivePreparationTask(supabase, candidateId) {
-  const { data, error } = await supabase
-    .from('agent_tasks')
-    .select('id')
-    .in('task_type', PREPARATION_TASK_TYPES)
-    .in('status', ACTIVE_TASK_STATUSES)
-    .contains('payload', { candidate_id: candidateId })
-    .limit(1);
-  if (error) throw new Error(`Active preparation lookup failed: ${error.message}`);
-  return Boolean(data?.length);
-}
-
-const OI_ACTIVE_STATUSES = new Set(['queued', 'acquiring_documents', 'processing_documents', 'generating_report']);
-const OI_READY_STATUSES = new Set(['ready', 'partial']);
-const LEGACY_ACTIVE_ANALYSIS_STATUSES = new Set(['queued', 'analyzing']);
-const LEGACY_READY_ANALYSIS_STATUSES = new Set(['ready']);
-const LEGACY_ACTIVE_DOCUMENT_STATUSES = new Set(['queued', 'acquiring']);
-const LEGACY_READY_DOCUMENT_STATUSES = new Set(['acquired']);
-const LEGACY_ACTIVE_PROCESSING_STATUSES = new Set(['queued', 'processing']);
-const LEGACY_READY_PROCESSING_STATUSES = new Set(['processed', 'partial']);
-
-function shouldQueueOpportunityPreparation(candidate, metadataChanged) {
-  if (!candidate?.id) return { shouldQueue: false, reason: 'candidate missing id' };
-  if (candidate.converted_project_id) return { shouldQueue: false, reason: 'already converted to project' };
-
-  const oiStatus = candidate.opportunity_intelligence_status ?? null;
-  if (oiStatus && OI_ACTIVE_STATUSES.has(oiStatus)) {
-    return { shouldQueue: false, reason: `Opportunity Intelligence already active: ${oiStatus}` };
-  }
-  if (LEGACY_ACTIVE_ANALYSIS_STATUSES.has(candidate.analysis_status ?? '')) {
-    return { shouldQueue: false, reason: `legacy analysis already active: ${candidate.analysis_status}` };
-  }
-  if (LEGACY_ACTIVE_DOCUMENT_STATUSES.has(candidate.document_acquisition_status ?? '')) {
-    return { shouldQueue: false, reason: `document acquisition already active: ${candidate.document_acquisition_status}` };
-  }
-  if (LEGACY_ACTIVE_PROCESSING_STATUSES.has(candidate.document_processing_status ?? '')) {
-    return { shouldQueue: false, reason: `document processing already active: ${candidate.document_processing_status}` };
-  }
-
-  if (metadataChanged) return { shouldQueue: true, reason: 'portal metadata changed' };
-
-  if (oiStatus && OI_READY_STATUSES.has(oiStatus)) {
-    return { shouldQueue: false, reason: `Opportunity Intelligence already ready: ${oiStatus}` };
-  }
-
-  const legacyReady =
-    LEGACY_READY_ANALYSIS_STATUSES.has(candidate.analysis_status ?? '') ||
-    LEGACY_READY_DOCUMENT_STATUSES.has(candidate.document_acquisition_status ?? '') ||
-    LEGACY_READY_PROCESSING_STATUSES.has(candidate.document_processing_status ?? '');
-  if ((!oiStatus || oiStatus === 'not_requested') && !legacyReady) {
-    return { shouldQueue: true, reason: 'unprepared opportunity discovered during refresh' };
-  }
-
-  return { shouldQueue: false, reason: 'metadata unchanged' };
-}
-
-async function queueOpportunityPreparation({ supabase, candidate, sourceName, triggerReason, sourceTaskId, priority = 3, preparationReason = 'automatic_refresh' }) {
-  if (!candidate?.id) return { queued: false, duplicate: false, skipped: true, reason: 'candidate missing id' };
-
-  if (candidate.bid_due_at) {
-    const due = new Date(candidate.bid_due_at);
-    if (!isNaN(due.getTime()) && due.getTime() < Date.now()) {
-      return { queued: false, duplicate: false, skipped: true, reason: 'closed bid' };
-    }
-  }
-
-  if (await hasActivePreparationTask(supabase, candidate.id)) {
-    return { queued: false, duplicate: true, skipped: false, reason: 'active preparation task exists' };
-  }
-
-  const requestedAt = new Date().toISOString();
-  const payload = {
-    candidate_id: candidate.id,
-    source_id: candidate.source_id,
-    source_name: sourceName ?? candidate.agency ?? 'Unknown source',
-    source_url: candidate.source_url,
-    portal_type: candidate.portal_type,
-    agency: candidate.agency,
-    raw_title: candidate.raw_title,
-    bid_due_at: candidate.bid_due_at,
-    requested_at: requestedAt,
-    trigger_reason: triggerReason,
-    preparation_reason: preparationReason,
-    source_task_id: sourceTaskId,
-    intelligence_tier: 'opportunity',
-    phase: 'f5_opportunity_preparation',
-    next_phase: 'f2_document_acquisition',
-    intelligence_status: 'queued',
-  };
-
-  const { data: task, error: taskError } = await supabase
-    .from('agent_tasks')
-    .insert({
-      task_type: 'project_analysis',
-      status: 'pending',
-      priority,
-      trigger_reason: triggerReason,
-      refresh_window: buildRefreshWindow(),
-      payload,
-    })
-    .select('id')
-    .single();
-  if (taskError) throw new Error(`Opportunity Intelligence task insert failed: ${taskError.message}`);
-
-  const { error: updateError } = await supabase
-    .from('opportunity_candidates')
-    .update({
-      analysis_status: 'queued',
-      analysis_task_id: task.id,
-      analysis_requested_at: requestedAt,
-      analysis_started_at: null,
-      analysis_completed_at: null,
-      analysis_error: null,
-      document_acquisition_status: 'queued',
-      document_acquisition_started_at: null,
-      document_acquisition_completed_at: null,
-      document_acquisition_error: null,
-      opportunity_lifecycle_status: 'opportunity_intelligence_queued',
-      opportunity_intelligence_status: 'queued',
-      opportunity_intelligence_task_id: task.id,
-      opportunity_intelligence_error: null,
-    })
-    .eq('id', candidate.id);
-  if (updateError) throw new Error(`Candidate Opportunity Intelligence queue update failed: ${updateError.message}`);
-
-  return { queued: true, duplicate: false, skipped: false, taskId: task.id };
 }
 
 // ── PRE-BID FORENSIC DEBUG REPORT ────────────────────────────────────────────
@@ -307,15 +172,9 @@ async function persistScannedCandidate({ supabase, source_id, source_name, porta
       .single();
     if (insertError) throw new Error(`Candidate insert failed: ${insertError.message}`);
     await emitPreBidDebugReport(candidate, inserted, 'INSERT', supabase, sourceTaskId);
-    const queued = await queueOpportunityPreparation({
-      supabase,
-      candidate: inserted,
-      sourceName: source_name,
-      triggerReason,
-      sourceTaskId,
-      preparationReason: 'new opportunity discovered',
-    }).catch((e) => ({ queued: false, duplicate: false, skipped: true, reason: e.message }));
-    return { state: 'new', candidate: inserted, metadataChanged: true, preparation: queued };
+    // OML: scanning no longer auto-queues F2/F3/F4 prep. A human reviews portal
+    // metadata and explicitly triggers analysis via the analyze-project entry point.
+    return { state: 'new', candidate: inserted, metadataChanged: true, preparation: { queued: false, duplicate: false, skipped: true, reason: 'oml_scan_no_auto_trigger' } };
   }
 
   const metadataChanged = changedPortalMetadata(existing, portalFields);
@@ -338,18 +197,10 @@ async function persistScannedCandidate({ supabase, source_id, source_name, porta
 
   await emitPreBidDebugReport(candidate, updated, 'UPDATE', supabase, sourceTaskId);
 
-  const eligibility = shouldQueueOpportunityPreparation(updated, metadataChanged);
-  let preparation = { queued: false, duplicate: false, skipped: true, reason: eligibility.reason };
-  if (eligibility.shouldQueue) {
-    preparation = await queueOpportunityPreparation({
-      supabase,
-      candidate: updated,
-      sourceName: source_name,
-      triggerReason,
-      sourceTaskId,
-      preparationReason: eligibility.reason,
-    }).catch((e) => ({ queued: false, duplicate: false, skipped: true, reason: e.message }));
-  }
+  // OML: scan-time refreshes no longer auto-queue F2/F3/F4 prep, even when
+  // metadata changes. Re-analysis after a metadata change is the user's call,
+  // triggered through analyze-project, not the scanner's.
+  const preparation = { queued: false, duplicate: false, skipped: true, reason: 'oml_scan_no_auto_trigger' };
 
   return {
     state: metadataChanged ? 'refreshed' : 'unchanged',
