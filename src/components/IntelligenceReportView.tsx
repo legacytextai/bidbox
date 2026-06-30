@@ -554,7 +554,7 @@ export function useIntelligenceReportDerivedState({
     if (dps === "processing" || ois === "processing_documents") return "Processing source documents…";
     if (as_ === "analyzing" || ois === "generating_report") return "Generating Intelligence Report…";
     if (ois === "failed" || as_ === "failed") return "Preparation failed.";
-    return "Opportunity Intelligence has not been prepared yet.";
+    return "Opportunity Intelligence has not been prepared. Click Prepare Intelligence to begin.";
   }, [candidate]);
 
   return {

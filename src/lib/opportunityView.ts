@@ -349,11 +349,14 @@ export function buildOpportunityOverviewData(input: AdapterInput): OpportunityOv
           : null;
   const locationText = cleanDisplayText(preBidLocation);
   const resolvedLocation = locationText ?? (preBidMeetingLink ? "Virtual" : null);
+  // meeting_type distinguishes "Pre-Bid Meeting" vs "Job Walk" vs "Mandatory Job Walk" etc.
+  const meetingTypeLabel = cleanDisplayText(crawl?.meeting_type) || "Pre-Bid Meeting";
   const jobWalkDetailParts = portalJobWalkExists
     ? [
-        "Pre-Bid Meeting",
-        `Mandatory: ${preBidMeetingLabel ?? "Unknown"}`,
-        `Attendance Required: ${attendanceRequired ?? "Unknown"}`,
+        meetingTypeLabel,
+        // attendanceRequired reads portal attendance_required / job_walk_mandatory directly.
+        // Never derive "Attendance Required" from meeting-existence — those are separate facts.
+        attendanceRequired !== null ? `Attendance Required: ${attendanceRequired}` : null,
         `Date: ${portalJobWalkDateParts.date ?? "Unknown"}`,
         `Time: ${portalJobWalkDateParts.time ?? "Unknown"}`,
         resolvedLocation ? `Location: ${resolvedLocation}` : null,

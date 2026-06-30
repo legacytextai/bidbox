@@ -106,7 +106,7 @@ export function OpportunityOverviewTab({ data }: Props) {
         ) : (
           <PlaceholderStatus
             icon="none"
-            message="Intelligence has not been prepared yet. BidBox will prepare this opportunity during the automated refresh pipeline."
+            message="Intelligence has not been prepared yet. Open the Intelligence tab and click Prepare Intelligence to begin."
           />
         )}
       </OverviewSection>
