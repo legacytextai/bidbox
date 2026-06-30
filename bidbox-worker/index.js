@@ -61,6 +61,16 @@ function portalOwnedCandidateFields({ source_id, source_name, portal_type, candi
     raw_title: candidate.raw_title,
     agency: source_name,
     bid_due_at: candidate.bid_due_at,
+    // OML normalized columns — typed counterparts to crawl_data overflow blob
+    estimated_value:      candidate.estimated_value      ?? null,
+    estimated_value_low:  candidate.estimated_value_low  ?? null,
+    estimated_value_high: candidate.estimated_value_high ?? null,
+    county:               candidate.county               ?? null,
+    project_address:      candidate.project_address      ?? null,
+    required_licenses:    candidate.required_licenses    ?? null,
+    required_naics:       candidate.required_naics       ?? null,
+    portal_bid_id:        candidate.portal_bid_id        ?? null,
+    portal_department:    candidate.portal_department    ?? null,
     crawl_data: candidate.crawl_data ?? null,
   };
 }

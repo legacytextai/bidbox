@@ -902,6 +902,16 @@ async function scrapePlanetBids(payload, log) {
               source_url: detailUrl,
               raw_title: raw.raw_title,
               bid_due_at: parseBidDueDate(raw.due_date_raw),
+              // OML normalized columns — promoted from crawl_data for typed access
+              estimated_value:      estimate.estimated_value ?? null,
+              estimated_value_low:  estimate.estimated_value_low ?? null,
+              estimated_value_high: estimate.estimated_value_high ?? null,
+              county:               raw.county ?? null,
+              project_address:      raw.project_address ?? null,
+              required_licenses:    null, // populated by future crawl-project phase
+              required_naics:       null,
+              portal_bid_id:        bidId ?? null,
+              portal_department:    raw.department ?? null,
               crawl_data,
               _debugPreBid,
               _domInspection,

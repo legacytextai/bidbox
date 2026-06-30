@@ -85,6 +85,16 @@ function parseCaltransCard(card) {
     raw_title: `${contractNumber} - ${projectTitle}`,
     source_url: href,
     bid_due_at: parseCaltransBidDueDate(bidDueRaw),
+    // OML normalized columns
+    estimated_value:      estimateValue ?? null,
+    estimated_value_low:  null,
+    estimated_value_high: null,
+    county:               parseCounty(location, routeLine) ?? null,
+    project_address:      location ?? null,
+    required_licenses:    null,
+    required_naics:       null,
+    portal_bid_id:        contractNumber ?? null,
+    portal_department:    null,
     crawl_data: {
       source: 'caltrans_contractors_corner',
       listing_url: CURRENT_CALTRANS_ADVERTISEMENTS_URL,
