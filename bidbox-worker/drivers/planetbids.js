@@ -408,11 +408,11 @@ async function scrapePlanetBids(payload, log) {
 
             await page.waitForTimeout(1000 + Math.floor(Math.random() * 1000)); // FIX 4: jitter
 
-            // ── DOM INSPECTION (bid 142972 / Santa Ana Bikeway only) ──────────────
+            // ── DOM INSPECTION (bid 142261 / Polytechnic High School only) ──────────
             // No parsing, no regex. Captured once and persisted to agent_tasks.payload.
             // Remove after DOM structure is confirmed.
             let _domInspection = null;
-            if (detailUrl.includes('142972')) {
+            if (detailUrl.includes('142261')) {
               _domInspection = await page.evaluate(() => {
                 const HEADINGS = [
                   'Pre-Bid Meeting Information',
@@ -811,7 +811,7 @@ async function scrapePlanetBids(payload, log) {
             });
 
             const _debugTitle = (raw.raw_title ?? '');
-            const _isDebugTarget = detailUrl.includes('142972');
+            const _isDebugTarget = detailUrl.includes('142261');
 
             // FIX 2: skip non-construction bids when codes are present and none are 91xxx
             if (raw.commodity_codes.length > 0) {
