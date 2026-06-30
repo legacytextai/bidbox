@@ -503,6 +503,9 @@ Implementation notes:
 - Shows title, agency, bid date (red if closed), estimated value.
 - Footer: portal type badge (left) + OI status badge with animated spinner if active (right).
 - No Analyze Project button. OI status displayed in estimator-friendly labels via `resolveOILabel`.
+- The old `Analyzed` list view has been replaced by a user-scoped `Saved`
+  view. Saved is a bookmark/shortlist signal, not an Opportunity Intelligence
+  status.
 
 Subtasks:
 ### 16.1. Replace Primary Card Actions
@@ -510,6 +513,8 @@ Subtasks:
 - Make opening the Opportunity Overview the primary card action.
 - Remove manual `Analyze Project` from the normal user path.
 - Preserve safe retry/re-analysis controls in appropriate detail views.
+- Add Save/Unsave controls on Opportunity Cards and the Opportunity Overview
+  header while keeping Add to Calendar / View Project behavior unchanged.
 
 ### 16.2. Add Readiness Indicators
 

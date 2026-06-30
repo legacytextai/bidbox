@@ -4,6 +4,15 @@ All notable changes to the BidBox project are documented in this file.
 
 ---
 
+## Saved Opportunity Workflow
+
+- Replaced the Opportunities page `Analyzed` tab with a user-scoped `Saved` tab.
+- Added persistent saved/bookmarked opportunity support through a
+  `saved_opportunities` table keyed by user and opportunity candidate.
+- Added optimistic Save/Unsave controls on opportunity cards and the
+  Opportunity Overview / Intelligence Report header.
+- Kept Add to Calendar / View Project behavior separate from saved state.
+
 ## Nightly Opportunity Refresh
 
 - Forced the autonomous nightly opportunity refresh path to bypass

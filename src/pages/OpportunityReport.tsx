@@ -37,6 +37,7 @@ import {
   ShieldAlert,
   RotateCcw,
   Trash2,
+  Bookmark,
 } from "lucide-react";
 import { useOpportunityDossier } from "@/hooks/useOpportunityDossier";
 import { OpportunityOverviewTab } from "@/components/OpportunityOverviewTab";
@@ -122,6 +123,8 @@ const OpportunityReport = () => {
   const [adding, setAdding] = useState(false);
   const [reanalyzing, setReanalyzing] = useState(false);
   const [deletingAnalysis, setDeletingAnalysis] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [reanalysisFailureNotice, setReanalysisFailureNotice] = useState<string | null>(null);
   const [siblingIds, setSiblingIds] = useState<string[]>([]);
   const wasAnalysisActiveRef = useRef(false);
@@ -134,6 +137,25 @@ const OpportunityReport = () => {
       .order("bid_due_at", { ascending: true, nullsFirst: false })
       .then(({ data }) => setSiblingIds((data ?? []).map((r) => r.id as string)));
   }, []);
+
+  useEffect(() => {
+    if (!id) return;
+    let cancelled = false;
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const { data, error } = await (supabase as any)
+        .from("saved_opportunities")
+        .select("id")
+        .eq("user_id", session.user.id)
+        .eq("opportunity_candidate_id", id)
+        .maybeSingle();
+      if (!cancelled && !error) setSaved(Boolean(data));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
 
   const currentIdx = id ? siblingIds.indexOf(id) : -1;
   const prevId = currentIdx > 0 ? siblingIds[currentIdx - 1] : null;
@@ -485,6 +507,49 @@ const OpportunityReport = () => {
     }
   };
 
+  const handleToggleSaved = async () => {
+    if (!candidate || !id) return;
+    const wasSaved = saved;
+    setSaved(!wasSaved);
+    setSaving(true);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { navigate("/auth"); return; }
+
+      if (wasSaved) {
+        const { error } = await (supabase as any)
+          .from("saved_opportunities")
+          .delete()
+          .eq("user_id", session.user.id)
+          .eq("opportunity_candidate_id", id);
+        if (error) throw error;
+      } else {
+        const { error } = await (supabase as any)
+          .from("saved_opportunities")
+          .upsert(
+            { user_id: session.user.id, opportunity_candidate_id: id },
+            { onConflict: "user_id,opportunity_candidate_id" },
+          );
+        if (error) throw error;
+      }
+
+      toast({
+        title: wasSaved ? "Removed from Saved" : "Saved opportunity",
+        description: wasSaved ? "This opportunity was removed from your Saved tab." : "This opportunity now appears in Saved.",
+      });
+    } catch (e: any) {
+      setSaved(wasSaved);
+      toast({
+        title: wasSaved ? "Failed to unsave" : "Failed to save",
+        description: e?.message ?? "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleReanalyze = async () => {
     if (!candidate || analysisWorkActive) return;
     setReanalyzing(true);
@@ -626,22 +691,37 @@ const OpportunityReport = () => {
               </div>
             </div>
 
-            {/* Primary CTA */}
-            <Button
-              size="lg"
-              onClick={handleAddToCalendar}
-              disabled={adding || (!reportReady && !candidate.converted_project_id)}
-              className="bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90 disabled:opacity-40"
-            >
-              {adding ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : candidate.converted_project_id ? (
-                <ExternalLink className="h-4 w-4 mr-2" />
-              ) : (
-                <CalendarPlus className="h-4 w-4 mr-2" />
-              )}
-              {candidate.converted_project_id ? "View Project" : "Add to Calendar"}
-            </Button>
+            {/* Primary CTAs */}
+            <div className="flex items-center gap-2 flex-wrap justify-end">
+              <Button
+                size="lg"
+                variant={saved ? "secondary" : "outline"}
+                onClick={handleToggleSaved}
+                disabled={saving}
+              >
+                {saving ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Bookmark className={`h-4 w-4 mr-2 ${saved ? "fill-current" : ""}`} />
+                )}
+                {saved ? "Saved" : "Save Opportunity"}
+              </Button>
+              <Button
+                size="lg"
+                onClick={handleAddToCalendar}
+                disabled={adding || (!reportReady && !candidate.converted_project_id)}
+                className="bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90 disabled:opacity-40"
+              >
+                {adding ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : candidate.converted_project_id ? (
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                ) : (
+                  <CalendarPlus className="h-4 w-4 mr-2" />
+                )}
+                {candidate.converted_project_id ? "View Project" : "Add to Calendar"}
+              </Button>
+            </div>
           </div>
         </div>
 

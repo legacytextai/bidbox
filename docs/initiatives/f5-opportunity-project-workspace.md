@@ -79,6 +79,7 @@ Nightly Refresh / Refresh Now
 -> Automatic Acquisition
 -> Automatic Opportunity Intelligence
 -> Opportunity Cards
+-> User Saves Interesting Opportunities
 -> User Clicks Project Card
 -> Project Overview
 -> Add to Calendar
@@ -173,6 +174,20 @@ Outputs:
 - Opportunity readiness status
 
 This tier should be lightweight, uniform, and suitable for the Opportunities page and Opportunity Overview.
+
+## Saved Opportunity Workflow
+
+The Opportunities page uses `All`, `Saved`, and `Closed` views.
+
+- `All` is the broad discovery surface for visible non-closed opportunities.
+- `Saved` is the user's private shortlist for opportunities worth revisiting.
+- `Closed` keeps the existing closed/deadline-expired behavior.
+
+Saved state is not an analysis status. It is a human interest signal that can
+exist before or after Opportunity Intelligence is ready. Users can save or
+unsave from either the Opportunities list or the Opportunity Overview /
+Intelligence Report header. `Add to Calendar` remains the transition into
+Project Execution.
 
 ### Tier 2: Project Intelligence
 

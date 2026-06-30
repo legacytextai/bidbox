@@ -3,14 +3,11 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, ExternalLink, RefreshCw, ChevronDown, Loader2, Check, Filter, RotateCcw, Sparkles, CalendarCheck2 } from "lucide-react";
-import { PORTAL_STYLES, resolveOIStatus, isOIReady, isOIActive, resolveEstimatedValue } from "@/lib/opportunityDomain";
+import { Building2, ExternalLink, RefreshCw, ChevronDown, Check, Filter, CalendarCheck2, Bookmark } from "lucide-react";
+import { PORTAL_STYLES, resolveEstimatedValue } from "@/lib/opportunityDomain";
 import { Layout } from "@/components/Layout";
 import {
-  Tooltip,
-  TooltipContent,
   TooltipProvider,
-  TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
   Collapsible,
@@ -82,7 +79,7 @@ interface Candidate {
 
 const FILTERS: { label: string; value: string }[] = [
   { label: "All", value: "all" },
-  { label: "Analyzed", value: "analyzed" },
+  { label: "Saved", value: "saved" },
   { label: "Closed", value: "closed" },
 ];
 
@@ -91,15 +88,6 @@ const isClosedCandidate = (c: { bid_due_at: string | null }) => {
   const t = new Date(c.bid_due_at).getTime();
   return !isNaN(t) && t < Date.now();
 };
-
-const isAnalyzedCandidate = (c: {
-  analysis_status: string;
-  analysis_task_id?: string | null;
-  document_acquisition_status?: string | null;
-  document_processing_status?: string | null;
-  opportunity_intelligence_status?: string | null;
-}) => isOIReady(resolveOIStatus(c));
-
 
 const AUTO_RANK: Record<string, number> = {
   green: 0,
@@ -297,6 +285,7 @@ const FacetMultiSelect = ({
 
 const Opportunities = () => {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [savedCandidateIds, setSavedCandidateIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState("all");
   const [sortKey, setSortKey] = useState<SortKey>("due_asc");
@@ -354,6 +343,7 @@ const Opportunities = () => {
 
   const loadCandidates = useCallback(async (opts?: { silent?: boolean }) => {
     const silent = opts?.silent === true;
+    const { data: { session } } = await supabase.auth.getSession();
     const { data, error } = await supabase
       .from("opportunity_candidates")
       .select("*, opportunity_sources(name, last_scanned_at)")
@@ -368,6 +358,15 @@ const Opportunities = () => {
     }
 
     const rows: Candidate[] = (data || []).map(mapRow);
+    if (session) {
+      const { data: savedRows, error: savedError } = await (supabase as any)
+        .from("saved_opportunities")
+        .select("opportunity_candidate_id")
+        .eq("user_id", session.user.id);
+      if (!savedError) {
+        setSavedCandidateIds(new Set((savedRows ?? []).map((r: any) => r.opportunity_candidate_id).filter(Boolean)));
+      }
+    }
 
     if (silent) {
       // Diff against previous state for instrumentation; only log when polling
@@ -382,7 +381,8 @@ const Opportunities = () => {
             p.document_acquisition_status !== r.document_acquisition_status ||
             p.document_processing_status !== r.document_processing_status ||
             p.analysis_status !== r.analysis_status ||
-            p.status !== r.status
+            p.status !== r.status ||
+            p.converted_project_id !== r.converted_project_id
           ) {
             changedIds.push(r.id);
           }
@@ -659,6 +659,55 @@ const Opportunities = () => {
     }
   };
 
+  const handleToggleSaved = async (candidate: Candidate) => {
+    const wasSaved = savedCandidateIds.has(candidate.id);
+    setSavedCandidateIds((prev) => {
+      const next = new Set(prev);
+      if (wasSaved) next.delete(candidate.id);
+      else next.add(candidate.id);
+      return next;
+    });
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { navigate("/auth"); return; }
+
+      if (wasSaved) {
+        const { error } = await (supabase as any)
+          .from("saved_opportunities")
+          .delete()
+          .eq("user_id", session.user.id)
+          .eq("opportunity_candidate_id", candidate.id);
+        if (error) throw error;
+      } else {
+        const { error } = await (supabase as any)
+          .from("saved_opportunities")
+          .upsert(
+            { user_id: session.user.id, opportunity_candidate_id: candidate.id },
+            { onConflict: "user_id,opportunity_candidate_id" },
+          );
+        if (error) throw error;
+      }
+
+      toast({
+        title: wasSaved ? "Removed from Saved" : "Saved opportunity",
+        description: wasSaved ? "This opportunity was removed from your Saved tab." : "This opportunity now appears in Saved.",
+      });
+    } catch (e: any) {
+      setSavedCandidateIds((prev) => {
+        const next = new Set(prev);
+        if (wasSaved) next.add(candidate.id);
+        else next.delete(candidate.id);
+        return next;
+      });
+      toast({
+        title: wasSaved ? "Failed to unsave" : "Failed to save",
+        description: e?.message ?? "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
   // Distinct county / agency options from loaded candidates.
   const { countyOptions, agencyOptions, hasNoCounty, hasNoAgency } = useMemo(() => {
     const counties = new Set<string>();
@@ -702,11 +751,11 @@ const Opportunities = () => {
           if (!closed) return false;
         } else {
           if (closed) return false;
-          if (activeFilter === "analyzed" && !isAnalyzedCandidate(c)) return false;
+          if (activeFilter === "saved" && !savedCandidateIds.has(c.id)) return false;
         }
         return matchesFacets(c);
       }),
-    [candidates, activeFilter, matchesFacets],
+    [candidates, activeFilter, matchesFacets, savedCandidateIds],
   );
 
   const buildComparator = useCallback((key: SortKey) => {
@@ -748,13 +797,23 @@ const Opportunities = () => {
 
   const hasActiveFacetFilters = agencyFilter.length > 0;
 
-
-
+  const tabCounts = useMemo(() => {
+    const isHiddenFromMainAll = (candidate: Candidate) =>
+      candidate.auto_status === "red" ||
+      classifyOpportunityTitle(candidate.raw_title).relevance === "low";
+    const matching = candidates.filter(matchesFacets);
+    return {
+      all: matching.filter((c) => !isClosedCandidate(c) && !isHiddenFromMainAll(c)).length,
+      saved: matching.filter((c) => !isClosedCandidate(c) && savedCandidateIds.has(c.id)).length,
+      closed: matching.filter(isClosedCandidate).length,
+    };
+  }, [candidates, matchesFacets, savedCandidateIds]);
 
   const renderCard = (candidate: Candidate, _index: number) => {
     const onCalendar = candidate.status === "converted" && !!candidate.converted_project_id;
     const estimatedValue = formatEstimatedValue(candidate.crawl_data);
     const goToOpportunity = () => navigate(`/opportunities/${candidate.id}`);
+    const saved = savedCandidateIds.has(candidate.id);
 
     return (
       <div
@@ -772,7 +831,7 @@ const Opportunities = () => {
       >
         {/* Top content — grows to push button to bottom */}
         <div className="flex-1 flex flex-col gap-3">
-          {/* Title + external link */}
+          {/* Title + actions */}
           <div className="flex items-start justify-between gap-2">
             <div className="flex-1 min-w-0">
               <h3 className="font-semibold text-base text-foreground leading-snug">
@@ -791,16 +850,33 @@ const Opportunities = () => {
                 </p>
               )}
             </div>
-            <a
-              href={candidate.source_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              className="shrink-0 text-muted-foreground hover:text-foreground"
-              title="Open source page"
-            >
-              <ExternalLink className="h-4 w-4" />
-            </a>
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleToggleSaved(candidate);
+                }}
+                className={`inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
+                  saved ? "text-blue-700 bg-blue-50 hover:bg-blue-100" : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                }`}
+                aria-label={saved ? "Unsave opportunity" : "Save opportunity"}
+                title={saved ? "Unsave opportunity" : "Save opportunity"}
+              >
+                <Bookmark className={`h-4 w-4 ${saved ? "fill-current" : ""}`} />
+              </button>
+              <a
+                href={candidate.source_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent"
+                title="Open source page"
+                aria-label="Open source page"
+              >
+                <ExternalLink className="h-4 w-4" />
+              </a>
+            </div>
           </div>
 
           {/* Portal pill */}
@@ -906,11 +982,7 @@ const Opportunities = () => {
             <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
               <div className="flex gap-2 flex-wrap">
                 {FILTERS.map((f) => {
-                  const count = f.value === "all"
-                    ? candidates.filter((c) => !isClosedCandidate(c)).length
-                    : f.value === "analyzed"
-                    ? candidates.filter((c) => !isClosedCandidate(c) && isAnalyzedCandidate(c)).length
-                    : candidates.filter(isClosedCandidate).length;
+                  const count = tabCounts[f.value as keyof typeof tabCounts];
                   return (
                     <button
                       key={f.value}
