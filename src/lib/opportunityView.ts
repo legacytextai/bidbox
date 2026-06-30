@@ -101,6 +101,10 @@ export interface OpportunityOverviewData {
   lifecycleStatus: string;
   convertedProjectId: string | null;
 
+  // Portal Intelligence (pre-F4 summary)
+  portalSummary: string | null;
+  portalSummaryAt: string | null;
+
   // Bid items
   bidItems: OpportunityBidItemView[];
   bidItemsTotal: number;
@@ -469,6 +473,8 @@ export function buildOpportunityOverviewData(input: AdapterInput): OpportunityOv
     oiReadyAt: candidate.opportunity_intelligence_ready_at ?? null,
     lifecycleStatus: candidate.opportunity_lifecycle_status ?? "discovered",
     convertedProjectId: candidate.converted_project_id,
+    portalSummary: (candidate as any).portal_summary ?? null,
+    portalSummaryAt: (candidate as any).portal_summary_at ?? null,
     bidItems: normalizedBidItems,
     bidItemsTotal: normalizedBidItems.length,
     bidItemsAvailable: normalizedBidItems.length > 0,

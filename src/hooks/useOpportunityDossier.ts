@@ -32,6 +32,8 @@ export interface DossierCandidate {
   opportunity_intelligence_task_id: string | null;
   opportunity_intelligence_ready_at: string | null;
   opportunity_intelligence_error: string | null;
+  portal_summary: string | null;
+  portal_summary_at: string | null;
 }
 
 export interface DossierReport {

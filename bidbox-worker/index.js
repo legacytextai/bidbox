@@ -3,6 +3,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { scrapePlanetBids } = require('./drivers/planetbids');
 const { scrapeCaltrans } = require('./drivers/caltrans');
 const { acquirePlanetBidsDocuments, runPlanetBidsBidItemScan } = require('./drivers/planetbids_documents');
+const { runPortalIntelligence } = require('./drivers/portal_intelligence');
 const { acquireCaltransDocuments } = require('./drivers/caltrans_documents');
 const {
   queueDocumentProcessingForCandidate,
@@ -203,7 +204,26 @@ async function persistScannedCandidate({ supabase, source_id, source_name, porta
         ? { queued: false, reason: bitError.message }
         : { queued: true };
     }
-    return { state: 'new', candidate: inserted, metadataChanged: true, preparation: { queued: false, duplicate: false, skipped: true, reason: 'oml_scan_no_auto_trigger' }, bidItemTask };
+
+    // Queue portal_intelligence for all new candidates — it runs on OML metadata
+    // only (no document download) so it's cheap and fast for any portal type.
+    const { error: piError } = await supabase.from('agent_tasks').insert({
+      task_type: 'portal_intelligence',
+      status: 'pending',
+      priority: 3,
+      trigger_reason: triggerReason,
+      payload: {
+        candidate_id: inserted.id,
+        source_url: inserted.source_url,
+        portal_type: inserted.portal_type,
+        source_name: source_name,
+      },
+    });
+    const portalIntelligenceTask = piError
+      ? { queued: false, reason: piError.message }
+      : { queued: true };
+
+    return { state: 'new', candidate: inserted, metadataChanged: true, preparation: { queued: false, duplicate: false, skipped: true, reason: 'oml_scan_no_auto_trigger' }, bidItemTask, portalIntelligenceTask };
   }
 
   const metadataChanged = changedPortalMetadata(existing, portalFields);
@@ -558,6 +578,15 @@ async function runBidItemScan(task, supabase) {
     log(`bid_item_scan error: ${e.message}`);
     throw e;
   }
+}
+
+async function runPortalIntelligenceTask(task, supabase) {
+  const { candidate_id } = task.payload ?? {};
+  if (!candidate_id) throw new Error('portal_intelligence task missing candidate_id');
+  const logs = [];
+  const log = (msg) => { logs.push(`[${new Date().toISOString()}] ${msg}`); console.log(msg); };
+  const result = await runPortalIntelligence({ supabase, candidateId: candidate_id, log });
+  return { ...result, logs };
 }
 
 async function runProjectAnalysisAcquisition(task, supabase) {
@@ -949,7 +978,7 @@ async function claimNextTask() {
     .from('agent_tasks')
     .select('*')
     .eq('status', 'pending')
-    .in('task_type', ['planetbids_scan', 'caltrans_scan', 'bid_item_scan', 'project_analysis', 'document_processing', 'project_intelligence'])
+    .in('task_type', ['planetbids_scan', 'caltrans_scan', 'bid_item_scan', 'portal_intelligence', 'project_analysis', 'document_processing', 'project_intelligence'])
     .order('priority', { ascending: false })
     .order('created_at', { ascending: true })
     .limit(1)
@@ -989,6 +1018,8 @@ async function processTask(task) {
       result = await runCaltransScan(task, supabase);
     } else if (task.task_type === 'bid_item_scan') {
       result = await runBidItemScan(task, supabase);
+    } else if (task.task_type === 'portal_intelligence') {
+      result = await runPortalIntelligenceTask(task, supabase);
     } else if (task.task_type === 'project_analysis') {
       result = await runProjectAnalysisAcquisition(task, supabase);
     } else if (task.task_type === 'document_processing') {

@@ -103,6 +103,13 @@ export function OpportunityOverviewTab({ data }: Props) {
             icon="none"
             message="No intelligence was generated for this opportunity."
           />
+        ) : data.portalSummary ? (
+          <div className="max-w-4xl space-y-4">
+            <p className="text-[15px] leading-7 text-foreground">{data.portalSummary}</p>
+            <p className="text-xs text-muted-foreground">
+              Summary based on portal metadata only. Open the Intelligence tab and click Prepare Intelligence for a full analysis.
+            </p>
+          </div>
         ) : (
           <PlaceholderStatus
             icon="none"
