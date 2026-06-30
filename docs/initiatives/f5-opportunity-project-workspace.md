@@ -219,6 +219,15 @@ Outputs:
 
 `Add to Calendar` activates or enables this deeper project-level intelligence. Opportunity Intelligence prepares the opportunity for review. Project Intelligence prepares the project for pursuit.
 
+### OML Add to Calendar Transition
+
+With the OML metadata-first architecture, Add to Calendar no longer requires an
+existing ready Intelligence Report. A visible opportunity with the minimum
+project metadata can be added to the calendar first. If an Intelligence Report
+already exists, BidBox attaches it to the project. If no report exists, the
+project starts in the preparation path and BidBox queues downstream document
+acquisition, document processing, and Project Intelligence generation.
+
 ## Future Architecture: Continuous Project Monitoring
 
 While Opportunity Intelligence prepares opportunities for evaluation and Project Intelligence prepares projects for execution, BidBox is ultimately designed to become a continuously operating project assistant.

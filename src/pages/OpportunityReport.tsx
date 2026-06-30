@@ -410,6 +410,27 @@ const OpportunityReport = () => {
 
   // ── Handlers ─────────────────────────────────────────────────────────────
 
+  const hasMinimumProjectMetadata = Boolean(candidate?.raw_title?.trim() && safeBidDue.value);
+  const canAddToCalendar = Boolean(candidate?.converted_project_id || hasMinimumProjectMetadata);
+
+  const queuePostCalendarPreparation = async (candidateId: string) => {
+    if (report?.id || analysisWorkActive) return { queued: false, skipped: true };
+
+    const { data, error } = await supabase.functions.invoke("manage-opportunity-intelligence", {
+      body: { action: "force_prepare", candidate_id: candidateId },
+    });
+
+    if (error || data?.success === false) {
+      const message = data?.error ?? error?.message ?? "Failed to queue preparation";
+      if (message.toLowerCase().includes("already") && message.toLowerCase().includes("progress")) {
+        return { queued: false, skipped: true };
+      }
+      throw new Error(message);
+    }
+
+    return { queued: true, skipped: false, taskId: data?.task_id as string | undefined };
+  };
+
   const handleAddToCalendar = async () => {
     if (!candidate) return;
     setAdding(true);
@@ -418,6 +439,14 @@ const OpportunityReport = () => {
       if (!session) { navigate("/auth"); return; }
       const sb = supabase as any;
       const scopeFinding = findings.find((f) => f.category === "scope_summary" && f.status === "found");
+      const now = new Date().toISOString();
+      const hasExistingIntelligence = Boolean(report?.id);
+      const projectIntelligenceStatus = hasExistingIntelligence
+        ? (report?.status === "partial" ? "partial" : "ready")
+        : "queued";
+      const projectLifecycleStatus = hasExistingIntelligence
+        ? "project_intelligence_ready"
+        : "project_intelligence_preparing";
 
       const syncCandidateLink = async (projectId: string) => {
         const { error: updateError } = await sb
@@ -445,21 +474,28 @@ const OpportunityReport = () => {
         if (!existing.source_opportunity_candidate_id) updates.source_opportunity_candidate_id = candidate.id;
         if (!existing.opportunity_intelligence_report_id && report?.id) updates.opportunity_intelligence_report_id = report.id;
         if (safeBidDue.value && existing.bid_due_at !== safeBidDue.value) updates.bid_due_at = safeBidDue.value;
-        updates.project_lifecycle_status = "project_intelligence_ready";
-        updates.project_intelligence_status = "ready";
-        updates.project_intelligence_ready_at = new Date().toISOString();
+        updates.project_lifecycle_status = projectLifecycleStatus;
+        updates.project_intelligence_status = projectIntelligenceStatus;
+        if (hasExistingIntelligence) {
+          updates.project_intelligence_ready_at = report?.completed_at ?? now;
+          updates.project_intelligence_error = null;
+        }
         if (Object.keys(updates).length > 0) {
           const { error } = await sb.from("projects").update(updates).eq("id", existing.id);
           if (error) throw error;
         }
         await syncCandidateLink(existing.id);
+        await queuePostCalendarPreparation(candidate.id);
         navigate(`/projects/${existing.id}`);
         return;
       }
 
-      if (!report?.id) throw new Error("Project Intelligence report is required before adding this opportunity to the calendar.");
       if (!safeBidDue.value) {
         toast({ title: "Missing bid due date", description: "This opportunity has no bid due date. Open the source to confirm.", variant: "destructive" });
+        return;
+      }
+      if (!candidate.raw_title?.trim()) {
+        toast({ title: "Missing project title", description: "This opportunity has no title yet. Refresh the source metadata and try again.", variant: "destructive" });
         return;
       }
 
@@ -467,7 +503,7 @@ const OpportunityReport = () => {
         .from("projects")
         .insert({
           gc_id: session.user.id,
-          name: candidate.raw_title ?? "Untitled Project",
+          name: candidate.raw_title,
           agency: candidate.agency,
           bid_due_at: safeBidDue.value,
           source_url: candidate.source_url,
@@ -476,14 +512,15 @@ const OpportunityReport = () => {
           job_walk_at: jobWalkAt ?? null,
           origin: "opportunity_intelligence",
           source_opportunity_candidate_id: candidate.id,
-          opportunity_intelligence_report_id: report.id,
-          added_to_calendar_at: new Date().toISOString(),
+          opportunity_intelligence_report_id: report?.id ?? null,
+          added_to_calendar_at: now,
           added_to_calendar_by: session.user.id,
-          project_lifecycle_status: "project_intelligence_ready",
-          project_intelligence_status: "ready",
-          project_intelligence_ready_at: new Date().toISOString(),
+          project_lifecycle_status: projectLifecycleStatus,
+          project_intelligence_status: projectIntelligenceStatus,
+          project_intelligence_ready_at: hasExistingIntelligence ? (report?.completed_at ?? now) : null,
+          project_intelligence_error: null,
           pursuit_status: "reviewing",
-          pursuit_status_updated_at: new Date().toISOString(),
+          pursuit_status_updated_at: now,
           pursuit_status_updated_by: session.user.id,
           status: "LIVE",
         })
@@ -493,12 +530,25 @@ const OpportunityReport = () => {
       if (error) {
         if (isUniqueViolation(error)) {
           const recovered = await findExistingProject();
-          if (recovered?.id) { await syncCandidateLink(recovered.id); navigate(`/projects/${recovered.id}`); return; }
+          if (recovered?.id) {
+            await syncCandidateLink(recovered.id);
+            await queuePostCalendarPreparation(candidate.id);
+            navigate(`/projects/${recovered.id}`);
+            return;
+          }
         }
         throw error;
       }
       await syncCandidateLink(project.id);
-      toast({ title: "Added to Calendar", description: "Project created and added to your active pursuits." });
+      const preparation = await queuePostCalendarPreparation(candidate.id);
+      toast({
+        title: "Added to Calendar",
+        description: hasExistingIntelligence
+          ? "Project created and linked to existing intelligence."
+          : preparation.queued
+            ? "Project created and source document preparation has started."
+            : "Project created. Preparation is already in progress.",
+      });
       navigate(`/projects/${project.id}`);
     } catch (e: any) {
       toast({ title: "Failed to add", description: e?.message ?? "Unknown error", variant: "destructive" });
@@ -709,7 +759,7 @@ const OpportunityReport = () => {
               <Button
                 size="lg"
                 onClick={handleAddToCalendar}
-                disabled={adding || (!reportReady && !candidate.converted_project_id)}
+                disabled={adding || !canAddToCalendar}
                 className="bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90 disabled:opacity-40"
               >
                 {adding ? (

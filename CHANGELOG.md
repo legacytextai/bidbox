@@ -12,6 +12,9 @@ All notable changes to the BidBox project are documented in this file.
 - Added optimistic Save/Unsave controls on opportunity cards and the
   Opportunity Overview / Intelligence Report header.
 - Kept Add to Calendar / View Project behavior separate from saved state.
+- Updated Add to Calendar for the OML flow: unconverted opportunities with the
+  minimum project metadata can now be added before intelligence exists; existing
+  reports are attached, otherwise downstream preparation is queued.
 
 ## Nightly Opportunity Refresh
 
