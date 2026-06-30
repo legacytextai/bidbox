@@ -811,7 +811,7 @@ async function scrapePlanetBids(payload, log) {
             });
 
             const _debugTitle = (raw.raw_title ?? '');
-            const _isDebugTarget = /santa\s*ana\s*bikeway/i.test(_debugTitle);
+            const _isDebugTarget = detailUrl.includes('142972');
 
             // FIX 2: skip non-construction bids when codes are present and none are 91xxx
             if (raw.commodity_codes.length > 0) {
