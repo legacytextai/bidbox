@@ -492,6 +492,7 @@ export type Database = {
           auto_status_reason: string | null
           bid_due_at: string | null
           converted_project_id: string | null
+          county: string | null
           crawl_data: Json | null
           created_at: string
           document_acquisition_completed_at: string | null
@@ -502,6 +503,9 @@ export type Database = {
           document_processing_error: string | null
           document_processing_started_at: string | null
           document_processing_status: string
+          estimated_value: number | null
+          estimated_value_high: number | null
+          estimated_value_low: number | null
           id: string
           last_crawled_at: string | null
           last_metadata_changed_at: string | null
@@ -514,10 +518,15 @@ export type Database = {
           opportunity_intelligence_status: string
           opportunity_intelligence_task_id: string | null
           opportunity_lifecycle_status: string
+          portal_bid_id: string | null
+          portal_department: string | null
           portal_type: string | null
+          project_address: string | null
           qualification_score: number | null
           qualified_at: string | null
           raw_title: string | null
+          required_licenses: string[] | null
+          required_naics: string[] | null
           review_notes: string | null
           reviewed_at: string | null
           reviewed_by: string | null
@@ -540,6 +549,7 @@ export type Database = {
           auto_status_reason?: string | null
           bid_due_at?: string | null
           converted_project_id?: string | null
+          county?: string | null
           crawl_data?: Json | null
           created_at?: string
           document_acquisition_completed_at?: string | null
@@ -550,6 +560,9 @@ export type Database = {
           document_processing_error?: string | null
           document_processing_started_at?: string | null
           document_processing_status?: string
+          estimated_value?: number | null
+          estimated_value_high?: number | null
+          estimated_value_low?: number | null
           id?: string
           last_crawled_at?: string | null
           last_metadata_changed_at?: string | null
@@ -562,10 +575,15 @@ export type Database = {
           opportunity_intelligence_status?: string
           opportunity_intelligence_task_id?: string | null
           opportunity_lifecycle_status?: string
+          portal_bid_id?: string | null
+          portal_department?: string | null
           portal_type?: string | null
+          project_address?: string | null
           qualification_score?: number | null
           qualified_at?: string | null
           raw_title?: string | null
+          required_licenses?: string[] | null
+          required_naics?: string[] | null
           review_notes?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
@@ -588,6 +606,7 @@ export type Database = {
           auto_status_reason?: string | null
           bid_due_at?: string | null
           converted_project_id?: string | null
+          county?: string | null
           crawl_data?: Json | null
           created_at?: string
           document_acquisition_completed_at?: string | null
@@ -598,6 +617,9 @@ export type Database = {
           document_processing_error?: string | null
           document_processing_started_at?: string | null
           document_processing_status?: string
+          estimated_value?: number | null
+          estimated_value_high?: number | null
+          estimated_value_low?: number | null
           id?: string
           last_crawled_at?: string | null
           last_metadata_changed_at?: string | null
@@ -610,10 +632,15 @@ export type Database = {
           opportunity_intelligence_status?: string
           opportunity_intelligence_task_id?: string | null
           opportunity_lifecycle_status?: string
+          portal_bid_id?: string | null
+          portal_department?: string | null
           portal_type?: string | null
+          project_address?: string | null
           qualification_score?: number | null
           qualified_at?: string | null
           raw_title?: string | null
+          required_licenses?: string[] | null
+          required_naics?: string[] | null
           review_notes?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
@@ -1647,6 +1674,35 @@ export type Database = {
           {
             foreignKeyName: "projects_source_opportunity_candidate_id_fkey"
             columns: ["source_opportunity_candidate_id"]
+            isOneToOne: false
+            referencedRelation: "opportunity_candidates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      saved_opportunities: {
+        Row: {
+          created_at: string
+          id: string
+          opportunity_candidate_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          opportunity_candidate_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          opportunity_candidate_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "saved_opportunities_opportunity_candidate_id_fkey"
+            columns: ["opportunity_candidate_id"]
             isOneToOne: false
             referencedRelation: "opportunity_candidates"
             referencedColumns: ["id"]
