@@ -507,6 +507,60 @@ async function scrapePlanetBids(payload, log) {
                   .trim() || null;
               };
 
+              // Parses the "Job Walk" / "Job Walk Information" / "Site Visit" section
+              // from bodyText using the same architecture as extractPreBidMeetingSection.
+              // Returns null when the heading is absent; an object of label→value pairs
+              // when found.  Never falls back to field() — that regex leaks heading text.
+              const extractJobWalkSection = () => {
+                const trimLine = (s) => String(s ?? '').trim();
+                const KNOWN_LABELS = [
+                  'date & time', 'date/time', 'meeting date', 'meeting time',
+                  'location', 'meeting location', 'address', 'venue',
+                  'attendance required', 'attendance mandatory', 'mandatory',
+                  'meeting type', 'meeting link',
+                  'additional details', 'notes',
+                  'job walk', 'site visit',
+                ];
+                const labelKey = (s) => trimLine(s).toLowerCase().replace(/\s+/g, ' ');
+                const labelSet = new Set(KNOWN_LABELS);
+
+                const headingRe = /^(?:job\s+walk|site\s+visit|mandatory\s+pre[-\s]?bid|pre[-\s]?bid\s+site\s+visit)(?:\s+information)?\s*$/im;
+                const headingMatch = bodyText.match(headingRe);
+                if (!headingMatch) return null;
+
+                const afterHeading = headingMatch.index + headingMatch[0].length;
+
+                const STOP_RE = /^(?:online\s+q\s*&\s*a|contact\s+information|bid\s+bond|project\s+information|plan\s+holders|required\s+documents|addenda|pre[-\s]?bid\s+meeting(?:\s+information)?|q\s*&\s*a|documents?|submission)\s*$/im;
+                const stopMatch = bodyText.substring(afterHeading).match(STOP_RE);
+                const sectionEnd = stopMatch
+                  ? afterHeading + stopMatch.index
+                  : Math.min(afterHeading + 2000, bodyText.length);
+
+                const sectionText = bodyText.substring(afterHeading, sectionEnd);
+                const lines = sectionText.split('\n').map(trimLine).filter(Boolean);
+
+                const pairs = {};
+                for (let i = 0; i < lines.length; i++) {
+                  const line = lines[i];
+                  const colonIdx = line.indexOf(':');
+                  if (colonIdx > 0 && colonIdx < 70) {
+                    const rawKey = labelKey(line.substring(0, colonIdx));
+                    const rawVal = trimLine(line.substring(colonIdx + 1));
+                    if (labelSet.has(rawKey) && rawVal) { pairs[rawKey] = rawVal; continue; }
+                  }
+                  const lineKey = labelKey(line);
+                  if (labelSet.has(lineKey)) {
+                    const nextLine = i + 1 < lines.length ? trimLine(lines[i + 1]) : null;
+                    if (nextLine && !labelSet.has(labelKey(nextLine))) {
+                      pairs[lineKey] = nextLine; i++;
+                    } else {
+                      pairs[lineKey] = null;
+                    }
+                  }
+                }
+                return pairs;
+              };
+
               const titleEl = document.querySelector(
                 "h1, h2, [class*='title'], [class*='bid-name'], [class*='project-name']"
               );
@@ -600,36 +654,9 @@ async function scrapePlanetBids(payload, log) {
                 field('Location') ||
                 field('Project Location') ||
                 null;
-              const job_walk_at =
-                field('Job Walk Date') ||
-                field('Job Walk Date & Time') ||
-                field('Pre-Bid Meeting Date') ||
-                field('Pre-Bid Meeting Date & Time') ||
-                field('Prebid Meeting Date') ||
-                field('Site Visit Date') ||
-                null;
-              const job_walk_details =
-                field('Job Walk') ||
-                field('Pre-Bid Meeting') ||
-                field('Prebid Meeting') ||
-                field('Mandatory Pre-Bid') ||
-                field('Site Visit') ||
-                null;
-              const attendance_required =
-                field('Attendance Required') ||
-                field('Attendance Mandatory') ||
-                field('Mandatory Attendance') ||
-                field('Mandatory') ||
-                null;
-              const job_walk_location =
-                field('Job Walk Location') ||
-                field('Pre-Bid Meeting Location') ||
-                field('Prebid Meeting Location') ||
-                field('Site Visit Location') ||
-                field('Meeting Location') ||
-                null;
-              // preBidPairs is null when "Pre-Bid Meeting Information" heading is absent.
-              // preBidPairs is an object (possibly empty) when the heading is found.
+              // Job walk and pre-bid sections are parsed from bodyText as key/value pairs.
+              // field() is not used for these — its regex leaks heading text into values.
+              const jobWalkPairs = extractJobWalkSection();
               const preBidPairs = extractPreBidMeetingSection();
 
               const commodity_codes = [
@@ -652,48 +679,80 @@ async function scrapePlanetBids(payload, log) {
                 bid_validity,
                 delivery_dates,
                 project_address,
-                job_walk_at,
-                // Pre-bid fields come exclusively from the section parser when the
-                // "Pre-Bid Meeting Information" heading is present.  When preBidPairs
-                // is null (heading absent) we fall back to global field() lookups,
-                // but we deliberately omit field('Pre-Bid Meeting') because its regex
-                // matches the section heading itself and captures "Information".
+                // Job walk fields — from section parser only.  No field() fallback:
+                // field('Job Walk') matches "Job Walk Information" and captures "Information".
+                job_walk_at: jobWalkPairs !== null
+                  ? (jobWalkPairs['date & time'] || jobWalkPairs['date/time'] || jobWalkPairs['meeting date'] || null)
+                  : null,
+                job_walk_details: jobWalkPairs !== null
+                  ? (jobWalkPairs['additional details'] || jobWalkPairs['notes'] || null)
+                  : null,
+                job_walk_location: jobWalkPairs !== null
+                  ? (jobWalkPairs['meeting location'] || jobWalkPairs['location'] || jobWalkPairs['address'] || jobWalkPairs['venue'] || null)
+                  : null,
+                // Pre-bid fields — from pre-bid section parser only.
                 pre_bid_meeting: preBidPairs !== null
                   ? (preBidPairs['pre-bid meeting'] ?? null)
-                  : (field('Prebid Meeting') || field('Job Walk') || null),
+                  : null,
                 pre_bid_meeting_at: preBidPairs !== null
                   ? (preBidPairs['date & time'] || preBidPairs['date/time'] || preBidPairs['meeting date'] || null)
                   : null,
                 pre_bid_meeting_location: preBidPairs !== null
                   ? (preBidPairs['meeting location'] || preBidPairs['location'] || preBidPairs['address'] || preBidPairs['venue'] || null)
                   : null,
-                meeting_type: preBidPairs !== null ? (preBidPairs['meeting type'] || null) : null,
-                meeting_link: preBidPairs !== null ? (preBidPairs['meeting link'] || null) : null,
+                // meeting_type and meeting_link: job walk section takes precedence,
+                // pre-bid section as fallback.
+                meeting_type:
+                  (jobWalkPairs !== null ? jobWalkPairs['meeting type'] : null) ||
+                  (preBidPairs !== null ? preBidPairs['meeting type'] : null) ||
+                  null,
+                meeting_link:
+                  (jobWalkPairs !== null ? jobWalkPairs['meeting link'] : null) ||
+                  (preBidPairs !== null ? preBidPairs['meeting link'] : null) ||
+                  null,
                 additional_details: preBidPairs !== null
                   ? (preBidPairs['additional details'] || preBidPairs['notes'] || null)
                   : null,
-                // attendance_required from section parser takes precedence; fall back
-                // to global field() lookups when section not found.
-                attendance_required: preBidPairs !== null
-                  ? (preBidPairs['attendance required'] || preBidPairs['attendance mandatory'] || preBidPairs['mandatory'] || null)
-                  : attendance_required,
-                job_walk_details,
-                job_walk_location: preBidPairs !== null
-                  ? (preBidPairs['meeting location'] || preBidPairs['location'] || preBidPairs['address'] || job_walk_location)
-                  : job_walk_location,
-                // section_scoped_* carry only section-derived values into normalizeJobWalkMetadata.
-                section_scoped_job_walk_at: preBidPairs !== null
-                  ? (preBidPairs['date & time'] || preBidPairs['date/time'] || preBidPairs['meeting date'] || null)
+                // attendance_required: job walk section → pre-bid section → null.
+                attendance_required:
+                  (jobWalkPairs !== null
+                    ? (jobWalkPairs['attendance required'] || jobWalkPairs['attendance mandatory'] || jobWalkPairs['mandatory'] || null)
+                    : null) ||
+                  (preBidPairs !== null
+                    ? (preBidPairs['attendance required'] || preBidPairs['attendance mandatory'] || preBidPairs['mandatory'] || null)
+                    : null) ||
+                  null,
+                // section_scoped_* carry section-derived values into normalizeJobWalkMetadata.
+                section_scoped_job_walk_at: jobWalkPairs !== null
+                  ? (jobWalkPairs['date & time'] || jobWalkPairs['date/time'] || jobWalkPairs['meeting date'] || null)
                   : null,
-                section_scoped_job_walk_details: null,
-                section_scoped_attendance_required: preBidPairs !== null
-                  ? (preBidPairs['attendance required'] || preBidPairs['attendance mandatory'] || preBidPairs['mandatory'] || null)
+                section_scoped_job_walk_details: jobWalkPairs !== null
+                  ? (jobWalkPairs['additional details'] || jobWalkPairs['notes'] || null)
                   : null,
+                section_scoped_attendance_required:
+                  (jobWalkPairs !== null
+                    ? (jobWalkPairs['attendance required'] || jobWalkPairs['attendance mandatory'] || jobWalkPairs['mandatory'] || null)
+                    : null) ||
+                  (preBidPairs !== null
+                    ? (preBidPairs['attendance required'] || preBidPairs['attendance mandatory'] || preBidPairs['mandatory'] || null)
+                    : null) ||
+                  null,
                 county,
                 commodity_codes,
                 scope_text,
+                // Debug-only fields — never used by pipeline logic, stripped before DB write.
+                _debug_preBidPairs: preBidPairs,
+                _debug_body_preBid: (() => {
+                  const headingRe = /^pre[-\s]?bid\s+meeting(?:\s+information)?\s*$/im;
+                  const m = bodyText.match(headingRe);
+                  if (!m) return 'SECTION NOT FOUND';
+                  return bodyText.substring(Math.max(0, m.index - 80), m.index + 1800);
+                })(),
               };
             });
+
+            const _debugTitle = (raw.raw_title ?? '');
+            const _isDebugTarget = /santa\s*ana\s*bikeway/i.test(_debugTitle);
 
             // FIX 2: skip non-construction bids when codes are present and none are 91xxx
             if (raw.commodity_codes.length > 0) {
@@ -708,7 +767,34 @@ async function scrapePlanetBids(payload, log) {
             }
 
             const estimate = parseEstimatedValueDetails(raw.estimated_value_raw);
+
+            // Snapshot normalization inputs before calling (Stage 3 data).
+            const _normInput = !_isDebugTarget ? null : {
+              pre_bid_meeting:                    raw.pre_bid_meeting,
+              pre_bid_meeting_at:                 raw.pre_bid_meeting_at,
+              pre_bid_meeting_location:           raw.pre_bid_meeting_location,
+              job_walk_at:                        raw.job_walk_at,
+              job_walk_details:                   raw.job_walk_details,
+              job_walk_location:                  raw.job_walk_location,
+              attendance_required:                raw.attendance_required,
+              meeting_type:                       raw.meeting_type,
+              meeting_link:                       raw.meeting_link,
+              additional_details:                 raw.additional_details,
+              section_scoped_job_walk_at:         raw.section_scoped_job_walk_at,
+              section_scoped_job_walk_details:    raw.section_scoped_job_walk_details,
+              section_scoped_attendance_required: raw.section_scoped_attendance_required,
+            };
+
             const jobWalkMetadata = normalizeJobWalkMetadata(raw);
+
+            const _PRE_BID_KEYS = [
+              'pre_bid_exists','pre_bid_meeting','pre_bid_meeting_at','meeting_datetime',
+              'meeting_type','meeting_link','meeting_location','pre_bid_location',
+              'pre_bid_meeting_link','pre_bid_notes','attendance_required',
+              'job_walk_exists','job_walk_mandatory','job_walk_at',
+              'job_walk_details','job_walk_location','additional_details',
+            ];
+
             const crawl_data = {
               bid_id: bidId,
               due_date_raw: raw.due_date_raw,
@@ -733,11 +819,32 @@ async function scrapePlanetBids(payload, log) {
               scraped_at: new Date().toISOString(),
             };
 
+            // Debug state travels on the candidate object, not in crawl_data.
+            // index.js strips this before/after the Supabase write and prints the report.
+            const _debugPreBid = !_isDebugTarget ? null : {
+              correlationTs: new Date().toISOString(),
+              stage1_rawBodyExcerpt: raw._debug_body_preBid,
+              stage2_parserOutput: {
+                _preBidPairs:        raw._debug_preBidPairs,
+                pre_bid_meeting:     raw.pre_bid_meeting,
+                meeting_type:        raw.meeting_type,
+                pre_bid_meeting_at:  raw.pre_bid_meeting_at,
+                attendance_required: raw.attendance_required,
+                meeting_link:        raw.meeting_link,
+                pre_bid_meeting_location: raw.pre_bid_meeting_location,
+                additional_details:  raw.additional_details,
+              },
+              stage3_normInput:  _normInput,
+              stage4_normOutput: jobWalkMetadata,
+              stage5_crawlData:  Object.fromEntries(_PRE_BID_KEYS.map(k => [k, crawl_data[k] ?? null])),
+            };
+
             candidates.push({
               source_url: detailUrl,
               raw_title: raw.raw_title,
               bid_due_at: parseBidDueDate(raw.due_date_raw),
               crawl_data,
+              _debugPreBid,
             });
 
             log(`[${source_name}] Row ${i + 1}: bid_id=${bidId} title="${(raw.raw_title ?? '').substring(0, 60)}"`);

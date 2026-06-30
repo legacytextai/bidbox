@@ -1099,10 +1099,61 @@ async function extractPortalMetadata(page, log) {
       return contextMatch?.[1]?.trim() ?? null;
     };
 
+    // Parses the "Job Walk" / "Job Walk Information" / "Site Visit" section from
+    // bodyText using the same architecture as extractPreBidMeetingSection.
+    const extractJobWalkSection = () => {
+      const trimLine = (s) => String(s ?? '').trim();
+      const KNOWN_LABELS = [
+        'date & time', 'date/time', 'meeting date', 'meeting time',
+        'location', 'meeting location', 'address', 'venue',
+        'attendance required', 'attendance mandatory', 'mandatory',
+        'meeting type', 'meeting link',
+        'additional details', 'notes',
+        'job walk', 'site visit',
+      ];
+      const labelKey = (s) => trimLine(s).toLowerCase().replace(/\s+/g, ' ');
+      const labelSet = new Set(KNOWN_LABELS);
+
+      const headingRe = /^(?:job\s+walk|site\s+visit|mandatory\s+pre[-\s]?bid|pre[-\s]?bid\s+site\s+visit)(?:\s+information)?\s*$/im;
+      const headingMatch = bodyText.match(headingRe);
+      if (!headingMatch) return null;
+
+      const afterHeading = headingMatch.index + headingMatch[0].length;
+      const STOP_RE = /^(?:online\s+q\s*&\s*a|contact\s+information|bid\s+bond|project\s+information|plan\s+holders|required\s+documents|addenda|pre[-\s]?bid\s+meeting(?:\s+information)?|q\s*&\s*a|documents?|submission)\s*$/im;
+      const stopMatch = bodyText.substring(afterHeading).match(STOP_RE);
+      const sectionEnd = stopMatch
+        ? afterHeading + stopMatch.index
+        : Math.min(afterHeading + 2000, bodyText.length);
+
+      const sectionText = bodyText.substring(afterHeading, sectionEnd);
+      const lines = sectionText.split('\n').map(trimLine).filter(Boolean);
+
+      const pairs = {};
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const colonIdx = line.indexOf(':');
+        if (colonIdx > 0 && colonIdx < 70) {
+          const rawKey = labelKey(line.substring(0, colonIdx));
+          const rawVal = trimLine(line.substring(colonIdx + 1));
+          if (labelSet.has(rawKey) && rawVal) { pairs[rawKey] = rawVal; continue; }
+        }
+        const lineKey = labelKey(line);
+        if (labelSet.has(lineKey)) {
+          const nextLine = i + 1 < lines.length ? trimLine(lines[i + 1]) : null;
+          if (nextLine && !labelSet.has(labelKey(nextLine))) {
+            pairs[lineKey] = nextLine; i++;
+          } else {
+            pairs[lineKey] = null;
+          }
+        }
+      }
+      return pairs;
+    };
+
     const scopeMatch = bodyText.match(
       /(?:Description|Scope of (?:Work|Services?|Project))[\s:\n]+([\s\S]{50,3000}?)(?:\n{2,}|\n[A-Z][a-z])/i
     );
-    // preBidPairs is null when heading absent; object (possibly empty) when found.
+    const jobWalkPairs = extractJobWalkSection();
     const preBidPairs = extractPreBidMeetingSection();
 
     return {
@@ -1144,57 +1195,59 @@ async function extractPortalMetadata(page, log) {
         field('Location') ||
         field('Project Location') ||
         null,
-      // job_walk_at: global field() lookups — separate from pre-bid section data.
-      job_walk_at:
-        field('Job Walk Date') ||
-        field('Job Walk Date & Time') ||
-        field('Pre-Bid Meeting Date') ||
-        field('Pre-Bid Meeting Date & Time') ||
-        field('Prebid Meeting Date') ||
-        field('Site Visit Date') ||
-        null,
-      // Pre-bid fields come exclusively from the section parser when heading present.
-      // Omit field('Pre-Bid Meeting') fallback — its regex captures "Information".
+      // Job walk fields — section parser only; field() not used (leaks heading text).
+      job_walk_at: jobWalkPairs !== null
+        ? (jobWalkPairs['date & time'] || jobWalkPairs['date/time'] || jobWalkPairs['meeting date'] || null)
+        : null,
+      job_walk_details: jobWalkPairs !== null
+        ? (jobWalkPairs['additional details'] || jobWalkPairs['notes'] || null)
+        : null,
+      job_walk_location: jobWalkPairs !== null
+        ? (jobWalkPairs['meeting location'] || jobWalkPairs['location'] || jobWalkPairs['address'] || jobWalkPairs['venue'] || null)
+        : null,
+      // Pre-bid fields — section parser only.
       pre_bid_meeting: preBidPairs !== null
         ? (preBidPairs['pre-bid meeting'] ?? null)
-        : (field('Prebid Meeting') || field('Job Walk') || null),
+        : null,
       pre_bid_meeting_at: preBidPairs !== null
         ? (preBidPairs['date & time'] || preBidPairs['date/time'] || preBidPairs['meeting date'] || null)
         : null,
       pre_bid_meeting_location: preBidPairs !== null
         ? (preBidPairs['meeting location'] || preBidPairs['location'] || preBidPairs['address'] || preBidPairs['venue'] || null)
         : null,
-      meeting_type: preBidPairs !== null ? (preBidPairs['meeting type'] || null) : null,
-      meeting_link: preBidPairs !== null ? (preBidPairs['meeting link'] || null) : null,
+      meeting_type:
+        (jobWalkPairs !== null ? jobWalkPairs['meeting type'] : null) ||
+        (preBidPairs !== null ? preBidPairs['meeting type'] : null) ||
+        null,
+      meeting_link:
+        (jobWalkPairs !== null ? jobWalkPairs['meeting link'] : null) ||
+        (preBidPairs !== null ? preBidPairs['meeting link'] : null) ||
+        null,
       additional_details: preBidPairs !== null
         ? (preBidPairs['additional details'] || preBidPairs['notes'] || null)
         : null,
-      attendance_required: preBidPairs !== null
-        ? (preBidPairs['attendance required'] || preBidPairs['attendance mandatory'] || preBidPairs['mandatory'] || null)
-        : (field('Attendance Required') || field('Attendance Mandatory') || field('Mandatory Attendance') || field('Mandatory') || null),
-      job_walk_location:
-        (preBidPairs !== null
-          ? (preBidPairs['meeting location'] || preBidPairs['location'] || preBidPairs['address'] || null)
+      attendance_required:
+        (jobWalkPairs !== null
+          ? (jobWalkPairs['attendance required'] || jobWalkPairs['attendance mandatory'] || jobWalkPairs['mandatory'] || null)
           : null) ||
-        field('Job Walk Location') ||
-        field('Pre-Bid Meeting Location') ||
-        field('Prebid Meeting Location') ||
-        field('Site Visit Location') ||
-        field('Meeting Location') ||
+        (preBidPairs !== null
+          ? (preBidPairs['attendance required'] || preBidPairs['attendance mandatory'] || preBidPairs['mandatory'] || null)
+          : null) ||
         null,
-      job_walk_details:
-        field('Job Walk') ||
-        field('Prebid Meeting') ||
-        field('Mandatory Pre-Bid') ||
-        field('Site Visit') ||
+      section_scoped_job_walk_at: jobWalkPairs !== null
+        ? (jobWalkPairs['date & time'] || jobWalkPairs['date/time'] || jobWalkPairs['meeting date'] || null)
+        : null,
+      section_scoped_job_walk_details: jobWalkPairs !== null
+        ? (jobWalkPairs['additional details'] || jobWalkPairs['notes'] || null)
+        : null,
+      section_scoped_attendance_required:
+        (jobWalkPairs !== null
+          ? (jobWalkPairs['attendance required'] || jobWalkPairs['attendance mandatory'] || jobWalkPairs['mandatory'] || null)
+          : null) ||
+        (preBidPairs !== null
+          ? (preBidPairs['attendance required'] || preBidPairs['attendance mandatory'] || preBidPairs['mandatory'] || null)
+          : null) ||
         null,
-      section_scoped_job_walk_at: preBidPairs !== null
-        ? (preBidPairs['date & time'] || preBidPairs['date/time'] || preBidPairs['meeting date'] || null)
-        : null,
-      section_scoped_job_walk_details: null,
-      section_scoped_attendance_required: preBidPairs !== null
-        ? (preBidPairs['attendance required'] || preBidPairs['attendance mandatory'] || preBidPairs['mandatory'] || null)
-        : null,
       county: field('County') || field('Location County') || null,
       scope_text: scopeMatch ? scopeMatch[1].trim().substring(0, 3000) : null,
     };
