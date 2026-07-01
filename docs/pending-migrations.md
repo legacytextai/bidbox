@@ -80,3 +80,39 @@ project manually and trigger analysis from within the project workspace.
 **What to do after applying:**  
 No code changes needed. The frontend will immediately start working as soon as
 the policy exists in the database.
+
+---
+
+## 20260701140000_opportunity_documents_storage_policy.sql
+
+**Status:** Pending — **this is a user-facing blocker**  
+**File:** `supabase/migrations/20260701140000_opportunity_documents_storage_policy.sql`  
+**Committed in:** `(next commit)`
+
+**What it does:**  
+Adds a `storage.objects` SELECT policy for authenticated users on the
+`opportunity-documents` bucket. Without it, `createSignedUrl()` returns
+"Object not found" (HTTP 400) for every document download attempt. Supabase
+intentionally returns this non-descriptive error (not 401/403) to prevent
+bucket enumeration. The files are present in storage; the policy is what's missing.
+
+**Current symptom:**  
+Every Download button in the Opportunity Documents and Project Workspace
+Documents tabs shows: "Could not generate a download link."
+
+**SQL in the migration:**
+```sql
+CREATE POLICY "Authenticated users can download opportunity documents"
+  ON storage.objects FOR SELECT
+  TO authenticated
+  USING (bucket_id = 'opportunity-documents');
+```
+
+**Who is blocked:**  
+All users trying to download any acquired opportunity document.
+
+**Workaround while blocked:**  
+None. Download is completely non-functional until this policy exists.
+
+**What to do after applying:**  
+No code changes needed. Download buttons will work immediately.

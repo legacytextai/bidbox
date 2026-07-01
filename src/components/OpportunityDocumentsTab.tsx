@@ -23,7 +23,7 @@ function DownloadButton({ doc }: { doc: DossierDocument }) {
       if (error || !data?.signedUrl) {
         toast({
           title: "Download failed",
-          description: "This document's file is no longer available in storage. Re-acquiring documents will restore it.",
+          description: "Could not generate a download link. Please try again or contact support.",
           variant: "destructive",
         });
         return;
