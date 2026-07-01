@@ -2,6 +2,7 @@ require('dotenv').config();
 const { createClient } = require('@supabase/supabase-js');
 const { scrapePlanetBids } = require('./drivers/planetbids');
 const { scrapeCaltrans } = require('./drivers/caltrans');
+const { scrapeLaCountyDpw } = require('./drivers/lacounty_dpw');
 const { acquirePlanetBidsDocuments, runPlanetBidsBidItemScan } = require('./drivers/planetbids_documents');
 const { runPortalIntelligence } = require('./drivers/portal_intelligence');
 const { acquireCaltransDocuments } = require('./drivers/caltrans_documents');
@@ -351,7 +352,12 @@ async function maybeQualifyCandidates() {
   }
 }
 
-async function runPlanetBidsScan(task, supabase) {
+// Shared scan runner for portal scan drivers. All portal scan tasks
+// (planetbids_scan, caltrans_scan, lacounty_dpw_scan) share identical
+// bookkeeping — run logs, source status transitions, the persist loop, tallies,
+// and the return shape — and differ only in which scrape driver they invoke.
+// The driver is a `(source, log) => { candidates, errors, errorMessages }` fn.
+async function runScan(task, supabase, driver) {
   const { source_id, source_name, listing_url, portal_type, trigger_reason = task.trigger_reason ?? 'manual_refresh' } = task.payload;
   const logs = [];
   const log = (msg) => {
@@ -393,7 +399,7 @@ async function runPlanetBidsScan(task, supabase) {
     candidates,
     errors: driverErrors,
     errorMessages = [],
-  } = await scrapePlanetBids(
+  } = await driver(
     { source_id, source_name, listing_url, portal_type },
     log
   );
@@ -477,130 +483,16 @@ async function runPlanetBidsScan(task, supabase) {
   return { found, new: newCount, refreshed: refreshedCount, unchanged: unchangedCount, preparationQueued, preparationDuplicates, errors, errorSummary, logs };
 }
 
+async function runPlanetBidsScan(task, supabase) {
+  return runScan(task, supabase, scrapePlanetBids);
+}
+
 async function runCaltransScan(task, supabase) {
-  const { source_id, source_name, listing_url, portal_type, trigger_reason = task.trigger_reason ?? 'manual_refresh' } = task.payload;
-  const logs = [];
-  const log = (msg) => {
-    const line = `[${ts()}] ${msg}`;
-    logs.push(line);
-    console.log(line);
-  };
+  return runScan(task, supabase, scrapeCaltrans);
+}
 
-  let runLogId = null;
-  try {
-    const { data: runLog, error: runLogError } = await supabase
-      .from('agent_run_logs')
-      .insert({
-        task_id: task.id,
-        status: 'running',
-        logs: logs.join('\n'),
-      })
-      .select('id')
-      .single();
-    if (runLogError) {
-      console.warn(`[${ts()}] agent_run_logs insert failed: ${runLogError.message}`);
-    } else {
-      runLogId = runLog.id;
-    }
-  } catch (e) {
-    console.warn(`[${ts()}] agent_run_logs insert threw: ${e.message}`);
-  }
-
-  await supabase
-    .from('opportunity_sources')
-    .update({
-      last_refresh_started_at: new Date().toISOString(),
-      last_refresh_status: 'running',
-      last_refresh_error: null,
-    })
-    .eq('id', source_id);
-
-  const {
-    candidates,
-    errors: driverErrors,
-    errorMessages = [],
-  } = await scrapeCaltrans(
-    { source_id, source_name, listing_url, portal_type },
-    log
-  );
-
-  let errors = driverErrors;
-  const found = candidates.length;
-  let newCount = 0;
-  let refreshedCount = 0;
-  let unchangedCount = 0;
-  let preparationQueued = 0;
-  let preparationDuplicates = 0;
-
-  for (const candidate of candidates) {
-    try {
-      const saved = await persistScannedCandidate({
-        supabase,
-        source_id,
-        source_name,
-        portal_type,
-        candidate,
-        triggerReason: trigger_reason,
-        sourceTaskId: task.id,
-        log,
-      });
-
-      if (saved.state === 'new') {
-        newCount++;
-        log(`[${source_name}] New Caltrans candidate: ${candidate.raw_title}`);
-      } else if (saved.state === 'refreshed') {
-        refreshedCount++;
-        log(`[${source_name}] Refreshed Caltrans candidate metadata: ${candidate.source_url}`);
-      } else {
-        unchangedCount++;
-        log(`[${source_name}] Caltrans candidate already current: ${candidate.source_url}`);
-      }
-
-      if (saved.preparation?.queued) preparationQueued++;
-      if (saved.preparation?.duplicate) preparationDuplicates++;
-    } catch (e) {
-      log(`[${source_name}] Candidate refresh threw: ${e.message}`);
-      errorMessages.push(`Candidate refresh threw: ${e.message}`);
-      errors++;
-    }
-  }
-
-  const sourceStatus = errors > 0 && (newCount + refreshedCount + unchangedCount) > 0
-    ? 'partial'
-    : errors > 0
-      ? 'failed'
-      : 'complete';
-  await supabase
-    .from('opportunity_sources')
-    .update({
-      last_scanned_at: new Date().toISOString(),
-      last_refresh_completed_at: new Date().toISOString(),
-      last_refresh_failed_at: sourceStatus === 'failed' ? new Date().toISOString() : null,
-      last_refresh_status: sourceStatus,
-      last_refresh_error: errorMessages.length > 0 ? [...new Set(errorMessages)].slice(0, 5).join(' | ') : null,
-    })
-    .eq('id', source_id);
-
-  const errorSummary = errorMessages.length > 0
-    ? [...new Set(errorMessages)].slice(0, 5).join(' | ')
-    : null;
-
-  if (runLogId) {
-    try {
-      await supabase
-        .from('agent_run_logs')
-        .update({
-          status: errors > 0 ? 'complete_with_errors' : 'complete',
-          logs: logs.join('\n'),
-          completed_at: new Date().toISOString(),
-        })
-        .eq('id', runLogId);
-    } catch (e) {
-      console.warn(`[${ts()}] agent_run_logs update threw: ${e.message}`);
-    }
-  }
-
-  return { found, new: newCount, refreshed: refreshedCount, unchanged: unchangedCount, preparationQueued, preparationDuplicates, errors, errorSummary, logs };
+async function runLaCountyDpwScan(task, supabase) {
+  return runScan(task, supabase, scrapeLaCountyDpw);
 }
 
 async function runBidItemScan(task, supabase) {
@@ -1024,7 +916,7 @@ async function claimNextTask() {
     .from('agent_tasks')
     .select('*')
     .eq('status', 'pending')
-    .in('task_type', ['planetbids_scan', 'caltrans_scan', 'bid_item_scan', 'portal_intelligence', 'document_prefetch', 'project_analysis', 'document_processing', 'project_intelligence'])
+    .in('task_type', ['planetbids_scan', 'caltrans_scan', 'lacounty_dpw_scan', 'bid_item_scan', 'portal_intelligence', 'document_prefetch', 'project_analysis', 'document_processing', 'project_intelligence'])
     .order('priority', { ascending: false })
     .order('created_at', { ascending: true })
     .limit(1)
@@ -1086,6 +978,12 @@ async function runDocumentPrefetchTask(task, supabase) {
     }
   } else if (candidate.portal_type === 'caltrans') {
     result = await acquireCaltransDocuments({ supabase, task, candidate, log });
+  } else if (candidate.portal_type === 'lacounty_dpw') {
+    // Milestone 1 is metadata-only. DPW document acquisition (authenticated
+    // SSO flow) is Milestone 2. Return an empty acquisition result so the
+    // auto-queued prefetch task completes cleanly instead of throwing.
+    log('LA County DPW document acquisition not implemented (Milestone 2) — skipping');
+    result = { found: 0, acquired: 0, skipped: 0, failed: 0 };
   } else {
     throw new Error(`document_prefetch not implemented for portal_type=${candidate.portal_type}`);
   }
@@ -1101,6 +999,8 @@ async function processTask(task) {
       result = await runPlanetBidsScan(task, supabase);
     } else if (task.task_type === 'caltrans_scan') {
       result = await runCaltransScan(task, supabase);
+    } else if (task.task_type === 'lacounty_dpw_scan') {
+      result = await runLaCountyDpwScan(task, supabase);
     } else if (task.task_type === 'bid_item_scan') {
       result = await runBidItemScan(task, supabase);
     } else if (task.task_type === 'portal_intelligence') {
@@ -1117,7 +1017,7 @@ async function processTask(task) {
       throw new Error(`Unsupported task type: ${task.task_type}`);
     }
 
-    const taskResult = ['planetbids_scan', 'caltrans_scan'].includes(task.task_type)
+    const taskResult = ['planetbids_scan', 'caltrans_scan', 'lacounty_dpw_scan'].includes(task.task_type)
       ? {
           found: result.found,
           new: result.new,
@@ -1127,7 +1027,11 @@ async function processTask(task) {
           opportunity_intelligence_duplicates: result.preparationDuplicates ?? 0,
           errors: result.errors,
           error_summary: result.errorSummary,
-          phase: task.task_type === 'caltrans_scan' ? 'caltrans_discovery_v1' : 'planetbids_discovery',
+          phase: task.task_type === 'caltrans_scan'
+            ? 'caltrans_discovery_v1'
+            : task.task_type === 'lacounty_dpw_scan'
+              ? 'lacounty_dpw_discovery_v1'
+              : 'planetbids_discovery',
           document_acquisition_supported: true,
           trigger_reason: task.payload?.trigger_reason ?? task.trigger_reason ?? null,
           refresh_window: task.payload?.refresh_window ?? task.refresh_window ?? null,
@@ -1225,7 +1129,7 @@ async function processTask(task) {
       })
       .eq('id', task.id);
 
-    if (['planetbids_scan', 'caltrans_scan'].includes(task.task_type)) {
+    if (['planetbids_scan', 'caltrans_scan', 'lacounty_dpw_scan'].includes(task.task_type)) {
       console.log(`[${ts()}] Task ${task.id} complete: found=${result.found} new=${result.new} refreshed=${result.refreshed ?? 0} unchanged=${result.unchanged ?? 0} errors=${result.errors}`);
       await maybeQualifyCandidates();
     } else if (task.task_type === 'document_processing') {
@@ -1248,7 +1152,7 @@ async function processTask(task) {
     }
 
     console.error(`[${ts()}] Task ${task.id} failed: ${e.message}`);
-    if (['planetbids_scan', 'caltrans_scan'].includes(task.task_type) && task.payload?.source_id) {
+    if (['planetbids_scan', 'caltrans_scan', 'lacounty_dpw_scan'].includes(task.task_type) && task.payload?.source_id) {
       await supabase
         .from('opportunity_sources')
         .update({

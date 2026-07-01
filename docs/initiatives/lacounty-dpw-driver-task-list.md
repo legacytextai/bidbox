@@ -1,6 +1,6 @@
 # LA County DPW Driver Implementation
 
-Status: Milestone 1 In Progress — Tasks 1–3 complete; next: Task 4 (Worker Integration)
+Status: Milestone 1 In Progress — Tasks 1–4 complete; next: Task 5 (LA County DPW Scan Driver)
 Document type: Engineering task list
 Source design spec: `docs/initiatives/lacounty-dpw-driver-design-spec.md`
 Reconnaissance report: `docs/handoff/2026-07-01-lacounty-dpw-agency-expansion.md`
@@ -54,16 +54,20 @@ Subtasks:
 ### 3.2. `scan-opportunities` ✅
 - Widened the `queueWorkerScanSources` taskType union, added a `lacountyDpwSources` partition that queues `lacounty_dpw_scan` (label "LA County DPW") via the same generic helper as Caltrans, and excluded `lacounty_dpw` from the legacy Firecrawl `otherSources` path so it routes to the worker.
 
-## Task 4 - WORKER INTEGRATION
+## Task 4 - WORKER INTEGRATION ✅ COMPLETE
+Worker learns the `lacounty_dpw_scan` task type and dispatches it exactly like existing scans. Net −96 lines (deduplication). Syntax check, stub-driver contract, and wiring assertions all pass; PlanetBids/Caltrans functional behavior unchanged.
 Subtasks:
-### 4.1. Claim and dispatch the scan task
-- Add `lacounty_dpw_scan` to the worker claim query `.in('task_type', [...])` and to the `processTask()` switch, routing to `runLaCountyDpwScan(task, supabase)`.
+### 4.1. Claim and dispatch the scan task ✅
+- Added `lacounty_dpw_scan` to the claim query `.in('task_type', [...])` and a `processTask()` dispatch branch → `runLaCountyDpwScan(task, supabase)`. Stub driver `bidbox-worker/drivers/lacounty_dpw.js` exports the scan contract (returns 0 candidates; Task 5 fills in HTML parsing).
 
-### 4.2. Include DPW in scan post-processing arrays
-- Add `lacounty_dpw_scan` to the three `['planetbids_scan','caltrans_scan']` arrays so the scan gets the scan-shaped `taskResult`, triggers `maybeQualifyCandidates()`, and writes `opportunity_sources.last_refresh_*` on failure.
+### 4.2. Include DPW in scan post-processing arrays ✅
+- Added `lacounty_dpw_scan` to the three `['planetbids_scan','caltrans_scan']` arrays (scan-shaped `taskResult`, `maybeQualifyCandidates()` trigger, source-failure `opportunity_sources` update) and to the discovery-phase label (`lacounty_dpw_discovery_v1`).
 
-### 4.3. Add a graceful `document_prefetch` no-op for `lacounty_dpw`
-- `persistScannedCandidate()` auto-queues a `document_prefetch` task for every new candidate, and `runDocumentPrefetchTask()` throws for unknown portal types. Add a `lacounty_dpw` branch that returns `{ found: 0, acquired: 0, skipped: 0, failed: 0 }` so Milestone 1 does not generate failing prefetch tasks. Milestone 2 replaces this stub with the real driver.
+### 4.3. Add a graceful `document_prefetch` no-op for `lacounty_dpw` ✅
+- Added a `candidate.portal_type === 'lacounty_dpw'` branch in `runDocumentPrefetchTask()` returning `{ found: 0, acquired: 0, skipped: 0, failed: 0 }`, so the auto-queued prefetch completes cleanly in Milestone 1 instead of throwing. Milestone 2 replaces it with the real driver.
+
+### 4.4. Reuse extraction: shared `runScan` helper ✅
+- Discovered `runPlanetBidsScan` and `runCaltransScan` were verbatim duplicates differing only in the scrape driver. Extracted a shared `runScan(task, supabase, driver)` and made all three runners thin delegates. Cleaner today regardless of DPW; no speculative abstraction. Only functional-neutral change: Caltrans scan log wording unified to the generic form (no DB/return-shape impact).
 
 ## Task 5 - LA COUNTY DPW SCAN DRIVER
 Subtasks:
