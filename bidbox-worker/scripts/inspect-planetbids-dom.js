@@ -28,12 +28,29 @@
 
 const { chromium } = require('playwright-core');
 const { createClient } = require('@supabase/supabase-js');
+const fs = require('fs');
+const path = require('path');
 
 const BROWSER_USER_AGENT =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 const API_HOST = 'api-external.prod.planetbids.com';
 
-function log(msg) { console.log(`[${new Date().toISOString()}] ${msg}`); }
+const ARTIFACT_DIR = path.resolve(__dirname, '../../debug-artifacts/planetbids-northwood');
+fs.mkdirSync(ARTIFACT_DIR, { recursive: true });
+
+const reportLines = [];
+
+function log(msg) {
+  const line = `[${new Date().toISOString()}] ${msg}`;
+  console.log(line);
+  reportLines.push(line);
+}
+
+function save(filename, content) {
+  const dest = path.join(ARTIFACT_DIR, filename);
+  fs.writeFileSync(dest, content);
+  log(`Saved: ${dest}`);
+}
 
 async function createPage() {
   const bbApiKey = process.env.BROWSERBASE_API_KEY;
@@ -176,9 +193,19 @@ async function main() {
     await page.waitForTimeout(4000);
     log(`URL after tab click: ${page.url()}`);
 
+    // ── Artifact 1: full page screenshot ─────────────────────────────────────
+    const screenshot = await page.screenshot({ fullPage: true }).catch((e) => {
+      log(`Screenshot failed: ${e.message}`);
+      return null;
+    });
+    if (screenshot) save('page-after-tab-click.png', screenshot);
+
+    // ── Artifact 2: full page HTML ────────────────────────────────────────────
+    const fullHtml = await page.content().catch(() => '');
+    if (fullHtml) save('page-after-tab-click.html', fullHtml);
+
     // ── Raw DOM dump of the active tab panel ─────────────────────────────────
     const panelDump = await page.evaluate(() => {
-      // Find the active tab panel
       const panel =
         document.querySelector('mat-tab-body[aria-hidden="false"]') ||
         document.querySelector('mat-tab-body.mat-mdc-tab-body-active') ||
@@ -192,8 +219,8 @@ async function main() {
         panelTag: panel.tagName.toLowerCase(),
         panelClass: panel.className,
         panelAriaHidden: panel.getAttribute('aria-hidden'),
-        outerHTMLPreview: panel.outerHTML.substring(0, 8000),
-        innerText: (panel.innerText ?? '').substring(0, 3000),
+        outerHTML: panel.outerHTML,
+        innerText: panel.innerText ?? '',
       };
     });
 
@@ -204,9 +231,12 @@ async function main() {
       console.log(`  class: ${panelDump.panelClass}`);
       console.log(`  aria-hidden: ${panelDump.panelAriaHidden}`);
       console.log(`\n── innerText (first 3000 chars) ──`);
-      console.log(panelDump.innerText);
-      console.log(`\n── outerHTML (first 8000 chars) ──`);
-      console.log(panelDump.outerHTMLPreview);
+      console.log(panelDump.innerText.substring(0, 3000));
+      console.log(`\n── outerHTML preview (first 2000 chars) ──`);
+      console.log(panelDump.outerHTML.substring(0, 2000));
+
+      // ── Artifact 3: focused container outerHTML ───────────────────────────
+      if (panelDump.outerHTML) save('line-items-panel.html', panelDump.outerHTML);
     }
 
     // ── Enumerate every row-like and cell-like element in the panel ──────────
@@ -285,8 +315,23 @@ async function main() {
       }
     }
 
+    // ── Artifact 4: raw API JSON ──────────────────────────────────────────────
+    if (apiResponses.length > 0) {
+      const apiDump = apiResponses.map((r) => ({
+        url: r.url,
+        status: r.status,
+        json: r.json,
+      }));
+      save('api-responses.json', JSON.stringify(apiDump, null, 2));
+    }
+
   } finally {
     await browser.close().catch(() => {});
+
+    // ── Artifact 5: full console report ──────────────────────────────────────
+    save('dom-report.txt', reportLines.join('\n'));
+
+    console.log(`\n══ ARTIFACTS SAVED TO: ${ARTIFACT_DIR} ══`);
   }
 }
 
