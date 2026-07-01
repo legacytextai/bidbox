@@ -156,25 +156,147 @@ function extractDocuments($, detailUrl) {
   return documents;
 }
 
+// ── Template registry ────────────────────────────────────────────────────────
+// DPW routes each opportunity to one of several flat detail templates with
+// different field vocabularies. Each template is expressed declaratively as a
+// canonical-field → source-label(s) mapping — no per-template logic, no switch.
+// The row's detail path segment selects the template; unknown segments (e.g.
+// aed_rfp, which is not currently live) fall back to a union mapping so a new
+// division still yields a usable candidate instead of crashing the scan.
+//
+// `typeLabel` mirrors the portal's own Opportunities.aspx type filter labels.
+
+const TEMPLATE_REGISTRY = [
+  {
+    id: 'aed_bid',
+    pathSegment: 'aed_bid',
+    typeLabel: 'Building Projects',
+    mapping: {
+      title: ['Project Name'],
+      description: ['Description'],
+      location: ['Project Location(s)'],
+      bid_due_raw: ['Closing Date'],
+      advertised_raw: ['Open Date'],
+      estimate_raw: ['Estimate'],
+      pre_bid_raw: ['Proposers Conference(s)'],
+      spec_no: ['Spec No'],
+      category: ['Category'],
+    },
+  },
+  {
+    id: 'cons',
+    pathSegment: 'cons',
+    typeLabel: 'Infrastructure Projects',
+    mapping: {
+      title: ['Project Name'],
+      description: ['Scope'],
+      location: ['Cities/ Communities', 'Project Limit'],
+      bid_due_raw: ['Bid Opening Date'],
+      advertised_raw: ['Advertise Date'],
+      federal_no: ['Federal No'],
+      addenda_raw: ['Addenda'],
+      category: ['Category'],
+    },
+  },
+  {
+    id: 'asd_rfp',
+    pathSegment: 'asd_rfp',
+    typeLabel: 'Sundry Services',
+    mapping: {
+      title: ['Project Name'],
+      description: ['Description', 'Scope'],
+      bid_due_raw: ['Proposal Due Date'],
+      advertised_raw: ['RFP Issue Date'],
+      estimate_raw: ['Estimate'],
+      pre_bid_raw: ['Proposers Conference Date'],
+      category: ['Category'],
+    },
+  },
+  {
+    id: 'rfb',
+    pathSegment: 'rfb',
+    typeLabel: 'Purchasing Opportunities',
+    mapping: {
+      title: ['Bid Title'],
+      description: ['Bid Description'],
+      bid_due_raw: ['Bid Closing Date'],
+      advertised_raw: ['Bid Open Date'],
+      department_explicit: ['Department'],
+      category: ['Bid Type'],
+    },
+  },
+];
+
+// Union fallback for unrecognized templates: covers every known label so a new
+// or inferred template (e.g. aed_rfp) still produces a usable candidate.
+const GENERIC_TEMPLATE = {
+  id: 'generic',
+  typeLabel: null,
+  mapping: {
+    title: ['Project Name', 'Bid Title'],
+    description: ['Scope', 'Description', 'Bid Description'],
+    location: ['Project Location(s)', 'Cities/ Communities', 'Project Limit'],
+    bid_due_raw: ['Closing Date', 'Bid Opening Date', 'Proposal Due Date', 'Bid Closing Date'],
+    advertised_raw: ['Open Date', 'Advertise Date', 'RFP Issue Date', 'Bid Open Date'],
+    estimate_raw: ['Estimate'],
+    pre_bid_raw: ['Proposers Conference(s)', 'Proposers Conference Date'],
+    addenda_raw: ['Addenda'],
+    department_explicit: ['Department'],
+    category: ['Category', 'Bid Type'],
+  },
+};
+
+function selectTemplate(detailUrl) {
+  const segment = (detailUrl.match(/\/contracts\/([a-z_]+)\//i) || [])[1];
+  return TEMPLATE_REGISTRY.find((t) => t.pathSegment === segment) || GENERIC_TEMPLATE;
+}
+
+function pickField(fields, aliases) {
+  for (const alias of aliases || []) {
+    const value = fields[alias];
+    if (value != null && value !== '') return value;
+  }
+  return null;
+}
+
+// Apply a template's declarative mapping to the raw field map, producing a
+// canonical extraction. Contact and portal_bid_id are common to all templates.
+function applyTemplate(template, fields, projectId) {
+  const extraction = { template_id: template.id };
+  for (const [canonicalKey, aliases] of Object.entries(template.mapping)) {
+    extraction[canonicalKey] = pickField(fields, aliases);
+  }
+  extraction.portal_bid_id = projectId;
+  extraction.department = extraction.department_explicit || template.typeLabel || null;
+  extraction.contact_name = pickField(fields, ['Name']);
+  extraction.contact_phone = pickField(fields, ['Phone']);
+  extraction.contact_email = pickField(fields, ['Email']);
+  return extraction;
+}
+
 // Step 2: fetch a candidate's detail page and merge raw extracted fields +
-// document metadata into crawl_data. Non-fatal on failure — the listing-level
-// candidate is still returned. Template-specific mapping and OML normalization
-// are Steps 3–4, so bid_due_at stays null here.
+// document metadata into crawl_data. Step 3: select the template and produce a
+// canonical extraction. Non-fatal on failure — the listing-level candidate is
+// still returned. OML normalization (bid_due_at, estimate) is Step 4, so those
+// typed columns stay unset here.
 async function enrichCandidateFromDetail(candidate, log) {
   const html = await fetchHtml(candidate.source_url, log);
   const $ = cheerio.load(html);
   const fields = extractDetailFields($);
   const documents = extractDocuments($, candidate.source_url);
+  const template = selectTemplate(candidate.source_url);
+  const extraction = applyTemplate(template, fields, candidate.portal_bid_id);
 
   candidate.crawl_data.detail_fields = fields;
   candidate.crawl_data.documents = documents;
   candidate.crawl_data.document_count = documents.length;
-  candidate.crawl_data.extraction_method = 'lacounty_dpw_v1_detail_generic';
+  candidate.crawl_data.template_id = template.id;
+  candidate.crawl_data.template_unrecognized = template.id === 'generic';
+  candidate.crawl_data.extraction = extraction;
+  candidate.crawl_data.extraction_method = 'lacounty_dpw_v1_detail';
 
-  const detailName = fields['Project Name'] || fields['Bid Title'];
-  if (detailName) candidate.crawl_data.project_name = detailName;
-  const scope = fields['Scope'] || fields['Description'] || fields['Bid Description'];
-  if (scope) candidate.crawl_data.scope = scope;
+  if (extraction.title) candidate.crawl_data.project_name = extraction.title;
+  if (extraction.description) candidate.crawl_data.scope = extraction.description;
   return candidate;
 }
 
@@ -258,6 +380,9 @@ module.exports = {
   parseListingRows,
   extractDetailFields,
   extractDocuments,
+  selectTemplate,
+  applyTemplate,
+  TEMPLATE_REGISTRY,
   fetchHtml,
   DEFAULT_LISTING_URL,
   CONTRACTS_BASE,
