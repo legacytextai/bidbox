@@ -1,5 +1,7 @@
 // Documents tab — flat ordered list of acquired source documents.
 
+import { useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import type { DossierDocument } from "@/hooks/useOpportunityDossier";
 
 const PROCESSING_STATUS_LABELS: Record<string, string> = {
@@ -20,6 +22,43 @@ function processingStatusStyle(status: string | null): string {
   if (status === "failed") return "text-red-600";
   if (status === "processing" || status === "queued") return "text-blue-700";
   return "text-muted-foreground";
+}
+
+function DownloadButton({ doc }: { doc: DossierDocument }) {
+  const [loading, setLoading] = useState(false);
+
+  if (doc.acquisition_status !== "acquired" || !doc.storage_path) return null;
+
+  const handleDownload = async () => {
+    setLoading(true);
+    try {
+      const bucket = doc.storage_bucket ?? "opportunity-documents";
+      const { data, error } = await supabase.storage
+        .from(bucket)
+        .createSignedUrl(doc.storage_path!, 3600);
+      if (error || !data?.signedUrl) throw error ?? new Error("Signed URL generation failed");
+      const a = document.createElement("a");
+      a.href = data.signedUrl;
+      a.download = doc.file_name ?? "document";
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleDownload}
+      disabled={loading}
+      className="shrink-0 text-xs font-medium text-primary hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+    >
+      {loading ? "…" : "Download"}
+    </button>
+  );
 }
 
 interface Props {
@@ -53,9 +92,12 @@ export function OpportunityDocumentsTab({ documents }: Props) {
                   : null}
               </p>
             </div>
-            <span className={`text-[10px] font-medium uppercase tracking-wide shrink-0 ${processingStatusStyle(doc.processing_status)}`}>
-              {processingStatusLabel(doc.processing_status)}
-            </span>
+            <div className="flex items-center gap-3 shrink-0">
+              <DownloadButton doc={doc} />
+              <span className={`text-[10px] font-medium uppercase tracking-wide ${processingStatusStyle(doc.processing_status)}`}>
+                {processingStatusLabel(doc.processing_status)}
+              </span>
+            </div>
           </li>
         ))}
       </ul>

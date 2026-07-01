@@ -79,6 +79,9 @@ export interface DossierDocument {
   document_family: string | null;
   text_page_count: number | null;
   processing_status: string | null;
+  acquisition_status: string | null;
+  storage_path: string | null;
+  storage_bucket: string | null;
 }
 
 export interface DossierBidItem {
@@ -182,7 +185,7 @@ export function useOpportunityDossier(id: string | undefined): UseOpportunityDos
         .maybeSingle(),
       sb
         .from("opportunity_documents")
-        .select("id, file_name, document_class, document_family, text_page_count, processing_status")
+        .select("id, file_name, document_class, document_family, text_page_count, processing_status, acquisition_status, storage_path, storage_bucket")
         .eq("opportunity_candidate_id", id)
         .order("document_source_order", { ascending: true, nullsFirst: false })
         .order("created_at", { ascending: true }),

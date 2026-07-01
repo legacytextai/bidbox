@@ -329,7 +329,7 @@ async function reanalyze(adminClient: any, candidateId: string, userId: string) 
 // Force-prepares OI for an opportunity, bypassing the closed-bid gate.
 // Used by: "Prepare Intelligence" button on the dossier page, and Add to Calendar.
 // Auth is enforced by requireUser(). Duplicate tasks are blocked by the active-task check.
-async function forcePrepare(adminClient: any, candidateId: string, _userId: string) {
+async function forcePrepare(adminClient: any, candidateId: string, userId: string) {
   const activeStatuses = ["pending", "running", "retrying"];
   const { data: activeTasks, error: activeTaskError } = await adminClient
     .from("agent_tasks")
