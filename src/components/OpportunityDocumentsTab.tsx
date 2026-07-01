@@ -1,28 +1,9 @@
 // Documents tab — flat ordered list of acquired source documents.
 
 import { useState } from "react";
+import { Download } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { DossierDocument } from "@/hooks/useOpportunityDossier";
-
-const PROCESSING_STATUS_LABELS: Record<string, string> = {
-  processed: "Processed",
-  processing: "Processing",
-  queued: "Queued",
-  failed: "Failed",
-  partial: "Partial",
-  skipped: "Skipped",
-};
-
-function processingStatusLabel(status: string | null): string {
-  return PROCESSING_STATUS_LABELS[status ?? ""] ?? status ?? "—";
-}
-
-function processingStatusStyle(status: string | null): string {
-  if (status === "processed") return "text-green-700";
-  if (status === "failed") return "text-red-600";
-  if (status === "processing" || status === "queued") return "text-blue-700";
-  return "text-muted-foreground";
-}
 
 function DownloadButton({ doc }: { doc: DossierDocument }) {
   const [loading, setLoading] = useState(false);
@@ -54,9 +35,10 @@ function DownloadButton({ doc }: { doc: DossierDocument }) {
     <button
       onClick={handleDownload}
       disabled={loading}
-      className="shrink-0 text-xs font-medium text-primary hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+      className="flex items-center gap-1.5 shrink-0 text-xs font-medium text-primary hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
     >
-      {loading ? "…" : "Download"}
+      <Download className="h-3.5 w-3.5" />
+      {loading ? "Downloading…" : "Download"}
     </button>
   );
 }
@@ -86,18 +68,13 @@ export function OpportunityDocumentsTab({ documents }: Props) {
               <p className="font-medium text-foreground truncate">
                 {doc.file_name ?? "Untitled document"}
               </p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {typeof doc.text_page_count === "number"
-                  ? `${doc.text_page_count} pages`
-                  : null}
-              </p>
+              {typeof doc.text_page_count === "number" && (
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {doc.text_page_count} pages
+                </p>
+              )}
             </div>
-            <div className="flex items-center gap-3 shrink-0">
-              <DownloadButton doc={doc} />
-              <span className={`text-[10px] font-medium uppercase tracking-wide ${processingStatusStyle(doc.processing_status)}`}>
-                {processingStatusLabel(doc.processing_status)}
-              </span>
-            </div>
+            <DownloadButton doc={doc} />
           </li>
         ))}
       </ul>
