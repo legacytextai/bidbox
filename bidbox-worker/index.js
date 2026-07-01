@@ -997,7 +997,7 @@ async function claimNextTask() {
     .from('agent_tasks')
     .select('*')
     .eq('status', 'pending')
-    .in('task_type', ['planetbids_scan', 'caltrans_scan', 'bid_item_scan', 'portal_intelligence', 'project_analysis', 'document_processing', 'project_intelligence'])
+    .in('task_type', ['planetbids_scan', 'caltrans_scan', 'bid_item_scan', 'portal_intelligence', 'document_prefetch', 'project_analysis', 'document_processing', 'project_intelligence'])
     .order('priority', { ascending: false })
     .order('created_at', { ascending: true })
     .limit(1)
