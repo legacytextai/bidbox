@@ -226,8 +226,8 @@ DPW routes each opportunity to one of several detail templates with **different 
 | `estimated_value_low` / `_high` | `null` (DPW gives point estimates, not ranges) |
 | `county` | constant `"Los Angeles"` (all DPW work is LA County) |
 | `project_address` | project location / limit / cities-communities text if present |
-| `required_licenses` | license/classification text if present, else `null` |
-| `required_naics` | `null` (not exposed) |
+| `required_licenses` | `text[]` column — supply a string array of license/classification codes if present, else `null`. Never a bare string. (M1: `null`, matching Caltrans.) |
+| `required_naics` | `text[]` column — `null` (not exposed by DPW) |
 | `portal_bid_id` | `project_id` (opaque string) |
 | `portal_department` | division/template label (e.g. "Public Works — Construction") |
 | `crawl_data` | JSONB overflow: every raw field, `documents[]`, `planHolders`, template id, extraction metadata |

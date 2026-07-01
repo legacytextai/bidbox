@@ -1,6 +1,6 @@
 # LA County DPW Driver Implementation
 
-Status: Milestone 1 Planned — Not Started
+Status: Milestone 1 In Progress — Task 1 (Schema & Configuration Verification) complete; no migration required
 Document type: Engineering task list
 Source design spec: `docs/initiatives/lacounty-dpw-driver-design-spec.md`
 Reconnaissance report: `docs/handoff/2026-07-01-lacounty-dpw-agency-expansion.md`
@@ -21,16 +21,19 @@ Milestone 2 (Task 17 is investigation only) is authenticated document acquisitio
 
 ---
 
-## Task 1 - SCHEMA & CONFIGURATION VERIFICATION
+## Task 1 - SCHEMA & CONFIGURATION VERIFICATION ✅ COMPLETE
+Verified against `supabase/migrations/` (declared schema source of truth). No migration required for Milestone 1.
 Subtasks:
-### 1.1. Verify `opportunity_sources` columns
-- Confirm against the live schema: `portal_type`, `listing_url`, `scan_enabled`, `scan_interval_hours`, `refresh_enabled`, `refresh_cadence_hours`, and the `last_refresh_*` / `last_scanned_at` fields the scan-runner writes. These names come from the recon report and are not yet verified against the database.
+### 1.1. Verify `opportunity_sources` columns ✅
+- All present (base `20260524000001`; refresh fields `20260625000001`): `name`, `portal_type`, `listing_url`, `scan_enabled`, `scan_interval_hours`, `refresh_enabled`, `refresh_cadence_hours`, `last_refresh_started_at/completed_at/failed_at/status/error/queued_at`, `last_scanned_at`.
+- `portal_type` is free `text` (no enum/CHECK). Uniqueness is on `listing_url` only, so a new `lacounty_dpw` source inserts cleanly.
 
-### 1.2. Verify `opportunity_candidates` OML columns
-- Confirm every column written by `portalOwnedCandidateFields()` exists: `estimated_value`, `estimated_value_low`, `estimated_value_high`, `county`, `project_address`, `required_licenses`, `required_naics`, `portal_bid_id`, `portal_department`, `crawl_data`.
+### 1.2. Verify `opportunity_candidates` OML columns ✅
+- All columns written by `portalOwnedCandidateFields()` + `persistScannedCandidate()` present (OML columns from `20260630200000`). `portal_type` free `text`, no enum/CHECK → `'lacounty_dpw'` accepted.
+- Drift note: `required_licenses` and `required_naics` are `text[]` (arrays), not `text`. The normalizer (Task 8) must supply a string array or `null`, never a bare string. M1 uses `null` (matching Caltrans). Design spec §5.1 corrected.
 
-### 1.3. Confirm no migration is required for Milestone 1
-- If a column is missing, raise it before Task 2 rather than mid-build. Milestone 1 is expected to need zero schema changes.
+### 1.3. Confirm no migration is required for Milestone 1 ✅
+- Zero schema changes needed. `agent_tasks.task_type` is free text; the only `WITH CHECK (task_type='project_analysis')` is an RLS policy scoped to the `authenticated` role. Scan tasks are inserted by `refresh-opportunities` via `SUPABASE_SERVICE_ROLE_KEY`, which bypasses RLS — so `lacounty_dpw_scan` inserts are unaffected, identical to `planetbids_scan`/`caltrans_scan`.
 
 ## Task 2 - PORTAL TYPE REGISTRATION
 Subtasks:
