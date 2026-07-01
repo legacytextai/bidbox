@@ -800,6 +800,10 @@ const Opportunities = () => {
 
   const hasActiveFacetFilters = agencyFilter.length > 0;
 
+  // Ordered ID list for the current visible set — passed as nav context when
+  // navigating to the detail page so Prev/Next arrows stay within this view.
+  const visibleCardIds = useMemo(() => visibleCards.map((c) => c.id), [visibleCards]);
+
   const tabCounts = useMemo(() => {
     const isHiddenFromMainAll = (candidate: Candidate) =>
       candidate.auto_status === "red" ||
@@ -812,10 +816,14 @@ const Opportunities = () => {
     };
   }, [candidates, matchesFacets, savedCandidateIds]);
 
-  const renderCard = (candidate: Candidate, _index: number) => {
+  const renderCard = (candidate: Candidate, _index: number, navIds?: string[]) => {
     const onCalendar = candidate.status === "converted" && !!candidate.converted_project_id;
     const estimatedValue = formatEstimatedValue(candidate.crawl_data);
-    const goToOpportunity = () => navigate(`/opportunities/${candidate.id}`);
+    const goToOpportunity = () =>
+      navigate(
+        `/opportunities/${candidate.id}`,
+        navIds ? { state: { navIds } } : undefined,
+      );
     const saved = savedCandidateIds.has(candidate.id);
 
     return (
@@ -1083,7 +1091,7 @@ const Opportunities = () => {
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {visibleCards.map(renderCard)}
+                    {visibleCards.map((c, i) => renderCard(c, i, visibleCardIds))}
                   </div>
                 )}
                 {activeFilter === "all" && filteredOutCards.length > 0 && (
@@ -1100,7 +1108,7 @@ const Opportunities = () => {
                     </CollapsibleTrigger>
                     <CollapsibleContent className="mt-4">
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 opacity-70">
-                        {filteredOutCards.map(renderCard)}
+                        {filteredOutCards.map((c, i) => renderCard(c, i))}
                       </div>
                     </CollapsibleContent>
                   </Collapsible>

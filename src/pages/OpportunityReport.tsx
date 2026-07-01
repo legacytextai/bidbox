@@ -3,7 +3,7 @@
 // Tab state lives in the URL search param ?tab=overview (default)
 
 import { useState, useMemo, useRef, useEffect } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Layout } from "@/components/Layout";
 import { Button } from "@/components/ui/button";
@@ -91,6 +91,7 @@ const isUniqueViolation = (error: any): boolean =>
 const OpportunityReport = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -126,16 +127,13 @@ const OpportunityReport = () => {
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [reanalysisFailureNotice, setReanalysisFailureNotice] = useState<string | null>(null);
-  const [siblingIds, setSiblingIds] = useState<string[]>([]);
   const wasAnalysisActiveRef = useRef(false);
 
-  useEffect(() => {
-    supabase
-      .from("opportunity_candidates")
-      .select("id, bid_due_at")
-      .order("bid_due_at", { ascending: true, nullsFirst: false })
-      .then(({ data }) => setSiblingIds((data ?? []).map((r) => r.id as string)));
-  }, []);
+  // Navigation context: ordered ID list from the list page the user came from.
+  // Passed via React Router history state when navigating from Opportunities.tsx.
+  // Absent when the page is opened directly (bookmark, new tab, hard refresh) —
+  // in that case Prev/Next arrows are hidden rather than showing incorrect siblings.
+  const navIds: string[] | null = (location.state as any)?.navIds ?? null;
 
   useEffect(() => {
     if (!id) return;
@@ -156,10 +154,10 @@ const OpportunityReport = () => {
     };
   }, [id]);
 
-  const currentIdx = id ? siblingIds.indexOf(id) : -1;
-  const prevId = currentIdx > 0 ? siblingIds[currentIdx - 1] : null;
+  const currentIdx = id && navIds ? navIds.indexOf(id) : -1;
+  const prevId = currentIdx > 0 ? navIds![currentIdx - 1] : null;
   const nextId =
-    currentIdx >= 0 && currentIdx < siblingIds.length - 1 ? siblingIds[currentIdx + 1] : null;
+    navIds && currentIdx >= 0 && currentIdx < navIds.length - 1 ? navIds[currentIdx + 1] : null;
 
   // ── Bid due derived state for Intelligence tab ───────────────────────────
 
@@ -737,7 +735,7 @@ const OpportunityReport = () => {
           <div className="flex items-center justify-between mb-3">
             <button
               type="button"
-              onClick={() => prevId && navigate(`/opportunities/${prevId}`)}
+              onClick={() => prevId && navigate(`/opportunities/${prevId}`, { state: location.state })}
               disabled={!prevId}
               aria-label="Previous opportunity"
               className={`group inline-flex items-center gap-1.5 text-xs transition-all disabled:opacity-20 disabled:cursor-not-allowed ${prevId ? 'text-foreground hover:text-foreground' : 'text-muted-foreground/60'}`}
@@ -747,7 +745,7 @@ const OpportunityReport = () => {
             </button>
             <button
               type="button"
-              onClick={() => nextId && navigate(`/opportunities/${nextId}`)}
+              onClick={() => nextId && navigate(`/opportunities/${nextId}`, { state: location.state })}
               disabled={!nextId}
               aria-label="Next opportunity"
               className={`group inline-flex items-center gap-1.5 text-xs transition-all disabled:opacity-20 disabled:cursor-not-allowed ${nextId ? 'text-foreground hover:text-foreground' : 'text-muted-foreground/60'}`}
