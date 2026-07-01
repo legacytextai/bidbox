@@ -24,6 +24,48 @@ const QUALIFY_MIN_INTERVAL_MS = 2 * 60 * 1000;
 const CLAIM_RETRY = Symbol('claim-retry');
 let lastQualifyAt = 0;
 
+// ── PlanetBids distributed login lock ────────────────────────────────────────
+// Only one Railway worker may hold an active PlanetBids browser session at a
+// time.  Concurrent logins with the same account invalidate each other's
+// session token, causing every parallel document_prefetch to fail.
+// The lock is stored in app_settings and managed by two PostgreSQL functions
+// (acquire_planetbids_lock / release_planetbids_lock) in the migration
+// 20260701120000_planetbids_login_lock.sql.
+
+const PLANETBIDS_LOCK_TTL_SECONDS = 600;   // 10 min — covers longest browser session
+const PLANETBIDS_LOCK_RETRY_DELAY_MS = 20_000;  // 20 s between retries
+const PLANETBIDS_LOCK_MAX_RETRIES = 15;    // up to 5 min of waiting
+
+class PlanetBidsLockTimeoutError extends Error {
+  constructor(attempts) {
+    super(`PlanetBids login lock not available after ${attempts} attempts — requeueing task`);
+    this.name = 'PlanetBidsLockTimeoutError';
+  }
+}
+
+async function acquirePlanetBidsLock(workerId, log) {
+  for (let attempt = 1; attempt <= PLANETBIDS_LOCK_MAX_RETRIES; attempt++) {
+    const { data: acquired, error } = await supabase.rpc('acquire_planetbids_lock', {
+      p_worker_id: workerId,
+      p_ttl_seconds: PLANETBIDS_LOCK_TTL_SECONDS,
+    });
+    if (error) throw new Error(`PlanetBids lock RPC error: ${error.message}`);
+    if (acquired) {
+      log(`PlanetBids lock acquired (worker=${workerId.slice(0, 8)}, attempt=${attempt})`);
+      return;
+    }
+    log(`PlanetBids lock held — waiting ${PLANETBIDS_LOCK_RETRY_DELAY_MS / 1000}s (attempt ${attempt}/${PLANETBIDS_LOCK_MAX_RETRIES})`);
+    await new Promise((r) => setTimeout(r, PLANETBIDS_LOCK_RETRY_DELAY_MS));
+  }
+  throw new PlanetBidsLockTimeoutError(PLANETBIDS_LOCK_MAX_RETRIES);
+}
+
+async function releasePlanetBidsLock(workerId, log) {
+  const { error } = await supabase.rpc('release_planetbids_lock', { p_worker_id: workerId });
+  if (error) log(`Warning: PlanetBids lock release RPC error: ${error.message}`);
+  else log(`PlanetBids lock released (worker=${workerId.slice(0, 8)})`);
+}
+
 function ts() {
   return new Date().toISOString();
 }
@@ -1035,7 +1077,13 @@ async function runDocumentPrefetchTask(task, supabase) {
 
   let result;
   if (candidate.portal_type === 'planetbids') {
-    result = await acquirePlanetBidsDocuments({ supabase, task, candidate, log });
+    const workerId = crypto.randomUUID();
+    await acquirePlanetBidsLock(workerId, log);
+    try {
+      result = await acquirePlanetBidsDocuments({ supabase, task, candidate, log });
+    } finally {
+      await releasePlanetBidsLock(workerId, log);
+    }
   } else if (candidate.portal_type === 'caltrans') {
     result = await acquireCaltransDocuments({ supabase, task, candidate, log });
   } else {
@@ -1188,6 +1236,17 @@ async function processTask(task) {
       console.log(`[${ts()}] Task ${task.id} complete: documents_acquired=${result.documents_acquired} documents_failed=${result.documents_failed}`);
     }
   } catch (e) {
+    // Lock timeout — another worker holds the PlanetBids session.  Reset this
+    // task to pending so a later worker can retry it rather than marking it failed.
+    if (e instanceof PlanetBidsLockTimeoutError) {
+      console.warn(`[${ts()}] Task ${task.id} requeueing (lock timeout): ${e.message}`);
+      await supabase
+        .from('agent_tasks')
+        .update({ status: 'pending', started_at: null, error: null })
+        .eq('id', task.id);
+      return;
+    }
+
     console.error(`[${ts()}] Task ${task.id} failed: ${e.message}`);
     if (['planetbids_scan', 'caltrans_scan'].includes(task.task_type) && task.payload?.source_id) {
       await supabase
