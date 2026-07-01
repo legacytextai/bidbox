@@ -872,7 +872,10 @@ function parseItemsFromHeadersAndRows(headers, rowTexts, sectionName, kind, log)
   const items = [];
   for (const [i, row] of rowTexts.entries()) {
     const description = (row[effectiveDescIdx] ?? '').trim();
-    if (!description || /^total\b/i.test(description)) continue;
+    // Skip blank rows and bare footer totals ("Total", "Grand Total").
+    // Do NOT skip named lump-sum items like "Total Bid Amount" or "Total Base Bid"
+    // — those are valid bid schedule entries even though they start with "Total".
+    if (!description || /^(grand\s+)?total\s*$/i.test(description)) continue;
     items.push({
       section_name: sectionName || null,
       item_number: itemIdx >= 0 ? (row[itemIdx] ?? '').trim() || String(i + 1) : String(i + 1),
