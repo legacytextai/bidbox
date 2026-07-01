@@ -844,64 +844,218 @@ async function openDocumentsTab(page, log) {
 }
 
 async function extractPlanetBidsBidItems(page, candidate, log) {
+  // ── 1. Instrument: current URL ───────────────────────────────────────────
+  const currentUrl = page.url();
+  log(`bid_item_extract: current URL = ${currentUrl}`);
+
+  // ── 2. API response interception ─────────────────────────────────────────
+  // Collect JSON responses from the PlanetBids API before we click the tab.
+  // The listener resolves each .json() call immediately and stores the result
+  // synchronously to avoid racing with page.off() later.
   const bidItemResponses = [];
-  const responseListener = async (res) => {
+  const pendingJsonReads = [];
+
+  const responseListener = (res) => {
     try {
       const url = res.url();
       if (!url.includes(API_HOST) || !res.ok()) return;
-      // Catch PlanetBids endpoints that return bid-item data.
-      // Known patterns: /lineItems, /bid-items, /bidItems, /schedule, /bidSchedule, /items
-      if (!/(line.{0,10}item|bid.{0,10}item|item.{0,10}line|bid.{0,10}schedule|schedule.{0,10}bid|\/items|\/schedule)/i.test(url)) return;
-      const json = await res.json().catch(() => null);
-      if (json) bidItemResponses.push({ url, json });
+      // Broadened URL pattern — covers all known PlanetBids bid-item endpoints:
+      // /papi/bid-line-items, /papi/bid-items, /papi/bidItems, /papi/schedule,
+      // /papi/bid-schedule, /papi/items, /papi/lump-sum-items, etc.
+      if (!/(line.{0,15}item|bid.{0,15}item|item.{0,15}line|bid.{0,15}schedule|schedule.{0,15}bid|\/items|\/schedule|lump.{0,10}sum)/i.test(url)) {
+        return;
+      }
+      log(`bid_item_extract: intercepted API response — ${url}`);
+      const p = res.json().then((json) => {
+        if (json) bidItemResponses.push({ url, json });
+      }).catch((e) => {
+        log(`bid_item_extract: API JSON parse failed for ${url}: ${e.message}`);
+      });
+      pendingJsonReads.push(p);
     } catch (_) {}
   };
 
   page.on('response', responseListener);
-  const lineItemsTab = page
-    .getByText(/^(Line Items|Bid Items|Bid Line Items|Items)$/i)
-    .first();
 
-  if (!(await lineItemsTab.isVisible({ timeout: 5000 }).catch(() => false))) {
+  // ── 3. Find and click the Line Items tab ─────────────────────────────────
+  // Lenient match: allow surrounding whitespace, embedded counts like "(6)",
+  // and common PlanetBids label variants.
+  // getByRole('tab') is tried first; falls back to text search.
+  let tabClicked = false;
+  let tabLabel = '(none found)';
+
+  try {
+    // Enumerate all tab-like elements so we can log what's actually on the page.
+    const allTabTexts = await page.evaluate(() => {
+      const clean = (el) => (el.textContent ?? '').replace(/\s+/g, ' ').trim();
+      const tabs = [
+        ...document.querySelectorAll('[role="tab"]'),
+        ...document.querySelectorAll('mat-tab-label, .mat-tab-label, .mat-mdc-tab, [class*="tab-label"]'),
+      ];
+      return tabs.map(clean).filter(Boolean);
+    }).catch(() => []);
+    log(`bid_item_extract: visible tab labels = [${allTabTexts.join(' | ')}]`);
+
+    // Try to find the Line Items tab among those.
+    const lineItemsTab = page.locator(
+      '[role="tab"], mat-tab-label, .mat-tab-label, .mat-mdc-tab, [class*="tab-label"]'
+    ).filter({ hasText: /line\s*items?|bid\s*items?|bid\s*line\s*items?/i }).first();
+
+    if (await lineItemsTab.isVisible({ timeout: 8000 }).catch(() => false)) {
+      tabLabel = await lineItemsTab.innerText().catch(() => '?');
+      log(`bid_item_extract: clicking tab "${tabLabel.trim()}"`);
+      await lineItemsTab.click();
+      tabClicked = true;
+    } else {
+      // Fallback: getByText with looser regex (no anchors).
+      const fallbackTab = page
+        .getByText(/line\s*items?|bid\s*items?/i)
+        .first();
+      if (await fallbackTab.isVisible({ timeout: 3000 }).catch(() => false)) {
+        tabLabel = await fallbackTab.innerText().catch(() => '?');
+        log(`bid_item_extract: clicking fallback tab "${tabLabel.trim()}"`);
+        await fallbackTab.click();
+        tabClicked = true;
+      }
+    }
+  } catch (e) {
+    log(`bid_item_extract: tab click error — ${e.message}`);
+  }
+
+  if (!tabClicked) {
     page.off('response', responseListener);
-    log('PlanetBids Line Items tab not visible; bid item extraction skipped');
+    log('bid_item_extract: Line Items tab not found; extraction skipped');
     return [];
   }
 
-  log('Opening PlanetBids Line Items tab');
-  await lineItemsTab.click();
+  // ── 4. Wait for the table to render ──────────────────────────────────────
   await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
-  await page.waitForTimeout(2500);
-  page.off('response', responseListener);
+  await page.waitForTimeout(3000);
 
+  // Wait for all pending JSON reads to resolve before proceeding.
+  page.off('response', responseListener);
+  await Promise.allSettled(pendingJsonReads);
+
+  log(`bid_item_extract: API responses captured = ${bidItemResponses.length}`);
+
+  // ── 5. HTML / DOM table extraction ───────────────────────────────────────
+  // Handles both native <table> and Angular Material <mat-table> (non-native
+  // rendering uses custom elements with mat-header-cell / mat-cell).
   const rows = await page.evaluate(() => {
     const clean = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
-    const headerIndex = (headers, patterns) => headers.findIndex((header) => patterns.some((pattern) => pattern.test(header)));
-    const tables = Array.from(document.querySelectorAll('table'));
+    const headerIdx = (headers, patterns) =>
+      headers.findIndex((h) => patterns.some((p) => p.test(h)));
+
+    const diagnostics = { tablesFound: 0, tablesFiltered: [], tablesUsed: 0, rowsRaw: 0, rowsFiltered: [] };
     const items = [];
 
-    for (const table of tables) {
-      const tableRows = Array.from(table.querySelectorAll('tr'))
-        .map((tr) => Array.from(tr.querySelectorAll('th,td')).map((cell) => clean(cell.innerText)))
-        .filter((row) => row.some(Boolean));
-      if (tableRows.length < 2) continue;
+    // ── 5a. Native <table> elements ──
+    const nativeTables = Array.from(document.querySelectorAll('table'));
+    // ── 5b. Angular Material <mat-table> (non-native) ──
+    // mat-table renders rows as <mat-header-row> / <mat-row>, cells as <mat-header-cell> / <mat-cell>
+    const matTables = Array.from(document.querySelectorAll('mat-table, [role="grid"][class*="table"], [class*="mat-table"]'));
 
-      const headers = tableRows[0].map((header) => header.toLowerCase());
-      const tableText = clean(table.innerText);
-      if (!/(line\s*items?|bid\s*items?|item\s*(no|number)|description|quantity|qty|unit)/i.test(tableText)) continue;
+    const tableUnits = [
+      ...nativeTables.map((el) => ({ el, kind: 'native' })),
+      ...matTables.map((el) => ({ el, kind: 'mat' })),
+    ];
+    diagnostics.tablesFound = tableUnits.length;
 
-      const section = clean(table.closest('section, mat-card, div')?.querySelector('h1,h2,h3,h4,h5,strong')?.textContent ?? '');
-      const itemIndex = headerIndex(headers, [/item\s*(no|number)?/, /^#$/]);
-      const codeIndex = headerIndex(headers, [/code/]);
-      const descIndex = headerIndex(headers, [/description/, /item\s*description/, /scope/]);
-      const unitIndex = headerIndex(headers, [/^unit$/, /uom/, /unit\s*of\s*measure/]);
-      const qtyIndex = headerIndex(headers, [/quantity/, /^qty$/]);
-      const refIndex = headerIndex(headers, [/reference/, /^ref$/]);
-      if (descIndex < 0) continue;
+    for (const { el, kind } of tableUnits) {
+      let tableRows;
 
+      if (kind === 'native') {
+        tableRows = Array.from(el.querySelectorAll('tr'))
+          .map((tr) => Array.from(tr.querySelectorAll('th, td, mat-header-cell, mat-cell')).map((c) => clean(c.innerText)))
+          .filter((row) => row.some(Boolean));
+      } else {
+        // mat-table: header row → data rows
+        const headerRow = el.querySelector('mat-header-row');
+        const dataRows = Array.from(el.querySelectorAll('mat-row'));
+        if (!headerRow && !dataRows.length) {
+          diagnostics.tablesFiltered.push({ kind, reason: 'no mat-header-row or mat-row' });
+          continue;
+        }
+        const headerCells = headerRow
+          ? Array.from(headerRow.querySelectorAll('mat-header-cell, th')).map((c) => clean(c.innerText))
+          : [];
+        const bodyRows = dataRows.map((row) =>
+          Array.from(row.querySelectorAll('mat-cell, td')).map((c) => clean(c.innerText))
+        );
+        tableRows = headerCells.length ? [headerCells, ...bodyRows] : bodyRows;
+      }
+
+      if (tableRows.length < 2) {
+        diagnostics.tablesFiltered.push({ kind, reason: `only ${tableRows.length} rows`, headers: tableRows[0] });
+        continue;
+      }
+
+      const headers = tableRows[0].map((h) => h.toLowerCase());
+      const tableText = clean(el.innerText || el.textContent || '');
+
+      // Qualification: table must contain at least one bid-item keyword.
+      if (!/(line\s*items?|bid\s*items?|item\s*(no|number)|description|quantity|qty|unit|lump\s*sum)/i.test(tableText)) {
+        diagnostics.tablesFiltered.push({ kind, reason: 'no bid-item keywords in table text', headers });
+        continue;
+      }
+
+      const section = clean(
+        el.closest('section, mat-card, mat-expansion-panel, div[class*="panel"], div[class*="card"]')
+          ?.querySelector('h1,h2,h3,h4,h5,strong,mat-panel-title')
+          ?.textContent ?? ''
+      );
+
+      const itemIndex = headerIdx(headers, [/item\s*(no|number|#)?$/, /^no\.?$/, /^#$/]);
+      const codeIndex = headerIdx(headers, [/code/]);
+      // Broad description patterns: Description, Item Description, Work Description, Lump Sum Description, Name
+      const descIndex = headerIdx(headers, [/description/, /scope/, /item\s*name/, /work\s*(item|desc)/, /name/]);
+      const unitIndex = headerIdx(headers, [/^unit$/, /uom/, /unit\s*of\s*measure/]);
+      const qtyIndex  = headerIdx(headers, [/quantity/, /^qty$/, /lump\s*sum/]);
+      const refIndex  = headerIdx(headers, [/reference/, /^ref$/]);
+
+      if (descIndex < 0) {
+        // Last-resort: if no explicit description column, treat the widest column as description.
+        // Determine widest by max text length across data rows.
+        const colWidths = headers.map((_, ci) =>
+          Math.max(...tableRows.slice(1).map((r) => (r[ci] ?? '').length))
+        );
+        const widestCol = colWidths.indexOf(Math.max(...colWidths));
+        diagnostics.tablesFiltered.push({
+          kind, reason: `no description column — headers: [${headers.join(', ')}]; widest col ${widestCol}; using as fallback`, headers,
+        });
+        // Use widest column as description fallback.
+        for (const row of tableRows.slice(1)) {
+          const description = row[widestCol];
+          if (!description || /^total\b/i.test(description)) continue;
+          diagnostics.rowsRaw++;
+          items.push({
+            section_name: section || null,
+            item_number: itemIndex >= 0 ? row[itemIndex] : null,
+            item_code: codeIndex >= 0 ? row[codeIndex] : null,
+            description,
+            unit_of_measure: unitIndex >= 0 ? row[unitIndex] : null,
+            quantity_raw: qtyIndex >= 0 ? row[qtyIndex] : null,
+            reference: refIndex >= 0 ? row[refIndex] : null,
+            raw_text: row.join(' | '),
+            metadata: { source_table_headers: tableRows[0], source_table_kind: kind, fallback_desc: true },
+          });
+        }
+        diagnostics.tablesUsed++;
+        continue;
+      }
+
+      diagnostics.tablesUsed++;
       for (const row of tableRows.slice(1)) {
         const description = row[descIndex];
-        if (!description || /^total\b/i.test(description)) continue;
+        if (!description) {
+          diagnostics.rowsFiltered.push({ reason: 'empty description', row });
+          continue;
+        }
+        if (/^total\b/i.test(description)) {
+          diagnostics.rowsFiltered.push({ reason: 'total row', description });
+          continue;
+        }
+        diagnostics.rowsRaw++;
         items.push({
           section_name: section || null,
           item_number: itemIndex >= 0 ? row[itemIndex] : null,
@@ -911,37 +1065,52 @@ async function extractPlanetBidsBidItems(page, candidate, log) {
           quantity_raw: qtyIndex >= 0 ? row[qtyIndex] : null,
           reference: refIndex >= 0 ? row[refIndex] : null,
           raw_text: row.join(' | '),
-          metadata: {
-            source_table_headers: tableRows[0],
-          },
+          metadata: { source_table_headers: tableRows[0], source_table_kind: kind },
         });
       }
     }
 
-    return items;
+    return { items, diagnostics };
   }).catch((e) => {
-    log(`PlanetBids Line Items table parse failed: ${e.message}`);
-    return [];
+    log(`bid_item_extract: DOM table parse threw — ${e.message}`);
+    return { items: [], diagnostics: { tablesFound: 0, tablesFiltered: [], tablesUsed: 0, rowsRaw: 0, rowsFiltered: [] } };
   });
 
+  // ── 6. Log DOM diagnostics ───────────────────────────────────────────────
+  const diag = rows.diagnostics;
+  log(`bid_item_extract: DOM tables found=${diag.tablesFound} used=${diag.tablesUsed} rawRows=${diag.rowsRaw}`);
+  if (diag.tablesFiltered.length) {
+    for (const f of diag.tablesFiltered) {
+      log(`bid_item_extract: table skipped (${f.kind}) — ${f.reason}`);
+    }
+  }
+  if (diag.rowsFiltered.length) {
+    log(`bid_item_extract: ${diag.rowsFiltered.length} row(s) filtered — first: ${diag.rowsFiltered[0]?.reason}`);
+  }
+
+  // ── 7. If DOM returned 0 rows, dump page text for diagnosis ─────────────
+  if (rows.items.length === 0 && bidItemResponses.length === 0) {
+    const snapshot = await page.evaluate(() => {
+      const el = document.querySelector('mat-tab-body[aria-hidden="false"], [role="tabpanel"]:not([hidden]), .mat-tab-body-active, .tab-content');
+      return (el ?? document.body).innerText.replace(/\s+/g, ' ').trim().substring(0, 2000);
+    }).catch(() => '(snapshot failed)');
+    log(`bid_item_extract: zero-row snapshot (first 2000 chars) — ${snapshot}`);
+  }
+
+  // ── 8. API rows ──────────────────────────────────────────────────────────
   const apiRows = bidItemResponses.flatMap((response) => {
     const parsed = extractPlanetBidsBidItemsFromJson(response.json);
+    log(`bid_item_extract: API ${response.url} → ${parsed.length} row(s)`);
     return parsed.map((row) => ({
       ...row,
-      metadata: {
-        ...(row.metadata ?? {}),
-        api_url: response.url,
-      },
+      metadata: { ...(row.metadata ?? {}), api_url: response.url },
     }));
   });
 
-  if (apiRows.length > 0) {
-    log(`PlanetBids bid item API rows discovered: ${apiRows.length}`);
-  }
-
+  // ── 9. Deduplicate and merge ─────────────────────────────────────────────
   const combinedRows = [];
   const seen = new Set();
-  for (const row of [...rows, ...apiRows]) {
+  for (const row of [...rows.items, ...apiRows]) {
     const key = [
       row.item_number,
       row.item_code,
@@ -970,7 +1139,7 @@ async function extractPlanetBidsBidItems(page, candidate, log) {
     },
   }));
 
-  log(`PlanetBids bid item rows discovered: ${normalized.length}`);
+  log(`bid_item_extract: TOTAL rows — dom=${rows.items.length} api=${apiRows.length} combined=${normalized.length}`);
   return normalized;
 }
 
