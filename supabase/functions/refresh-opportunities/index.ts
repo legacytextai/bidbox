@@ -181,6 +181,26 @@ serve(async (req) => {
     });
 
     if (eligible.length === 0) {
+      const sourcesConsidered = sources?.length ?? 0;
+      // Nightly cron bypasses cadence, so zero eligible sources when sources exist means
+      // every source has an unsupported portal_type — a configuration or code bug.
+      if (bypassCadence && sourcesConsidered > 0) {
+        const unsupportedTypes = [...new Set((sources ?? []).map((s: any) => s.portal_type))];
+        console.error(
+          `[refresh-opportunities] SCHEDULER ALERT: nightly cron found ${sourcesConsidered} active source(s) ` +
+          `but 0 were eligible. All sources have unsupported portal types: [${unsupportedTypes.join(", ")}]. ` +
+          `trigger=${trigger} refresh_window=${window}`,
+        );
+        return jsonResponse({
+          success: false,
+          error: "No eligible sources despite active sources being present — unsupported portal types",
+          trigger,
+          refresh_window: window,
+          sources_considered: sourcesConsidered,
+          sources_queued: 0,
+          unsupported_portal_types: unsupportedTypes,
+        }, 500);
+      }
       const backfill = await runOneTimeBackfillIfNeeded(supabase, now.toISOString());
       return jsonResponse({
         success: true,
@@ -188,7 +208,7 @@ serve(async (req) => {
         trigger_reason: triggerReason,
         force,
         refresh_window: window,
-        sources_considered: sources?.length ?? 0,
+        sources_considered: sourcesConsidered,
         sources_queued: 0,
         skipped_due_to_cadence: skippedDueToCadence,
         queued_task_ids: [],
@@ -228,6 +248,16 @@ serve(async (req) => {
       }));
 
     if (rows.length === 0) {
+      // All eligible sources already have an active scan task — legitimate if a manual
+      // refresh ran recently and tasks are still in flight. Log a warning so it's visible
+      // in Edge Function logs, but return 200 so pg_cron does not record a false failure.
+      if (bypassCadence) {
+        console.warn(
+          `[refresh-opportunities] SCHEDULER NOTICE: nightly cron found ${eligible.length} eligible source(s) ` +
+          `but all already have active scan tasks. No new tasks queued. ` +
+          `trigger=${trigger} refresh_window=${window} active_source_ids=[${[...activeSourceIds].join(", ")}]`,
+        );
+      }
       const backfill = await runOneTimeBackfillIfNeeded(supabase, now.toISOString());
       return jsonResponse({
         success: true,
@@ -253,6 +283,20 @@ serve(async (req) => {
     if (insertError) {
       console.error("refresh-opportunities task insert failed:", insertError);
       return jsonResponse({ success: false, error: "Failed to queue refresh tasks" }, 500);
+    }
+
+    if (!tasks || tasks.length === 0) {
+      console.error(
+        `[refresh-opportunities] SCHEDULER ALERT: INSERT succeeded but returned 0 tasks. ` +
+        `${rows.length} row(s) were attempted. trigger=${trigger} refresh_window=${window}`,
+      );
+      return jsonResponse({
+        success: false,
+        error: "Task insert returned no rows — possible RLS or constraint violation",
+        trigger,
+        refresh_window: window,
+        rows_attempted: rows.length,
+      }, 500);
     }
 
     const queuedSourceIds = (tasks ?? []).map((task: any) => task.payload?.source_id).filter(Boolean);
