@@ -183,27 +183,12 @@ async function persistScannedCandidate({ supabase, source_id, source_name, porta
       .single();
     if (insertError) throw new Error(`Candidate insert failed: ${insertError.message}`);
     await emitPreBidDebugReport(candidate, inserted, 'INSERT', supabase, sourceTaskId);
-    // OML: F2/F3/F4 stays user-triggered. But bid items are portal-native metadata
-    // (visible on the portal page without downloading documents), so we queue a
-    // lightweight bid_item_scan task for PlanetBids candidates immediately.
-    let bidItemTask = { queued: false, reason: 'not_supported_for_portal_type' };
-    if (portal_type === 'planetbids') {
-      const { error: bitError } = await supabase.from('agent_tasks').insert({
-        task_type: 'bid_item_scan',
-        status: 'pending',
-        priority: 4,
-        trigger_reason: triggerReason,
-        payload: {
-          candidate_id: inserted.id,
-          source_url: inserted.source_url,
-          portal_type: inserted.portal_type,
-          source_name: source_name,
-        },
-      });
-      bidItemTask = bitError
-        ? { queued: false, reason: bitError.message }
-        : { queued: true };
-    }
+    // OML: F2/F3/F4 stays user-triggered.
+    // bid_item_scan is NOT queued for PlanetBids because document_prefetch
+    // (via getAuthenticatedManifest) already extracts and stores bid items in
+    // the same browser session. Queuing both causes concurrent PlanetBids logins
+    // that invalidate each other's auth token.
+    const bidItemTask = { queued: false, reason: 'superseded_by_document_prefetch' };
 
     // Queue portal_intelligence for all new candidates — it runs on OML metadata
     // only (no document download) so it's cheap and fast for any portal type.
