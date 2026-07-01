@@ -1014,7 +1014,62 @@ async function extractPlanetBidsBidItems(page, candidate, log) {
     log(`bid_item_extract [mat]: parsed ${parsed.length} item(s)`);
   }
 
-  // ── Strategy B: native <table> ────────────────────────────────────────────
+  // ── Strategy B: PlanetBids Ember table (tr.data-row + td[title]) ─────────
+  // PlanetBids renders bid items as <tr class="data-row"> inside an Ember.js
+  // table where th elements have empty innerText. Column values live in the
+  // td[title] attribute. Column positions (0-indexed):
+  //   0=itemNumber  1=itemCode  2=description  3=UOM  4=qty  5=reference  6=unitPrice
+  if (domItems.length === 0) {
+    const emberItems = await page.evaluate(() => {
+      const panel =
+        document.querySelector('[role="tabpanel"]:not([aria-hidden="true"])') ||
+        document.querySelector('#bo-detail-content') ||
+        document.body;
+      const rows = Array.from(panel.querySelectorAll('tr.data-row'));
+      return rows.map((tr, i) => {
+        const tds = Array.from(tr.querySelectorAll('td'));
+        const t = (idx) => (tds[idx]?.getAttribute('title') ?? '').trim();
+        return {
+          item_number: t(0) || null,
+          item_code: t(1) || null,
+          description: t(2),
+          uom: t(3) || null,
+          quantity: t(4) || null,
+          reference: t(5) || null,
+          unit_price: t(6) || null,
+          data_item_id: tr.getAttribute('data-itemid') || null,
+          source_order: i,
+        };
+      }).filter((r) => r.description);
+    });
+
+    log(`bid_item_extract [ember]: tr.data-row count = ${emberItems.length}`);
+
+    if (emberItems.length > 0) {
+      for (const item of emberItems) {
+        domItems.push({
+          item_number: item.item_number,
+          item_code: item.item_code,
+          description: item.description,
+          unit_of_measure: item.uom,
+          quantity_raw: item.quantity,
+          unit_price_raw: item.unit_price,
+          section_name: 'Main Bid',
+          source_order: item.source_order,
+          extraction_method: 'portal_tab',
+          metadata: {
+            data_item_id: item.data_item_id,
+            reference: item.reference,
+            portal: 'planetbids',
+            strategy: 'ember-title-attr',
+          },
+        });
+      }
+      log(`bid_item_extract [ember]: parsed ${domItems.length} item(s)`);
+    }
+  }
+
+  // ── Strategy C: native <table> (generic HTML tables) ─────────────────────
   if (domItems.length === 0) {
     const nativeTables = await activePanel.locator('table').count().catch(() => 0);
     log(`bid_item_extract [native]: table count = ${nativeTables}`);
@@ -1042,7 +1097,7 @@ async function extractPlanetBidsBidItems(page, candidate, log) {
     }
   }
 
-  // ── Strategy C: innerText parsing of active tab panel ─────────────────────
+  // ── Strategy D: innerText parsing of active tab panel ─────────────────────
   if (domItems.length === 0) {
     log('bid_item_extract [text]: falling back to innerText parsing');
     const panelText = await activePanel.innerText({ timeout: 5000 }).catch(() => '');
