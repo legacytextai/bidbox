@@ -11,21 +11,31 @@ function DownloadButton({ doc }: { doc: DossierDocument }) {
   if (doc.acquisition_status !== "acquired" || !doc.storage_path) return null;
 
   const handleDownload = async () => {
+    console.log("[Download] button clicked", { id: doc.id, file_name: doc.file_name });
+    console.log("[Download] storage_bucket:", doc.storage_bucket);
+    console.log("[Download] storage_path:", doc.storage_path);
     setLoading(true);
     try {
       const bucket = doc.storage_bucket ?? "opportunity-documents";
+      console.log("[Download] calling createSignedUrl — bucket:", bucket, "path:", doc.storage_path);
       const { data, error } = await supabase.storage
         .from(bucket)
         .createSignedUrl(doc.storage_path!, 3600);
+      console.log("[Download] createSignedUrl result — data:", data, "error:", error);
       if (error || !data?.signedUrl) throw error ?? new Error("Signed URL generation failed");
+      console.log("[Download] signed URL:", data.signedUrl);
       const a = document.createElement("a");
       a.href = data.signedUrl;
       a.download = doc.file_name ?? "document";
       a.target = "_blank";
       a.rel = "noopener noreferrer";
+      console.log("[Download] appending anchor and clicking — target:", a.target, "download attr:", a.download);
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
+      console.log("[Download] anchor click dispatched");
+    } catch (err) {
+      console.error("[Download] ERROR:", err);
     } finally {
       setLoading(false);
     }
