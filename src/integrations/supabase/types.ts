@@ -520,6 +520,8 @@ export type Database = {
           opportunity_lifecycle_status: string
           portal_bid_id: string | null
           portal_department: string | null
+          portal_summary: string | null
+          portal_summary_at: string | null
           portal_type: string | null
           project_address: string | null
           qualification_score: number | null
@@ -577,6 +579,8 @@ export type Database = {
           opportunity_lifecycle_status?: string
           portal_bid_id?: string | null
           portal_department?: string | null
+          portal_summary?: string | null
+          portal_summary_at?: string | null
           portal_type?: string | null
           project_address?: string | null
           qualification_score?: number | null
@@ -634,6 +638,8 @@ export type Database = {
           opportunity_lifecycle_status?: string
           portal_bid_id?: string | null
           portal_department?: string | null
+          portal_summary?: string | null
+          portal_summary_at?: string | null
           portal_type?: string | null
           project_address?: string | null
           qualification_score?: number | null
