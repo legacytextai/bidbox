@@ -740,7 +740,7 @@ const OpportunityReport = () => {
               onClick={() => prevId && navigate(`/opportunities/${prevId}`)}
               disabled={!prevId}
               aria-label="Previous opportunity"
-              className="group inline-flex items-center gap-1.5 text-xs text-muted-foreground/60 hover:text-foreground transition-all disabled:opacity-20 disabled:cursor-not-allowed"
+              className={`group inline-flex items-center gap-1.5 text-xs transition-all disabled:opacity-20 disabled:cursor-not-allowed ${prevId ? 'text-foreground hover:text-foreground' : 'text-muted-foreground/60'}`}
             >
               <ChevronLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
               <span className="transition-colors">Previous</span>
@@ -750,7 +750,7 @@ const OpportunityReport = () => {
               onClick={() => nextId && navigate(`/opportunities/${nextId}`)}
               disabled={!nextId}
               aria-label="Next opportunity"
-              className="group inline-flex items-center gap-1.5 text-xs text-muted-foreground/60 hover:text-foreground transition-all disabled:opacity-20 disabled:cursor-not-allowed"
+              className={`group inline-flex items-center gap-1.5 text-xs transition-all disabled:opacity-20 disabled:cursor-not-allowed ${nextId ? 'text-foreground hover:text-foreground' : 'text-muted-foreground/60'}`}
             >
               <span className="transition-colors">Next</span>
               <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
