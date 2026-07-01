@@ -1920,6 +1920,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      acquire_planetbids_lock: {
+        Args: { p_ttl_seconds?: number; p_worker_id: string }
+        Returns: boolean
+      }
       get_active_gcs_30d: { Args: never; Returns: number }
       get_admin_gc_metrics: {
         Args: never
@@ -1951,6 +1955,10 @@ export type Database = {
       increment_view_count: {
         Args: { p_project_id: string }
         Returns: undefined
+      }
+      release_planetbids_lock: {
+        Args: { p_worker_id: string }
+        Returns: boolean
       }
     }
     Enums: {
