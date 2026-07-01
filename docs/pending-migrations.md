@@ -11,6 +11,30 @@ environment — the only paths are Lovable or the Supabase dashboard SQL editor.
 
 ---
 
+## 20260701150000_reschedule_nightly_refresh_midnight_pdt.sql
+
+**Status:** Pending  
+**File:** `supabase/migrations/20260701150000_reschedule_nightly_refresh_midnight_pdt.sql`  
+**Committed in:** (next commit)
+
+**What it does:**  
+Reschedules the `nightly-refresh-opportunities` pg_cron job from `0 9 * * *` UTC
+(02:00 AM PDT) to `0 7 * * *` UTC (00:00 PDT = midnight Pacific Daylight Time).
+The original schedule had the UTC offset calculated incorrectly.
+
+**Who is blocked:**  
+No one — the scan still runs, just at 2 AM instead of midnight. This is cosmetic
+correctness, not a functional blocker.
+
+**What to do after applying:**  
+Verify the updated schedule:
+```sql
+SELECT jobname, schedule FROM cron.job WHERE jobname = 'nightly-refresh-opportunities';
+```
+Expected: `schedule = '0 7 * * *'`
+
+---
+
 ## 20260701120000_planetbids_login_lock.sql
 
 **Status:** Pending  

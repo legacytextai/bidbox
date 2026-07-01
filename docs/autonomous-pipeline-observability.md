@@ -5,7 +5,7 @@
 A single pg_cron job triggers the entire nightly pipeline:
 
 - Job name: `nightly-refresh-opportunities`
-- Schedule: `0 9 * * *` UTC (≈ 01:00–02:00 Pacific)
+- Schedule: `0 7 * * *` UTC (00:00 PDT / midnight Pacific Daylight Time)
 - Calls: `POST /functions/v1/refresh-opportunities` with `{ "trigger": "nightly_cron", "force": true }`
 
 Nightly cron refreshes intentionally bypass the per-source `refresh_cadence_hours`
@@ -90,7 +90,7 @@ The response should include `trigger`, `force`, `sources_considered`,
 `skipped_due_to_cadence` should be `0`.
 
 ## Definition of "the autonomous pipeline ran last night"
-1. `cron.job_run_details` shows a successful run for `nightly-refresh-opportunities` after 09:00 UTC.
+1. `cron.job_run_details` shows a successful run for `nightly-refresh-opportunities` after 07:00 UTC.
 2. `opportunity_sources.last_refresh_queued_at` advanced for all enabled sources.
 3. Scan tasks created and completed in `agent_tasks` (`status='complete'`).
 4. New candidates appear in `opportunity_candidates` with `created_at` in the window.
