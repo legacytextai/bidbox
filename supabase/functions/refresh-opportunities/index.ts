@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-refresh-secret",
 };
 
-type TaskType = "planetbids_scan" | "caltrans_scan";
+type TaskType = "planetbids_scan" | "caltrans_scan" | "lacounty_dpw_scan";
 
 // One-time backfill: queues Opportunity Intelligence for candidates that existed
 // before the autonomous pipeline was deployed. Runs once per environment, gated by
@@ -128,6 +128,7 @@ function refreshWindow(date = new Date()) {
 function resolveTaskType(portalType: string): TaskType | null {
   if (portalType === "planetbids") return "planetbids_scan";
   if (portalType === "caltrans") return "caltrans_scan";
+  if (portalType === "lacounty_dpw") return "lacounty_dpw_scan";
   return null;
 }
 
@@ -221,7 +222,7 @@ serve(async (req) => {
       .from("agent_tasks")
       .select("id, task_type, status, payload")
       .in("status", ["pending", "running", "retrying"])
-      .in("task_type", ["planetbids_scan", "caltrans_scan"]);
+      .in("task_type", ["planetbids_scan", "caltrans_scan", "lacounty_dpw_scan"]);
 
     if (activeTaskError) {
       console.error("refresh-opportunities active task lookup failed:", activeTaskError);

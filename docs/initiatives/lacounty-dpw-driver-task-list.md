@@ -1,6 +1,6 @@
 # LA County DPW Driver Implementation
 
-Status: Milestone 1 In Progress — Tasks 1–2 complete; next: Task 3 (Edge Function Updates)
+Status: Milestone 1 In Progress — Tasks 1–3 complete; next: Task 4 (Worker Integration)
 Document type: Engineering task list
 Source design spec: `docs/initiatives/lacounty-dpw-driver-design-spec.md`
 Reconnaissance report: `docs/handoff/2026-07-01-lacounty-dpw-agency-expansion.md`
@@ -45,13 +45,14 @@ Subtasks:
 ### 2.2. Establish the canonical agency label ✅
 - Short display name "LA County DPW" (matches convention: `Caltrans`, `RAMP LA`). Full `source.name` / `agency` ("Los Angeles County Department of Public Works") is set on the `opportunity_sources` row in Task 10.
 
-## Task 3 - EDGE FUNCTION UPDATES
+## Task 3 - EDGE FUNCTION UPDATES ✅ COMPLETE
+Edge functions remain portal-agnostic — the only DPW knowledge added is the `portal_type → task_type` mapping and the per-portal queue partition. No metadata/document/business logic. Typecheck clean; zero new lint errors; queue logic simulated.
 Subtasks:
-### 3.1. `refresh-opportunities`
-- Extend the `TaskType` union and `resolveTaskType()` (`lacounty_dpw → lacounty_dpw_scan`); add `lacounty_dpw_scan` to the active-task `.in("task_type", [...])` guard so an in-flight scan is not double-queued.
+### 3.1. `refresh-opportunities` ✅
+- Extended the `TaskType` union (`+ "lacounty_dpw_scan"`), added `lacounty_dpw → lacounty_dpw_scan` to `resolveTaskType()`, and added `lacounty_dpw_scan` to the active-task `.in("task_type", [...])` double-queue guard.
 
-### 3.2. `scan-opportunities`
-- Extend the taskType union and add a `lacounty_dpw` partition in the per-portal queueing block, alongside `planetbids` and `caltrans`.
+### 3.2. `scan-opportunities` ✅
+- Widened the `queueWorkerScanSources` taskType union, added a `lacountyDpwSources` partition that queues `lacounty_dpw_scan` (label "LA County DPW") via the same generic helper as Caltrans, and excluded `lacounty_dpw` from the legacy Firecrawl `otherSources` path so it routes to the worker.
 
 ## Task 4 - WORKER INTEGRATION
 Subtasks:
