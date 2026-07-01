@@ -94,6 +94,90 @@ function parseListingRows(html) {
   return rows;
 }
 
+// Generic label→value extractor for a flat DPW detail page. Detail templates
+// wrap fields two ways: `<div.row><label>Foo:</label><div>value</div></div>`
+// (aed_bid/asd_rfp/rfb) and `<div.col><label>Foo:</label></div><div.col>value`
+// (cons). Trying label.next() then label.parent().next() covers both. Returns a
+// raw { "Label": "value" } map; template-specific interpretation is Step 3.
+function extractDetailFields($) {
+  const fields = {};
+  $('label').each((_i, el) => {
+    const rawLabel = collapseWs($(el).text());
+    if (!/:\s*$/.test(rawLabel)) return;
+    const key = rawLabel.replace(/:\s*$/, '').trim();
+    if (!key || key in fields) return;
+    let value = collapseWs($(el).next().text());
+    if (!value) value = collapseWs($(el).parent().next().text());
+    fields[key] = value || null;
+  });
+  return fields;
+}
+
+// Documents are an ASP.NET GridView (#gvProjectDocuments): a header row + one
+// row per file. The first body row is a sort-control row with empty cells. File
+// links point at the SSO-gated OpportunitiesNewRegister.aspx (metadata is public
+// even though the file download requires login). A trailing "*" on the title
+// marks a registered-users-only document.
+function extractDocuments($, detailUrl) {
+  const table = $('table')
+    .filter((_i, t) => /^\s*Document\b/i.test($(t).find('th').first().text()))
+    .first();
+  if (!table.length) return [];
+
+  const headers = table
+    .find('thead th, tr').first().find('th')
+    .map((_i, th) => collapseWs($(th).text()).toLowerCase())
+    .get();
+  const colIndex = (name) => headers.findIndex((h) => h.includes(name));
+  const idxNotes = colIndex('note') >= 0 ? colIndex('note') : colIndex('description');
+  const idxPages = colIndex('page');
+  const idxSize = colIndex('size');
+
+  const documents = [];
+  table.find('tbody tr').each((_i, tr) => {
+    const cells = $(tr).find('td');
+    const titleCellRaw = collapseWs(cells.eq(0).text());
+    if (!titleCellRaw) return; // skip the sort-control / empty rows
+    const registeredOnly = /\*\s*$/.test(titleCellRaw);
+    const title = titleCellRaw.replace(/\s*\*\s*$/, '').trim();
+    const href = $(tr).find('a[href]').first().attr('href') || null;
+    const registerHref = href && !/^javascript:/i.test(href)
+      ? new URL(href, detailUrl).toString()
+      : null;
+    documents.push({
+      title,
+      notes: idxNotes >= 0 ? collapseWs(cells.eq(idxNotes).text()) || null : null,
+      pages: idxPages >= 0 ? collapseWs(cells.eq(idxPages).text()) || null : null,
+      size: idxSize >= 0 ? collapseWs(cells.eq(idxSize).text()) || null : null,
+      registered_only: registeredOnly,
+      register_href: registerHref,
+    });
+  });
+  return documents;
+}
+
+// Step 2: fetch a candidate's detail page and merge raw extracted fields +
+// document metadata into crawl_data. Non-fatal on failure — the listing-level
+// candidate is still returned. Template-specific mapping and OML normalization
+// are Steps 3–4, so bid_due_at stays null here.
+async function enrichCandidateFromDetail(candidate, log) {
+  const html = await fetchHtml(candidate.source_url, log);
+  const $ = cheerio.load(html);
+  const fields = extractDetailFields($);
+  const documents = extractDocuments($, candidate.source_url);
+
+  candidate.crawl_data.detail_fields = fields;
+  candidate.crawl_data.documents = documents;
+  candidate.crawl_data.document_count = documents.length;
+  candidate.crawl_data.extraction_method = 'lacounty_dpw_v1_detail_generic';
+
+  const detailName = fields['Project Name'] || fields['Bid Title'];
+  if (detailName) candidate.crawl_data.project_name = detailName;
+  const scope = fields['Scope'] || fields['Description'] || fields['Bid Description'];
+  if (scope) candidate.crawl_data.scope = scope;
+  return candidate;
+}
+
 // Step 1: a lightweight candidate built from listing data only. bid_due_at and
 // the full OML fields are resolved from the detail page in later steps; raw
 // values are preserved in crawl_data so nothing observed is lost.
@@ -146,8 +230,20 @@ async function scrapeLaCountyDpw(source, log = console.log) {
     for (const row of rows) {
       if (seen.has(row.detailUrl)) continue;
       seen.add(row.detailUrl);
-      candidates.push(buildListingCandidate(row, listingUrl));
-      log(`[${source.source_name}] Parsed listing opportunity ${row.projectId}: ${row.rawTitle}`);
+
+      const candidate = buildListingCandidate(row, listingUrl);
+      try {
+        await enrichCandidateFromDetail(candidate, log);
+        log(`[${source.source_name}] Parsed opportunity ${row.projectId}: ${row.rawTitle} (${candidate.crawl_data.document_count} docs)`);
+      } catch (e) {
+        // Detail fetch/parse failed — keep the listing-level candidate and flag it.
+        candidate.crawl_data.detail_error = e.message;
+        recordError(`Detail extraction failed for ${row.projectId}: ${e.message}`);
+      }
+      candidates.push(candidate);
+
+      // Small politeness delay between detail fetches to stay under the WAF.
+      await new Promise((r) => setTimeout(r, 150));
     }
   } catch (e) {
     recordError(`LA County DPW listing scrape failed: ${e.message}`);
@@ -160,6 +256,8 @@ module.exports = {
   scrapeLaCountyDpw,
   // exported for validation/testing
   parseListingRows,
+  extractDetailFields,
+  extractDocuments,
   fetchHtml,
   DEFAULT_LISTING_URL,
   CONTRACTS_BASE,
