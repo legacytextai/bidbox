@@ -796,7 +796,7 @@ const OpportunityReport = () => {
                 ) : (
                   <Bookmark className={`h-4 w-4 mr-2 ${saved ? "fill-current" : ""}`} />
                 )}
-                {saved ? "Saved" : "Save Opportunity"}
+                {saved ? "Saved" : "Save"}
               </Button>
               <Button
                 size="lg"
