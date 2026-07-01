@@ -112,8 +112,8 @@ You will receive portal metadata about a bidding opportunity. Write a concise ex
 Be direct and informative. Do not repeat the title verbatim as your first sentence. Do not fabricate details. If information is unavailable, omit it — do not say "not specified."`;
 
 async function generatePortalSummary({ candidate, bidItems, log = console.log }) {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error('OPENAI_API_KEY not configured');
+  const apiKey = process.env.OPENAI_API_KEY || process.env.PROJECT_INTELLIGENCE_AI_KEY;
+  if (!apiKey) throw new Error('No AI key configured — set OPENAI_API_KEY or PROJECT_INTELLIGENCE_AI_KEY');
 
   const context = buildPortalContext(candidate, bidItems);
   log(`portal_intelligence: context built (${context.length} chars), calling AI`);

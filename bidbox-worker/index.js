@@ -1078,6 +1078,22 @@ async function processTask(task) {
           phase: 'f4_project_intelligence',
           no_citation_no_fact: true,
         }
+      : task.task_type === 'bid_item_scan'
+      ? {
+          candidate_id: task.payload?.candidate_id ?? null,
+          portal_type: task.payload?.portal_type ?? null,
+          rows_extracted: result.extracted ?? 0,
+          rows_stored: result.inserted ?? 0,
+          phase: 'portal_bid_item_scan',
+        }
+      : task.task_type === 'portal_intelligence'
+      ? {
+          candidate_id: task.payload?.candidate_id ?? null,
+          portal_type: task.payload?.portal_type ?? null,
+          summary_written: Boolean(result.summary),
+          summary_length: result.summary?.length ?? 0,
+          phase: 'portal_intelligence_v1',
+        }
       : {
           candidate_id: result.candidate_id,
           documents_found: result.documents_found,
@@ -1098,6 +1114,8 @@ async function processTask(task) {
 
     const taskError = task.task_type === 'project_analysis'
       ? (result.acquisition_status === 'failed' ? result.errorSummary : null)
+      : ['bid_item_scan', 'portal_intelligence'].includes(task.task_type)
+      ? null
       : result.errorSummary;
 
     await supabase

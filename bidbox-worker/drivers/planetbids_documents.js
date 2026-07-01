@@ -1762,19 +1762,25 @@ async function runPlanetBidsBidItemScan({ supabase, candidate, log = console.log
     await page.goto(candidate.source_url, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
 
-    // Attempt login if credentials are present — some agencies gate the Line Items tab
+    // Attempt login if credentials are present — some agencies gate the Line Items tab.
+    // After loginToPlanetBids the browser redirects to the portal dashboard, so we
+    // must re-navigate back to the bid detail page before extracting line items.
     const email = process.env.PLANETBIDS_EMAIL;
     const password = process.env.PLANETBIDS_PASSWORD;
     if (email && password) {
       await loginToPlanetBids(page, log).catch((e) => {
         log(`bid_item_scan: login skipped (${e.message}); proceeding as public`);
       });
+      log(`bid_item_scan: re-navigating to bid detail after login: ${candidate.source_url}`);
+      await page.goto(candidate.source_url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+      await page.waitForTimeout(2000);
     }
 
     const items = await extractPlanetBidsBidItems(page, candidate, log);
     log(`bid_item_scan: extracted ${items.length} bid item(s)`);
 
-    await replacePortalBidItemsForCandidate({
+    const persist = await replacePortalBidItemsForCandidate({
       supabase,
       candidateId: candidate.id,
       items,
@@ -1787,7 +1793,7 @@ async function runPlanetBidsBidItemScan({ supabase, candidate, log = console.log
       log,
     });
 
-    return { extracted: items.length };
+    return { extracted: items.length, inserted: persist.inserted ?? 0 };
   } finally {
     await browser.close().catch(() => {});
   }
