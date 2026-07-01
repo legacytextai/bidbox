@@ -133,7 +133,6 @@ const OpportunityReport = () => {
     supabase
       .from("opportunity_candidates")
       .select("id, bid_due_at")
-      .eq("analysis_status", "ready")
       .order("bid_due_at", { ascending: true, nullsFirst: false })
       .then(({ data }) => setSiblingIds((data ?? []).map((r) => r.id as string)));
   }, []);
