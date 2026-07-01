@@ -421,11 +421,12 @@ const OpportunityReport = () => {
     });
 
     if (error || data?.success === false) {
-      const message = data?.error ?? error?.message ?? "Failed to queue preparation";
-      if (message.toLowerCase().includes("already") && message.toLowerCase().includes("progress")) {
+      const message = (data?.error ?? error?.message ?? "").toLowerCase();
+      // Treat "already in progress" and "already queued" as non-errors — idempotent.
+      if (message.includes("already") || message.includes("in progress")) {
         return { queued: false, skipped: true };
       }
-      throw new Error(message);
+      throw new Error(data?.error ?? error?.message ?? "Failed to queue preparation");
     }
 
     return { queued: true, skipped: false, taskId: data?.task_id as string | undefined };
@@ -605,23 +606,20 @@ const OpportunityReport = () => {
     setReanalyzing(true);
     setReanalysisFailureNotice(null);
     try {
-      const { data, error } = reportReady
-        ? await supabase.functions.invoke("manage-opportunity-intelligence", {
-            body: { action: "reanalyze", candidate_id: candidate.id },
-          })
-        : await supabase.functions.invoke("analyze-project", {
-            body: { candidate_id: candidate.id },
-          });
-      if (error || data?.success === false) throw new Error(data?.error ?? error?.message ?? "Failed to queue analysis");
+      const action = reportReady ? "reanalyze" : "force_prepare";
+      const { data, error } = await supabase.functions.invoke("manage-opportunity-intelligence", {
+        body: { action, candidate_id: candidate.id },
+      });
+      if (error || data?.success === false) throw new Error(data?.error ?? error?.message ?? "Failed to queue preparation");
       toast({
         title: reportReady ? "Re-analysis queued" : "Preparation queued",
         description: reportReady
           ? "BidBox will regenerate Project Intelligence from the current processed evidence."
-          : "BidBox will acquire documents and prepare Opportunity Intelligence.",
+          : "BidBox will acquire source documents and generate an Intelligence report.",
       });
       await reload();
     } catch (e: any) {
-      toast({ title: "Failed to queue analysis", description: e?.message ?? "Unknown error", variant: "destructive" });
+      toast({ title: "Failed to queue preparation", description: e?.message ?? "Unknown error", variant: "destructive" });
     } finally {
       setReanalyzing(false);
     }
@@ -679,7 +677,7 @@ const OpportunityReport = () => {
       case "queued": return "Project Intelligence is queued. The report will appear after document processing and report generation finish.";
       case "analyzing": return "Generating Project Intelligence from processed document evidence.";
       case "failed": return candidate.analysis_error ?? "Project Intelligence failed.";
-      default: return "Opportunity Intelligence has not been generated yet. BidBox prepares opportunities automatically during source refresh; use Re-Analyze only as a recovery action.";
+      default: return "Intelligence has not been prepared yet. Click Prepare Intelligence to begin.";
     }
   })();
 
@@ -875,59 +873,93 @@ const IntelligenceTab = ({
   onDeleteAnalysis,
 }: IntelligenceTabProps) => {
   const status = candidate.analysis_status;
+  const intelligenceRequested = reportReady || status === "queued" || status === "analyzing" || status === "failed" || analysisWorkActive;
+  const neverRequested = !intelligenceRequested;
+  const hasFailed = status === "failed" && !analysisWorkActive;
 
   return (
     <div className="space-y-6">
-      {/* Secondary maintenance actions */}
-      <div className="flex flex-wrap gap-2">
-        <AlertDialog>
-          <AlertDialogTrigger asChild>
-            <Button variant="outline" size="sm" disabled={reanalyzing || analysisWorkActive || !candidate}>
-              <RotateCcw className="h-4 w-4 mr-2" />
-              {reportReady ? "Refresh Analysis" : "Retry Preparation"}
+      {/* Primary CTA — only shown when intelligence has never been requested */}
+      {neverRequested && (
+        <div className="flex flex-col gap-2">
+          <div>
+            <Button
+              onClick={onReanalyze}
+              disabled={reanalyzing}
+              className="bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90"
+            >
+              {reanalyzing ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Sparkles className="h-4 w-4 mr-2" />
+              )}
+              {reanalyzing ? "Queueing…" : "Prepare Intelligence"}
             </Button>
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>{reportReady ? "Refresh Analysis?" : "Retry Preparation?"}</AlertDialogTitle>
-              <AlertDialogDescription>
-                {reportReady
-                  ? "This will regenerate Project Intelligence from the currently processed evidence. The current report stays available while the new report runs."
-                  : "This will queue document acquisition and Opportunity Intelligence preparation for this opportunity."}
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={onReanalyze} disabled={reanalyzing || analysisWorkActive}>
-                {reanalyzing ? "Queueing..." : reportReady ? "Refresh Analysis" : "Retry Preparation"}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            BidBox will acquire source documents and generate a full Intelligence report for this opportunity.
+          </p>
+        </div>
+      )}
 
-        <AlertDialog>
-          <AlertDialogTrigger asChild>
-            <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" disabled={deletingAnalysis || analysisWorkActive || !candidate}>
-              <Trash2 className="h-4 w-4 mr-2" />
-              Delete Analysis
-            </Button>
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Delete Analysis?</AlertDialogTitle>
-              <AlertDialogDescription>
-                This will permanently remove the Intelligence Report, findings, citations, source documents, and processed document data. The opportunity will remain as Not Analyzed.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={onDeleteAnalysis} disabled={deletingAnalysis || analysisWorkActive}>
-                {deletingAnalysis ? "Deleting..." : "Delete Analysis"}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      </div>
+      {/* Secondary actions — only after intelligence was attempted */}
+      {intelligenceRequested && (
+        <div className="flex flex-wrap gap-2">
+          {/* Refresh/Retry — shown when report exists or after failure */}
+          {(reportReady || hasFailed) && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="outline" size="sm" disabled={reanalyzing || analysisWorkActive}>
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                  {reportReady ? "Refresh Analysis" : "Retry Preparation"}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>{reportReady ? "Refresh Analysis?" : "Retry Preparation?"}</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {reportReady
+                      ? "This will regenerate Project Intelligence from the currently processed evidence. The current report stays available while the new report runs."
+                      : "This will re-queue document acquisition and Intelligence preparation for this opportunity."}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={onReanalyze} disabled={reanalyzing || analysisWorkActive}>
+                    {reanalyzing ? "Queueing…" : reportReady ? "Refresh Analysis" : "Retry Preparation"}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
+
+          {/* Delete Analysis — shown when report exists or after failure */}
+          {(reportReady || hasFailed) && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" disabled={deletingAnalysis || analysisWorkActive}>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete Analysis
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete Analysis?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will permanently remove the Intelligence Report, findings, citations, source documents, and processed document data. The opportunity will remain as Not Analyzed.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={onDeleteAnalysis} disabled={deletingAnalysis || analysisWorkActive}>
+                    {deletingAnalysis ? "Deleting…" : "Delete Analysis"}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
+        </div>
+      )}
 
       {/* Status banners */}
       {analysisWorkActive && (

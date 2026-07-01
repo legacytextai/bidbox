@@ -326,9 +326,10 @@ async function reanalyze(adminClient: any, candidateId: string, userId: string) 
   };
 }
 
-// Force-prepares OI for an opportunity that has already been converted to a project.
-// Bypasses the bid_due_at closed-bid gate because the user explicitly owns this project.
-async function forcePrepare(adminClient: any, candidateId: string, userId: string) {
+// Force-prepares OI for an opportunity, bypassing the closed-bid gate.
+// Used by: "Prepare Intelligence" button on the dossier page, and Add to Calendar.
+// Auth is enforced by requireUser(). Duplicate tasks are blocked by the active-task check.
+async function forcePrepare(adminClient: any, candidateId: string, _userId: string) {
   const activeStatuses = ["pending", "running", "retrying"];
   const { data: activeTasks, error: activeTaskError } = await adminClient
     .from("agent_tasks")
@@ -344,20 +345,11 @@ async function forcePrepare(adminClient: any, candidateId: string, userId: strin
 
   const { data: candidate, error } = await adminClient
     .from("opportunity_candidates")
-    .select("id, source_id, source_url, portal_type, raw_title, agency, bid_due_at, converted_project_id")
+    .select("id, source_id, source_url, portal_type, raw_title, agency, bid_due_at")
     .eq("id", candidateId)
     .maybeSingle();
   if (error) throw new Error(`Candidate lookup failed: ${error.message}`);
   if (!candidate) throw new Error("Opportunity not found");
-
-  // Verify ownership via linked project — this action is only available to the project owner.
-  if (!candidate.converted_project_id) throw new Error("This opportunity has not been added to calendar. Use the standard preparation flow.");
-  const { data: project } = await adminClient
-    .from("projects")
-    .select("gc_id")
-    .eq("id", candidate.converted_project_id)
-    .maybeSingle();
-  if (!project || project.gc_id !== userId) throw new Error("Access denied");
 
   const requestedAt = new Date().toISOString();
   const { data: task, error: taskError } = await adminClient

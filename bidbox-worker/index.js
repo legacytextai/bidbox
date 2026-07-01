@@ -223,7 +223,26 @@ async function persistScannedCandidate({ supabase, source_id, source_name, porta
       ? { queued: false, reason: piError.message }
       : { queued: true };
 
-    return { state: 'new', candidate: inserted, metadataChanged: true, preparation: { queued: false, duplicate: false, skipped: true, reason: 'oml_scan_no_auto_trigger' }, bidItemTask, portalIntelligenceTask };
+    // Queue document_prefetch — downloads original portal documents immediately
+    // after discovery so they're in storage before the user clicks Prepare Intelligence.
+    // Priority 2 (lower than bid_item_scan/portal_intelligence). Does NOT trigger F3.
+    const { error: dpError } = await supabase.from('agent_tasks').insert({
+      task_type: 'document_prefetch',
+      status: 'pending',
+      priority: 2,
+      trigger_reason: triggerReason,
+      payload: {
+        candidate_id: inserted.id,
+        source_url: inserted.source_url,
+        portal_type: inserted.portal_type,
+        source_name: source_name,
+      },
+    });
+    const documentPrefetchTask = dpError
+      ? { queued: false, reason: dpError.message }
+      : { queued: true };
+
+    return { state: 'new', candidate: inserted, metadataChanged: true, preparation: { queued: false, duplicate: false, skipped: true, reason: 'oml_scan_no_auto_trigger' }, bidItemTask, portalIntelligenceTask, documentPrefetchTask };
   }
 
   const metadataChanged = changedPortalMetadata(existing, portalFields);
@@ -1009,6 +1028,39 @@ async function claimNextTask() {
   return task;
 }
 
+// ── document_prefetch ─────────────────────────────────────────────────────────
+// Downloads originals from the portal immediately after discovery, before the
+// user clicks Prepare Intelligence. Does NOT queue F3 (chunking/embedding).
+// Per-document idempotency in upsertDocumentRecord means F2 re-runs simply skip
+// already-stored files and proceed directly to queuing document processing.
+async function runDocumentPrefetchTask(task, supabase) {
+  const candidateId = task.payload?.candidate_id;
+  if (!candidateId) throw new Error('document_prefetch task missing candidate_id');
+
+  const { data: candidate, error } = await supabase
+    .from('opportunity_candidates')
+    .select('id, source_id, source_url, portal_type, raw_title, agency, bid_due_at, crawl_data')
+    .eq('id', candidateId)
+    .maybeSingle();
+  if (error) throw new Error(`document_prefetch: candidate lookup failed: ${error.message}`);
+  if (!candidate) throw new Error(`document_prefetch: candidate not found: ${candidateId}`);
+
+  const log = (msg) => console.log(`[${new Date().toISOString()}] [prefetch:${candidateId.slice(0, 8)}] ${msg}`);
+  log(`Starting document prefetch for ${candidate.raw_title ?? candidateId} (${candidate.portal_type})`);
+
+  let result;
+  if (candidate.portal_type === 'planetbids') {
+    result = await acquirePlanetBidsDocuments({ supabase, task, candidate, log });
+  } else if (candidate.portal_type === 'caltrans') {
+    result = await acquireCaltransDocuments({ supabase, task, candidate, log });
+  } else {
+    throw new Error(`document_prefetch not implemented for portal_type=${candidate.portal_type}`);
+  }
+
+  log(`Prefetch complete: found=${result.found} acquired=${result.acquired} skipped=${result.skipped} failed=${result.failed}`);
+  return result;
+}
+
 async function processTask(task) {
   try {
     let result;
@@ -1020,6 +1072,8 @@ async function processTask(task) {
       result = await runBidItemScan(task, supabase);
     } else if (task.task_type === 'portal_intelligence') {
       result = await runPortalIntelligenceTask(task, supabase);
+    } else if (task.task_type === 'document_prefetch') {
+      result = await runDocumentPrefetchTask(task, supabase);
     } else if (task.task_type === 'project_analysis') {
       result = await runProjectAnalysisAcquisition(task, supabase);
     } else if (task.task_type === 'document_processing') {
@@ -1086,6 +1140,16 @@ async function processTask(task) {
           rows_stored: result.inserted ?? 0,
           phase: 'portal_bid_item_scan',
         }
+      : task.task_type === 'document_prefetch'
+      ? {
+          candidate_id: task.payload?.candidate_id ?? null,
+          portal_type: task.payload?.portal_type ?? null,
+          documents_found: result.found ?? 0,
+          documents_prefetched: result.acquired ?? 0,
+          documents_skipped: result.skipped ?? 0,
+          documents_failed: result.failed ?? 0,
+          phase: 'document_prefetch_v1',
+        }
       : task.task_type === 'portal_intelligence'
       ? {
           candidate_id: task.payload?.candidate_id ?? null,
@@ -1114,7 +1178,7 @@ async function processTask(task) {
 
     const taskError = task.task_type === 'project_analysis'
       ? (result.acquisition_status === 'failed' ? result.errorSummary : null)
-      : ['bid_item_scan', 'portal_intelligence'].includes(task.task_type)
+      : ['bid_item_scan', 'portal_intelligence', 'document_prefetch'].includes(task.task_type)
       ? null
       : result.errorSummary;
 
