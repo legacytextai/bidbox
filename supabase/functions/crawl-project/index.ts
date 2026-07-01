@@ -14,6 +14,7 @@ const PORTAL_PATTERNS: Array<{ type: string; patterns: RegExp[] }> = [
   { type: 'ersp', patterns: [/ersp\.ladwp\.com/i] },
   { type: 'bonfirehub', patterns: [/bonfirehub\.com/i] },
   { type: 'ramp', patterns: [/rampla\.org/i] },
+  { type: 'lacounty_dpw', patterns: [/dpw\.lacounty\.gov/i] },
 ];
 
 function detectPortalType(url: string): string {

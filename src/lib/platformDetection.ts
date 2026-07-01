@@ -3,13 +3,14 @@
  * Detects which procurement portal a URL belongs to
  */
 
-export type PortalType = 
+export type PortalType =
   | 'caltrans'
   | 'planetbids'
   | 'epro'
   | 'ersp'
   | 'bonfirehub'
   | 'ramp'
+  | 'lacounty_dpw'
   | 'unknown';
 
 interface PortalPattern {
@@ -61,6 +62,12 @@ const PORTAL_PATTERNS: PortalPattern[] = [
       /ramp.*la/i,
     ],
   },
+  {
+    type: 'lacounty_dpw',
+    patterns: [
+      /dpw\.lacounty\.gov/i,
+    ],
+  },
 ];
 
 /**
@@ -91,6 +98,7 @@ export function getPortalDisplayName(type: PortalType): string {
     ersp: 'ERSP (LADWP)',
     bonfirehub: 'BonfireHub',
     ramp: 'RAMP LA',
+    lacounty_dpw: 'LA County DPW',
     unknown: 'External Source',
   };
   return names[type];

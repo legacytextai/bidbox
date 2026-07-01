@@ -1,6 +1,6 @@
 # LA County DPW Driver Implementation
 
-Status: Milestone 1 In Progress — Task 1 (Schema & Configuration Verification) complete; no migration required
+Status: Milestone 1 In Progress — Tasks 1–2 complete; next: Task 3 (Edge Function Updates)
 Document type: Engineering task list
 Source design spec: `docs/initiatives/lacounty-dpw-driver-design-spec.md`
 Reconnaissance report: `docs/handoff/2026-07-01-lacounty-dpw-agency-expansion.md`
@@ -35,13 +35,15 @@ Subtasks:
 ### 1.3. Confirm no migration is required for Milestone 1 ✅
 - Zero schema changes needed. `agent_tasks.task_type` is free text; the only `WITH CHECK (task_type='project_analysis')` is an RLS policy scoped to the `authenticated` role. Scan tasks are inserted by `refresh-opportunities` via `SUPABASE_SERVICE_ROLE_KEY`, which bypasses RLS — so `lacounty_dpw_scan` inserts are unaffected, identical to `planetbids_scan`/`caltrans_scan`.
 
-## Task 2 - PORTAL TYPE REGISTRATION
+## Task 2 - PORTAL TYPE REGISTRATION ✅ COMPLETE
+Registered `lacounty_dpw` only. Detection verified for all DPW template URLs with no collision against `ramp`/`planetbids`. `tsc --noEmit` and `eslint` pass.
 Subtasks:
-### 2.1. Register `lacounty_dpw` in platform detection
-- Add to the `PortalType` union, `PORTAL_PATTERNS` (`/dpw\.lacounty\.gov/i`), and `getPortalDisplayName` in `src/lib/platformDetection.ts`; mirror the pattern in `supabase/functions/crawl-project/index.ts`.
+### 2.1. Register `lacounty_dpw` in platform detection ✅
+- `src/lib/platformDetection.ts`: added to `PortalType` union, `PORTAL_PATTERNS` (`/dpw\.lacounty\.gov/i` only — precise host, scope kept to DPW), and the exhaustive `getPortalDisplayName` record.
+- `supabase/functions/crawl-project/index.ts`: mirrored the `{ type: 'lacounty_dpw', patterns: [/dpw\.lacounty\.gov/i] }` entry.
 
-### 2.2. Establish the canonical agency label
-- Use "Los Angeles County Department of Public Works" as `source.name` / `agency`, and "LA County DPW" as the short display name.
+### 2.2. Establish the canonical agency label ✅
+- Short display name "LA County DPW" (matches convention: `Caltrans`, `RAMP LA`). Full `source.name` / `agency` ("Los Angeles County Department of Public Works") is set on the `opportunity_sources` row in Task 10.
 
 ## Task 3 - EDGE FUNCTION UPDATES
 Subtasks:
