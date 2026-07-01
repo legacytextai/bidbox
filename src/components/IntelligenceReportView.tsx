@@ -540,7 +540,7 @@ export function useIntelligenceReportDerivedState({
       : Array.isArray(raw?.bullets)
         ? raw.bullets
         : [];
-    return bullets.filter((b) => b?.text && !isProjectOverviewBullet(b.text));
+    return bullets.filter((b) => Boolean(b?.text));
   }, [report]);
 
   const pendingSectionMessage = useMemo(() => {

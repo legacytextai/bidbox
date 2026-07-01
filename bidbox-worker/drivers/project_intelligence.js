@@ -623,13 +623,16 @@ function validateReport(raw, chunkMap, pageMap, context = {}) {
   const citedFindingKeys = new Set(findings
     .filter((finding) => isFactualStatus(finding.status))
     .map((finding) => finding.finding_key));
+  // Keep all bullets that have non-empty text. The finding_keys linkage is preserved
+  // for any that match, but bullets are not gated on it: the AI does not reliably return
+  // finding_keys in the "category.field_key" format that citedFindingKeys uses, so
+  // filtering on finding_keys.length > 0 previously dropped every AI-generated bullet.
   let bullets = (raw?.executive_summary?.bullets ?? [])
     .filter((bullet) => normalizeText(bullet.text))
     .map((bullet, index) => ({
       text: truncate(normalizeExecutiveSummaryText(bullet.text, index), 240),
       finding_keys: (bullet.finding_keys ?? []).filter((key) => citedFindingKeys.has(key)),
     }))
-    .filter((bullet) => bullet.finding_keys.length > 0)
     .slice(0, 8);
 
   const needsOverviewFirst = bullets.length === 0 || !isProjectOverviewText(bullets[0].text);

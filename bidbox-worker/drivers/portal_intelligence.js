@@ -63,11 +63,19 @@ function buildPortalContext(candidate, bidItems = [], scrapedPageText = null) {
       lines.push(`Bid Due: ${due.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}`);
     }
   }
+  if (crawl.due_date_raw) lines.push(`Bid Due (raw portal text): ${crawl.due_date_raw}`);
 
   const valueStr = formatCurrency(candidate.estimated_value) ??
     formatCurrency(crawl.estimated_value) ??
     formatCurrency(crawl.engineer_estimate);
-  if (valueStr) lines.push(`Estimated Value: ${valueStr}`);
+  if (valueStr) {
+    const rangeLow = formatCurrency(crawl.estimated_value_low);
+    const rangeHigh = formatCurrency(crawl.estimated_value_high);
+    const range = rangeLow && rangeHigh ? ` (range: ${rangeLow}–${rangeHigh})` : '';
+    lines.push(`Engineer's Estimate: ${valueStr}${range}`);
+  } else if (crawl.estimated_value_raw) {
+    lines.push(`Engineer's Estimate (raw): ${crawl.estimated_value_raw}`);
+  }
 
   if (candidate.county)             lines.push(`County: ${candidate.county}`);
   if (candidate.project_address)    lines.push(`Location: ${candidate.project_address}`);
@@ -95,6 +103,7 @@ function buildPortalContext(candidate, bidItems = [], scrapedPageText = null) {
     const parts = ['Pre-Bid/Job Walk: Yes'];
     if (attendanceRequired)          parts.push(`Attendance Required: ${attendanceRequired}`);
     if (crawl.meeting_type)          parts.push(`Type: ${crawl.meeting_type}`);
+    if (crawl.meeting_datetime)      parts.push(`Datetime: ${crawl.meeting_datetime}`);
     if (crawl.pre_bid_meeting_at)    parts.push(`Date: ${crawl.pre_bid_meeting_at}`);
     if (crawl.job_walk_at)           parts.push(`Date: ${crawl.job_walk_at}`);
     if (crawl.pre_bid_location)      parts.push(`Location: ${crawl.pre_bid_location}`);
@@ -227,15 +236,13 @@ async function scrapePublicPortalTabs(sourceUrl, log = () => {}) {
   }
 }
 
-const SYSTEM_PROMPT = `You are a construction estimating assistant helping a California general contractor quickly evaluate public works opportunities.
+const SYSTEM_PROMPT = `You are an experienced California public works estimator writing a quick project briefing for a colleague on your estimating team.
 
-You will receive portal metadata about a bidding opportunity. Write a concise executive summary (3-5 sentences) that:
-1. Describes what the project is and its key scope
-2. Notes the estimated value and location
-3. Calls out any important requirements (license, pre-bid meeting attendance, bonding if mentioned)
-4. Flags anything unusual or that requires immediate attention
+Write one concise paragraph (4-6 sentences) that gives an estimator an immediate grasp of the project before reading anything else. Use the full portal metadata provided — scope, estimate, location, bid items, license, pre-bid requirements, contract duration, liquidated damages, commodity codes, and any other structured data available. Do not structure your response as a numbered list.
 
-Be direct and informative. Do not repeat the title verbatim as your first sentence. Do not fabricate details. If information is unavailable, omit it — do not say "not specified."`;
+When bid items are present, use them to characterize the actual work (quantities, trade breakdown, dominant line items) rather than just noting they exist.
+
+Voice: direct, factual, estimator-to-estimator. Lead with what the project actually is and its scale, then cover what matters for bid/no-bid — requirements, risks, and anything that requires immediate action. Skip generic phrases like "this project involves" or "the scope includes." Do not repeat the project title verbatim as your opening. Do not fabricate details. Omit anything not in the metadata.`;
 
 async function generatePortalSummary({ candidate, bidItems, scrapedPageText, log = console.log }) {
   const apiKey = process.env.OPENAI_API_KEY || process.env.PROJECT_INTELLIGENCE_AI_KEY;
@@ -256,7 +263,7 @@ async function generatePortalSummary({ candidate, bidItems, scrapedPageText, log
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: `Opportunity metadata:\n\n${context}\n\nWrite the executive summary.` },
       ],
-      max_tokens: 350,
+      max_tokens: 450,
       temperature: 0.3,
     }),
   });
