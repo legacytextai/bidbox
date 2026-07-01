@@ -258,13 +258,21 @@ Commit: `6b9e433`
 - Track agency name, agency type, county, portal platform, portal URL, priority, status, and notes
 - Known non-PlanetBids platforms: Cal eProcure, Bonfire, OpenGov, Periscope/BidSync, DemandStar, agency-direct/custom portals
 
-### 6.4. E3 — New Driver Per Portal Type 📋 PLANNED
+### 6.4. E3 — New Driver Per Portal Type 🔄 IN PROGRESS
 Priority order:
 - Cal eProcure driver for Caltrans/state opportunities
 - Bonfire driver
 - OpenGov driver
 - Periscope/BidSync or DemandStar driver, depending on E2 count
 - Agency-direct drivers for high-value custom portals such as LA County, LACMTA, LADWP
+
+**LA County DPW — first Agency Direct driver 🔄 IN PROGRESS**
+- Reconnaissance report: `docs/handoff/2026-07-01-lacounty-dpw-agency-expansion.md`
+- Driver design specification: `docs/initiatives/lacounty-dpw-driver-design-spec.md`
+- Implementation task list: `docs/initiatives/lacounty-dpw-driver-task-list.md`
+- Milestone 1 (metadata ingestion only): listing → detail metadata → `opportunity_candidates` → Portal Intelligence → visible in BidBox. No document acquisition, auth, Playwright, or Browserbase.
+- Milestone 2 (separate): authenticated document acquisition via LA County SSO. Investigation spike only at this stage.
+- Establishes the reusable Agency Direct driver pattern (shared fetch/parse utilities, template registry, normalization helpers) for LACMTA, LADWP, and other custom portals.
 
 ### 6.5. How to Add a New PlanetBids Agency
 - Find PlanetBids portal ID from URL: `vendors.planetbids.com/portal/{ID}/`
