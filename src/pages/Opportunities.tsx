@@ -8,6 +8,9 @@ import { PORTAL_STYLES, resolveEstimatedValue } from "@/lib/opportunityDomain";
 import { Layout } from "@/components/Layout";
 import {
   TooltipProvider,
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
 } from "@/components/ui/tooltip";
 import {
   Collapsible,
@@ -949,19 +952,21 @@ const Opportunities = () => {
             <div className="flex items-start justify-between mb-6">
               <div>
                 <h1 className="text-3xl font-bold text-foreground">Opportunities</h1>
-                <p className="text-sm text-muted-foreground mt-1">
+                <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1.5">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={handleScanNow}
+                        disabled={scanLoading}
+                        className="inline-flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                      >
+                        <RefreshCw className={`h-3.5 w-3.5 ${scanLoading ? "animate-spin" : ""}`} />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">Re-Scan</TooltipContent>
+                  </Tooltip>
                   Last scanned: {timeAgo(lastScannedAt)}
                 </p>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleScanNow}
-                  disabled={scanLoading}
-                  className="mt-1 -ml-2 h-8 px-2 text-muted-foreground hover:text-foreground"
-                >
-                  <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${scanLoading ? "animate-spin" : ""}`} />
-                  {scanLoading ? "Scanning..." : "Re-Scan"}
-                </Button>
               </div>
             </div>
 
