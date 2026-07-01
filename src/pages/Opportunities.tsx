@@ -946,21 +946,21 @@ const Opportunities = () => {
         ) : (
           <div className="p-8">
             {/* Header */}
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-start justify-between mb-6">
               <div>
                 <h1 className="text-3xl font-bold text-foreground">Opportunities</h1>
                 <p className="text-sm text-muted-foreground mt-1">
                   Last scanned: {timeAgo(lastScannedAt)}
                 </p>
-              </div>
-              <div className="flex gap-2">
                 <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={handleScanNow}
                   disabled={scanLoading}
-                  className="bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90"
+                  className="mt-1 -ml-2 h-8 px-2 text-muted-foreground hover:text-foreground"
                 >
-                  <RefreshCw className={`h-4 w-4 mr-2 ${scanLoading ? "animate-spin" : ""}`} />
-                  {scanLoading ? "Refreshing..." : "Refresh Now"}
+                  <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${scanLoading ? "animate-spin" : ""}`} />
+                  {scanLoading ? "Scanning..." : "Re-Scan"}
                 </Button>
               </div>
             </div>
