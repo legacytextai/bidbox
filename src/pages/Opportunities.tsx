@@ -35,6 +35,12 @@ import {
 } from "@/lib/opportunityRelevance";
 import { toZonedTime } from "date-fns-tz";
 
+// Transient (per-tab) anchor for restoring list position when navigating back
+// from a detail page. Session-only by design — never persisted across browser
+// sessions. Survives a hard refresh of the detail page because it lives in
+// sessionStorage rather than component/router state.
+const SCROLL_ANCHOR_KEY = "bidbox:opportunities:scrollAnchor";
+
 type CandidateStatus = "pending" | "red" | "yellow" | "green" | "converted";
 type AutoStatus = "green" | "yellow" | "red" | null;
 type AnalysisStatus = "not_requested" | "queued" | "analyzing" | "ready" | "failed";
@@ -508,6 +514,38 @@ const Opportunities = () => {
 
   const pollInFlightRef = useRef(false);
 
+  // Restore scroll position to the last-clicked opportunity card once, per
+  // mount, after the list has finished loading (and the cards have therefore
+  // committed to the DOM). Runs identically whether the user arrived via the
+  // browser Back button or the "Back to Opportunities" button, since both
+  // simply remount this component at the /opportunities route.
+  const scrollRestoreAttemptedRef = useRef(false);
+  useEffect(() => {
+    if (loading || scrollRestoreAttemptedRef.current) return;
+    scrollRestoreAttemptedRef.current = true;
+
+    const raw = sessionStorage.getItem(SCROLL_ANCHOR_KEY);
+    if (!raw) return;
+    sessionStorage.removeItem(SCROLL_ANCHOR_KEY);
+
+    let anchor: { id: string; scrollY: number } | null = null;
+    try {
+      anchor = JSON.parse(raw);
+    } catch {
+      return;
+    }
+    if (!anchor) return;
+
+    const target = document.querySelector(`[data-candidate-id="${CSS.escape(anchor.id)}"]`);
+    if (target) {
+      target.scrollIntoView({ block: "center" });
+    } else if (typeof anchor.scrollY === "number") {
+      // Card no longer present (e.g. filters changed) — fall back to the raw
+      // offset rather than leaving the user at the top.
+      window.scrollTo({ top: anchor.scrollY });
+    }
+  }, [loading]);
+
   useEffect(() => {
     if (!hasActiveCandidates) return;
     const tick = async () => {
@@ -819,16 +857,22 @@ const Opportunities = () => {
   const renderCard = (candidate: Candidate, _index: number, navIds?: string[]) => {
     const onCalendar = candidate.status === "converted" && !!candidate.converted_project_id;
     const estimatedValue = formatEstimatedValue(candidate.crawl_data);
-    const goToOpportunity = () =>
+    const goToOpportunity = () => {
+      sessionStorage.setItem(
+        SCROLL_ANCHOR_KEY,
+        JSON.stringify({ id: candidate.id, scrollY: window.scrollY }),
+      );
       navigate(
         `/opportunities/${candidate.id}`,
         navIds ? { state: { navIds } } : undefined,
       );
+    };
     const saved = savedCandidateIds.has(candidate.id);
 
     return (
       <div
         key={candidate.id}
+        data-candidate-id={candidate.id}
         role="button"
         tabIndex={0}
         onClick={goToOpportunity}
