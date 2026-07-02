@@ -1,6 +1,6 @@
 # LA County DPW Driver Implementation
 
-Status: Milestone 1 In Progress — Tasks 1–4 complete; next: Task 5 (LA County DPW Scan Driver)
+Status: Milestone 1 In Progress — Tasks 1–9 complete (the scan driver was built incrementally, covering Listing Parser / Template Registry / Normalization / Candidate Persistence); next: Task 10 (Source Configuration) then validation (Tasks 11–13)
 Document type: Engineering task list
 Source design spec: `docs/initiatives/lacounty-dpw-driver-design-spec.md`
 Reconnaissance report: `docs/handoff/2026-07-01-lacounty-dpw-agency-expansion.md`
@@ -69,7 +69,7 @@ Subtasks:
 ### 4.4. Reuse extraction: shared `runScan` helper ✅
 - Discovered `runPlanetBidsScan` and `runCaltransScan` were verbatim duplicates differing only in the scrape driver. Extracted a shared `runScan(task, supabase, driver)` and made all three runners thin delegates. Cleaner today regardless of DPW; no speculative abstraction. Only functional-neutral change: Caltrans scan log wording unified to the generic form (no DB/return-shape impact).
 
-## Task 5 - LA COUNTY DPW SCAN DRIVER
+## Task 5 - LA COUNTY DPW SCAN DRIVER ✅ COMPLETE
 Subtasks:
 ### 5.1. Scaffold `bidbox-worker/drivers/lacounty_dpw.js`
 - Export `scrapeLaCountyDpw(source, log)` returning `{ candidates, errors, errorMessages }`. HTTP-first — no Playwright, no Browserbase — using a realistic desktop User-Agent (Milestone 1 constraint).
@@ -82,7 +82,7 @@ Subtasks:
 
 Reuse note: `runLaCountyDpwScan` is a candidate for a shared "agency-direct scan runner" once a second agency-direct driver exists (see Reusable Infrastructure appendix).
 
-## Task 6 - LISTING PARSER
+## Task 6 - LISTING PARSER ✅ COMPLETE (Step 1 of the driver build)
 Subtasks:
 ### 6.1. Fetch and parse the listing
 - GET `https://dpw.lacounty.gov/contracts/Opportunities.aspx` and parse all `<tbody>` rows. DataTables paginates client-side, so every row is present in the initial HTML — do not attempt network pagination.
@@ -92,7 +92,7 @@ Subtasks:
 
 Reuse note: the HTTP fetch (UA, timeout, retry/backoff, Imperva-challenge detection) and the "server-rendered table → rows" parse are the first reusable Agency Direct utilities.
 
-## Task 7 - DETAIL TEMPLATE REGISTRY
+## Task 7 - DETAIL TEMPLATE REGISTRY ✅ COMPLETE (Step 3 of the driver build)
 Subtasks:
 ### 7.1. Build a path-matched extractor registry
 - Register extractors for `aed_bid`, `cons`, `asd_rfp`, `rfb`, and `aed_rfp`, each keyed on its detail path segment. Each extractor returns template-native fields plus `documents[]` metadata (title, notes, pages, size) and plan-holder URLs — without downloading anything.
@@ -105,7 +105,7 @@ Subtasks:
 
 Reuse note: the template-registry abstraction (path matcher + extractor + fallback) is the core reusable Agency Direct pattern.
 
-## Task 8 - METADATA NORMALIZATION
+## Task 8 - METADATA NORMALIZATION ✅ COMPLETE (Step 4 of the driver build)
 Subtasks:
 ### 8.1. Map template-native fields to the OML contract
 - One normalizer maps each template's labels onto the shared candidate contract. The "bid due" concept resolves from whichever of `Closing Date` / `Bid Opening Date` / `Proposal Due Date` the template provides.
@@ -115,7 +115,7 @@ Subtasks:
 
 Reuse note: money/date/sentinel parsers and the label→OML mapper are shared normalization helpers usable by every agency-direct driver.
 
-## Task 9 - CANDIDATE PERSISTENCE
+## Task 9 - CANDIDATE PERSISTENCE ✅ COMPLETE (driver returns candidates; persisted via existing persistScannedCandidate)
 Subtasks:
 ### 9.1. Persist through the existing pipeline
 - The driver returns candidates only; the runner calls `persistScannedCandidate({ ..., portal_type: 'lacounty_dpw' })` per candidate. Do not write `opportunity_candidates` directly and do not queue follow-on tasks from the driver.

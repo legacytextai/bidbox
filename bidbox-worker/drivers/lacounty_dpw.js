@@ -274,11 +274,89 @@ function applyTemplate(template, fields, projectId) {
   return extraction;
 }
 
+// ── Step 4: OML normalization ────────────────────────────────────────────────
+
+function parseMoney(raw) {
+  if (!raw) return null;
+  const match = String(raw).match(/\$?\s*(\d[\d,]*(?:\.\d+)?)/);
+  if (!match) return null;
+  const value = Number(match[1].replace(/,/g, ''));
+  return Number.isFinite(value) ? value : null;
+}
+
+// Minutes to add to a UTC instant to get America/Los_Angeles wall-clock time
+// (e.g. -420 for PDT, -480 for PST). Uses Intl so DST is handled without a
+// dependency.
+function laOffsetMinutes(utcMs) {
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Los_Angeles', hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  });
+  const p = {};
+  for (const part of dtf.formatToParts(new Date(utcMs))) p[part.type] = part.value;
+  const hour = p.hour === '24' ? 0 : Number(p.hour);
+  const asIfUtc = Date.UTC(+p.year, +p.month - 1, +p.day, hour, +p.minute, +p.second);
+  return (asIfUtc - utcMs) / 60000;
+}
+
+// Convert a Pacific wall-clock date/time to a UTC ISO string.
+function laWallClockToUtcISO(y, mo, d, h, mi, s) {
+  const guessUtc = Date.UTC(y, mo - 1, d, h, mi, s);
+  const offset = laOffsetMinutes(guessUtc);
+  return new Date(guessUtc - offset * 60000).toISOString();
+}
+
+// Tolerant DPW date parser. Handles M/D/YYYY, MM/DD/YYYY HH:MM[:SS] AM/PM, and
+// non-date sentinels ("Open Continuously", "N/A") which yield a null due date.
+// When no time is present, noon Pacific is used as a neutral, sortable
+// placeholder (Caltrans precedent). The raw value is always preserved upstream.
+function parseDpwDate(raw) {
+  if (!raw) return { iso: null, hadTime: false, sentinel: null };
+  const s = String(raw).trim();
+  const dm = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (!dm) return { iso: null, hadTime: false, sentinel: s || null };
+
+  const [mo, d, y] = [Number(dm[1]), Number(dm[2]), Number(dm[3])];
+  const tm = s.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?/i);
+  let h = 12, mi = 0, se = 0, hadTime = false;
+  if (tm) {
+    hadTime = true;
+    h = Number(tm[1]); mi = Number(tm[2]); se = tm[3] ? Number(tm[3]) : 0;
+    const ap = tm[4] ? tm[4].toUpperCase() : null;
+    if (ap === 'PM' && h < 12) h += 12;
+    if (ap === 'AM' && h === 12) h = 0;
+  }
+  return { iso: laWallClockToUtcISO(y, mo, d, h, mi, se), hadTime, sentinel: null };
+}
+
+// Map the canonical extraction onto the OML candidate columns that
+// persistScannedCandidate()/portalOwnedCandidateFields() persist. required_*
+// are text[] columns not exposed by DPW, so they stay null (never bare strings).
+function normalizeCandidate(candidate) {
+  const e = candidate.crawl_data.extraction || {};
+  const due = parseDpwDate(e.bid_due_raw);
+  const estimate = parseMoney(e.estimate_raw);
+
+  candidate.bid_due_at = due.iso;
+  candidate.estimated_value = estimate;
+  candidate.project_address = e.location || null;
+  candidate.portal_department = e.department || null;
+  candidate.required_licenses = null;
+  candidate.required_naics = null;
+
+  candidate.crawl_data.bid_due_raw = e.bid_due_raw ?? null;
+  candidate.crawl_data.bid_due_time_available = due.hadTime;
+  candidate.crawl_data.bid_due_note = due.iso ? null : (due.sentinel || 'no parseable date');
+  candidate.crawl_data.estimated_value = estimate;
+  candidate.crawl_data.estimated_value_raw = e.estimate_raw ?? null;
+  return candidate;
+}
+
 // Step 2: fetch a candidate's detail page and merge raw extracted fields +
 // document metadata into crawl_data. Step 3: select the template and produce a
-// canonical extraction. Non-fatal on failure — the listing-level candidate is
-// still returned. OML normalization (bid_due_at, estimate) is Step 4, so those
-// typed columns stay unset here.
+// canonical extraction. Step 4: normalize into OML columns. Non-fatal on
+// failure — the listing-level candidate is still returned.
 async function enrichCandidateFromDetail(candidate, log) {
   const html = await fetchHtml(candidate.source_url, log);
   const $ = cheerio.load(html);
@@ -297,6 +375,8 @@ async function enrichCandidateFromDetail(candidate, log) {
 
   if (extraction.title) candidate.crawl_data.project_name = extraction.title;
   if (extraction.description) candidate.crawl_data.scope = extraction.description;
+
+  normalizeCandidate(candidate);
   return candidate;
 }
 
@@ -383,6 +463,9 @@ module.exports = {
   selectTemplate,
   applyTemplate,
   TEMPLATE_REGISTRY,
+  parseDpwDate,
+  parseMoney,
+  normalizeCandidate,
   fetchHtml,
   DEFAULT_LISTING_URL,
   CONTRACTS_BASE,
