@@ -136,6 +136,18 @@ For each source:
 
 ---
 
+## Agency Direct Sources (E3)
+
+| Agency | portal_type | Listing URL | Config Status | Scan Status |
+| --- | --- | --- | --- | --- |
+| Los Angeles County Department of Public Works | `lacounty_dpw` | https://dpw.lacounty.gov/contracts/Opportunities.aspx | Configured in migration (`20260701210000`), **inserted disabled** | Not verified — driver validated standalone (21 candidates); pending live end-to-end run before enabling |
+
+First Agency Direct driver. Deliberately seeded with `scan_enabled = false` /
+`refresh_enabled = false`; do not mark **Scan verified** until a real worker scan
+completes against production. See `docs/initiatives/lacounty-dpw-driver-task-list.md`.
+
+---
+
 ## Known Coverage Gap
 
 The E1 migrations are verified batches, not the final SoCal PlanetBids universe. The next expansion pass should continue finding and verifying additional city, school district, community college, water, sanitation, airport, transit, and special district PlanetBids portals.

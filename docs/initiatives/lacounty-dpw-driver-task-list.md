@@ -1,6 +1,6 @@
 # LA County DPW Driver Implementation
 
-Status: Milestone 1 In Progress — Tasks 1–9 complete (the scan driver was built incrementally, covering Listing Parser / Template Registry / Normalization / Candidate Persistence); next: Task 10 (Source Configuration) then validation (Tasks 11–13)
+Status: Milestone 1 In Progress — Tasks 1–10 complete (source seeded DISABLED via migration 20260701210000); Task 11 (end-to-end validation) BLOCKED — no DB credentials / deploy access in the working environment; awaiting a way to run the live pipeline
 Document type: Engineering task list
 Source design spec: `docs/initiatives/lacounty-dpw-driver-design-spec.md`
 Reconnaissance report: `docs/handoff/2026-07-01-lacounty-dpw-agency-expansion.md`
@@ -123,7 +123,7 @@ Subtasks:
 ### 9.2. Confirm auto-queued follow-ons
 - Confirm that a new candidate auto-queues `portal_intelligence` (priority 3) and `document_prefetch` (priority 2, handled by the Task 4.3 no-op in Milestone 1), and that refreshes mark `new` / `refreshed` / `unchanged` without re-triggering F2/F3/F4.
 
-## Task 10 - SOURCE CONFIGURATION
+## Task 10 - SOURCE CONFIGURATION ✅ COMPLETE (seeded disabled)
 Subtasks:
 ### 10.1. Insert the `opportunity_sources` row
 - `name = "Los Angeles County Department of Public Works"`, `portal_type = 'lacounty_dpw'`, `listing_url = 'https://dpw.lacounty.gov/contracts/Opportunities.aspx'`, `scan_enabled = true`, `scan_interval_hours = 24`, `refresh_enabled = true`, `refresh_cadence_hours = 24`. No credentials are stored on this row.
