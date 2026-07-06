@@ -142,10 +142,22 @@ Queued a second scan back-to-back with no code changes. Result: `found=75, error
 
 ### 6.6 Outcome
 
-Both the full-detail scan and the idempotency re-scan passed cleanly. The source is left enabled in production (`scan_enabled=true`, `refresh_enabled=true`) per the validation criteria. The driver is production-ready for metadata ingestion. Document acquisition remains explicitly out of scope (Oracle iSupplier vendor registration requires manual agency approval).
+Both the full-detail scan and the idempotency re-scan passed cleanly. The source is left enabled in production (`scan_enabled=true`, `refresh_enabled=true`) per the validation criteria. Document acquisition remains explicitly out of scope (Oracle iSupplier vendor registration requires manual agency approval).
+
+### 6.7 Post-validation spot-check found and fixed one title-truncation bug
+
+A follow-up spot-check (5 random candidates compared against the live portal) found one discrepancy: `AE141998`'s stored title was truncated to `"CEQA/NEPA Environmental Compliance"`, missing the live title's tail (`"... RFP. Pre Proposal Meeting info. Updated: 07/01/2026"`). The other 4 sampled candidates (`DR135523`, `RQ143922`, `RQ143975`, `PS141682`) all matched the live portal exactly.
+
+**Root cause:** `parseListingPdfText()` located the Type column by matching the first occurrence of `IFB|RFP|RFQ` anywhere in the accumulated row text. `AE141998`'s title contains the word "RFP" mid-sentence, before the real Type column value, so the title was cut short at that embedded occurrence instead of the actual column.
+
+**Fix:** since the row's column order is always Title → Type → Due Date, the real Type value is the *last* `IFB|RFP|RFQ` match that occurs before the due-date-time token, not the first match in the row (falls back to the last match overall if no due-date-time is found). Verified against reconstructed real data for all 5 previously-sampled solicitations plus the original edge-case regression set (multi-line titles, parenthetical suffixes, single-letter prefixes, embedded `M/D/YYYY` dates) — no regressions.
+
+Re-ran one production scan after deploying the fix: `found=75, errors=0, refreshed=75`, still 75 distinct `source_url`/`portal_bid_id` (no duplicates). Confirmed directly in Supabase: `AE141998`'s stored title now reads `"AE141998 - CEQA/NEPA Environmental Compliance RFP. Pre Proposal Meeting info. Updated: 07/01/2026"`, matching the live portal exactly, with `solicitation_type` still correctly `RFP`. The other 4 previously-sampled solicitations re-verified unchanged and correct.
+
+Commit: `01e2ea8`.
 
 ## 6. Final Recommendation
 
-**LA Metro is live and production-ready for metadata ingestion.** Section 6 records the full validation: two clean scans in a row through the real Railway + Browserbase transport, 75 solicitations discovered with complete detail data, zero errors, zero duplicates on re-scan. The source is enabled (`scan_enabled=true`, `refresh_enabled=true`) and will pick up on the normal nightly refresh cadence going forward.
+**LA Metro is live and production-ready for metadata ingestion.** Section 6 records the full validation: two clean scans in a row through the real Railway + Browserbase transport, 75 solicitations discovered with complete detail data, zero errors, zero duplicates on re-scan, plus a post-validation spot-check that caught and fixed one title-parsing bug (§6.7). The source is enabled (`scan_enabled=true`, `refresh_enabled=true`) and will pick up on the normal nightly refresh cadence going forward.
 
 What remains explicitly out of scope, unchanged from the original plan: document acquisition (Oracle iSupplier vendor registration requires manual agency approval), Oracle SSO, and any work on the 25-row on-screen pagination cap (settled separately — no bypass exists; the PDF export is the only path to full enumeration, and that path is now proven end-to-end).
