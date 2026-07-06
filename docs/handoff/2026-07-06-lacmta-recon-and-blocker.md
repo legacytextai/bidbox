@@ -1,9 +1,9 @@
-# BidBox Engineering Handoff — LA Metro (LACMTA) Recon and Blocker
+# BidBox Engineering Handoff — LA Metro (LACMTA) Recon, Blocker, and Live Validation
 
 **Date:** 2026-07-06
 **Branch:** `phase1-opportunity-intelligence`
-**Scope:** Agency expansion reconnaissance only — LA County Metropolitan Transportation Authority (Metro), `business.metro.net`
-**Status:** Reconnaissance complete. Driver implemented on the same Browserbase transport `planetbids.js` already uses. All logic that can be validated without a live browser session (PDF-export row parsing, Pacific date parsing, detail-field extraction/mapping) has been validated locally against fixtures built from real captured data. **Live end-to-end validation against the actual portal has not been completed** and requires a Railway/Browserbase deploy — see §5.
+**Scope:** LA County Metropolitan Transportation Authority (Metro), `business.metro.net`
+**Status:** **Live deployment validation passed.** Two scans run back-to-back through the production Railway worker + Browserbase, both `errors: 0`. 75 solicitations discovered, fully detail-enriched, zero duplicates on re-scan. Source is enabled in production (`scan_enabled=true`, `refresh_enabled=true`). See §6 for the full validation record and the two real bugs it caught before this was true.
 
 ---
 
@@ -94,12 +94,58 @@ No `BROWSERBASE_API_KEY`/`BROWSERBASE_PROJECT_ID` are available in this developm
 - `connectBrowserbaseSession()` fails cleanly with `BROWSERBASE_API_KEY not configured` and makes no network call when the key is absent — confirmed locally.
 - All touched files pass `node --check` and the project's `tsc --noEmit`.
 
-What has **not** been validated, and cannot be from this environment:
+All of the above was later confirmed live in production (§6) — including the one thing this environment couldn't test: an actual Browserbase session reaching Metro. It was not blocked. Two real implementation bugs were found and fixed along the way (§6.2–6.3), neither related to Metro's bot protection.
 
-- An actual Browserbase session connecting to Metro and getting past whatever bot-protection triggered the original block. This is the one open question that matters — everything else in the driver is either pure logic (validated above) or a mechanical repetition of already-proven Playwright interaction patterns (the search→click→extract→back loop, confirmed live via manual browser recon in this session, just not yet run through this exact code path).
-- The `Download into PDF` capture (`page.waitForEvent('download')`) against the real portal — the download mechanics themselves weren't in question (standard Playwright), but haven't been exercised end-to-end here.
-- Real-world timing/reliability of the per-item search/click/back loop across the full ~70-item list (rate limiting, ADF session behavior under sustained use).
+---
 
-## 5. Recommendation
+## 5. Live Validation Record (2026-07-06, via Railway + Browserbase)
 
-**Metro is not blocked. It is untested on the transport that matters, and ready for deployment-based validation.** Do not repeat the manual interactive recon (§1 is fully answered) or attempt further local validation (no credentials here, and no reason to risk further WAF interaction from this sandbox). Next step: enable `scan_enabled` on the seeded (currently disabled) source and run one manual scan through the Railway worker, or otherwise trigger `lacmta_scan` in an environment where `BROWSERBASE_API_KEY`/`BROWSERBASE_PROJECT_ID` are configured, and confirm candidates are created correctly end-to-end — the same validation checklist DPW used (`docs/handoff/2026-07-01-lacounty-dpw-agency-expansion.md` §6 gives the general shape). Only flip `scan_enabled`/`refresh_enabled` to `true` in the migration after that passes.
+Full deployment validation was run against the production Railway worker (which has real `BROWSERBASE_API_KEY`/`BROWSERBASE_PROJECT_ID`), using the seeded `opportunity_sources` row (`id=6922adcd-1b63-40b1-8f11-fb80265f8947`), toggled `scan_enabled`/`refresh_enabled` on/off around each attempt.
+
+### 6.1 Attempt 1 — Browserbase session establishes fine; download retrieval fails
+
+Result: `found=0, errors=1`. Log: `LA Metro scrape failed: ENOENT: no such file or directory, open '/tmp/playwright-artifacts-.../...'`.
+
+Root cause: `download.path()` + `fs.readFileSync()` only work when Playwright launches the browser locally — the file lives on Browserbase's remote machine, not the worker, so the reported path doesn't exist locally. This confirms Browserbase itself was never the problem; only this specific download-retrieval code path was.
+
+Fix: switched to `download.createReadStream()`.
+
+### 6.2 Attempt 2 — createReadStream() returns zero bytes
+
+Result: `found=0, errors=1`. Log: `LA Metro scrape failed: The PDF file is empty, i.e. its size is zero bytes.`
+
+Root cause (confirmed via Browserbase's own docs): Browserbase does not sync downloaded files to its cloud storage by default — a session must explicitly opt in via a CDP call (`Browser.setDownloadBehavior` with `downloadPath: "downloads"`, `eventsEnabled: true`), and files must then be retrieved via Browserbase's own `GET /v1/sessions/{id}/downloads` endpoint (returns a zip), not via Playwright's `Download` object at all. `planetbids_documents.js` never hit this because it downloads via a direct authenticated HTTP fetch with a captured bearer token, not a browser-triggered file download — this was genuinely new territory for the codebase.
+
+Fix: added the CDP opt-in call to `connectBrowserbaseSession()`, and a new `fetchBrowserbaseDownloadZip()` helper in `lib/browserbase.js` that polls the downloads endpoint and unzips the result with `yauzl` (already a dependency, same library `archive_extraction.js` uses).
+
+### 6.3 Attempt 3 — download works; a different, unrelated bug appears next
+
+Result: `found=75` (full enumeration succeeded — the PDF fix worked), but every row's detail extraction failed with the same Playwright strict-mode error:
+```
+getByRole('button', { name: 'Search' }) resolved to 2 elements:
+1) <a ... aria-label="Collapse Search" role="button">  (a "Collapse Search" toggle)
+2) <button ...>Search</button>                          (the real Search button)
+```
+Root cause: Playwright's default accessible-name matching is substring-based, and the page has a second `role="button"` element ("Collapse Search") whose name also contains "Search". Unrelated to Browserbase or Metro's bot protection — a plain locator-specificity bug.
+
+Fix: added `exact: true` to the Search button locator, and preemptively to the two other `getByRole` locators in the file (Download-into-PDF button, Solicitation Number textbox), since this page had already shown a pattern of near-duplicate accessible names.
+
+An important side effect: this run's per-row error-tolerance path (a failed detail extraction still persists a listing-only candidate) meant 75 candidates were already created in the database despite every row technically "failing," which is exactly why attempt 4 below reports `refreshed` rather than `new`.
+
+### 6.4 Attempt 4 — full success
+
+Result: `found=75, errors=0, new=0, refreshed=75, unchanged=0`. Every row got full detail extraction (Contract Administrator populated on 100% of the 75 rows; NAICS codes present on the ~27% of rows where the portal actually provides one; all three solicitation types — IFB, RFP, RFQ — present, confirming no filtering). `refreshed` rather than `new` is correctly explained by 6.3's partial candidates already existing.
+
+### 6.5 Attempt 5 — idempotency check
+
+Queued a second scan back-to-back with no code changes. Result: `found=75, errors=0, refreshed=75`. Verified directly in Supabase: candidate count stayed at exactly 75 (was 75 before, 75 after), with 75 distinct `source_url` and `portal_bid_id` values — **no duplicates created.**
+
+### 6.6 Outcome
+
+Both the full-detail scan and the idempotency re-scan passed cleanly. The source is left enabled in production (`scan_enabled=true`, `refresh_enabled=true`) per the validation criteria. The driver is production-ready for metadata ingestion. Document acquisition remains explicitly out of scope (Oracle iSupplier vendor registration requires manual agency approval).
+
+## 6. Final Recommendation
+
+**LA Metro is live and production-ready for metadata ingestion.** Section 6 records the full validation: two clean scans in a row through the real Railway + Browserbase transport, 75 solicitations discovered with complete detail data, zero errors, zero duplicates on re-scan. The source is enabled (`scan_enabled=true`, `refresh_enabled=true`) and will pick up on the normal nightly refresh cadence going forward.
+
+What remains explicitly out of scope, unchanged from the original plan: document acquisition (Oracle iSupplier vendor registration requires manual agency approval), Oracle SSO, and any work on the 25-row on-screen pagination cap (settled separately — no bypass exists; the PDF export is the only path to full enumeration, and that path is now proven end-to-end).
