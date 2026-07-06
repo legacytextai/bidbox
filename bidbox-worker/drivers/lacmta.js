@@ -40,6 +40,7 @@ const DEFAULT_LISTING_URL = 'https://business.metro.net/webcenter/portal/VendorP
 
 const NUMBER_TOKEN = /^[A-Z]{1,3}\d{4,}(?:\(\d+\))?$/;
 const TYPE_TOKEN = /\b(IFB|RFP|RFQ)\b/;
+const TYPE_TOKEN_ALL = /\b(IFB|RFP|RFQ)\b/g;
 const DATE_TIME_TOKEN = /(\d{2}-[A-Za-z]{3}-\d{4}),\s*(\d{2}:\d{2}:\d{2})/;
 const DATE_ONLY_TOKEN = /\b(\d{2}-[A-Za-z]{3}-\d{4})\b/g;
 const STATUS_TOKEN = /\b(Active|Closed|Awarded|Cancelled)\b/;
@@ -148,12 +149,23 @@ function parseListingPdfText(text) {
   if (current) blocks.push(current);
 
   return blocks.map((b) => {
-    const typeMatch = b.raw.match(TYPE_TOKEN);
     const dueMatch = b.raw.match(DATE_TIME_TOKEN);
     const allDates = [...b.raw.matchAll(DATE_ONLY_TOKEN)].map((m) => m[1]);
     const statusMatch = b.raw.match(STATUS_TOKEN);
     const dueDateStr = dueMatch ? dueMatch[1] : null;
     const issueDateStr = allDates.find((d) => d !== dueDateStr) || null;
+
+    // Titles can legitimately contain the words "IFB"/"RFP"/"RFQ" mid-sentence
+    // (e.g. "... Compliance RFP. Pre Proposal Meeting info...") — matching the
+    // first IFB|RFP|RFQ occurrence in the row would cut the title short there
+    // instead of at the real Type column. The row's actual column order is
+    // always Title -> Type -> Due Date, so the real Type value is the LAST
+    // IFB|RFP|RFQ match that appears before the due-date token, not the first
+    // one anywhere in the row.
+    const typeMatches = [...b.raw.matchAll(TYPE_TOKEN_ALL)];
+    const typeMatch = dueMatch
+      ? [...typeMatches].reverse().find((m) => m.index < dueMatch.index) ?? null
+      : typeMatches[typeMatches.length - 1] ?? null;
 
     const titleEnd = typeMatch ? typeMatch.index : b.raw.length;
     const title = collapseWs(b.raw.slice(b.number.length, titleEnd)) || null;
