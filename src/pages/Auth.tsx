@@ -15,9 +15,17 @@ const authSchema = z.object({
   company_name: z.string().optional(),
 });
 
+const safeNext = (raw: string | null): string => {
+  if (!raw) return "/calendar";
+  // Only allow same-origin relative paths.
+  if (!raw.startsWith("/") || raw.startsWith("//")) return "/calendar";
+  return raw;
+};
+
 const Auth = () => {
   const [searchParams] = useSearchParams();
   const emailFromUrl = searchParams.get("email") || "";
+  const nextPath = safeNext(searchParams.get("next"));
   const [isLogin, setIsLogin] = useState(!emailFromUrl);
   const [email, setEmail] = useState(emailFromUrl);
   const [password, setPassword] = useState("");
