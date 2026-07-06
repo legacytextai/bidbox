@@ -298,9 +298,15 @@ async function downloadListingRows(page, listingUrl, log) {
     page.waitForEvent('download', { timeout: 30000 }),
     downloadButton.click(),
   ]);
-  const downloadPath = await download.path();
-  const fs = require('fs');
-  const bytes = fs.readFileSync(downloadPath);
+  // download.path() only resolves to a local filesystem path when Playwright
+  // launched the browser itself. Over a remote CDP connection (Browserbase),
+  // the file lives on the remote machine, so path()+readFileSync() throws
+  // ENOENT locally. createReadStream() streams the bytes over the CDP
+  // connection regardless of where the browser is running.
+  const stream = await download.createReadStream();
+  const chunks = [];
+  for await (const chunk of stream) chunks.push(chunk);
+  const bytes = Buffer.concat(chunks);
   const text = await extractPdfText(bytes);
   const rows = parseListingPdfText(text);
   log(`Listing PDF export parsed rows: ${rows.length}`);
