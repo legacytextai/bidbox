@@ -11,6 +11,7 @@ export type PortalType =
   | 'bonfirehub'
   | 'ramp'
   | 'lacounty_dpw'
+  | 'lacmta'
   | 'unknown';
 
 interface PortalPattern {
@@ -68,6 +69,12 @@ const PORTAL_PATTERNS: PortalPattern[] = [
       /dpw\.lacounty\.gov/i,
     ],
   },
+  {
+    type: 'lacmta',
+    patterns: [
+      /business\.metro\.net/i,
+    ],
+  },
 ];
 
 /**
@@ -99,6 +106,7 @@ export function getPortalDisplayName(type: PortalType): string {
     bonfirehub: 'BonfireHub',
     ramp: 'RAMP LA',
     lacounty_dpw: 'LA County DPW',
+    lacmta: 'LA Metro',
     unknown: 'External Source',
   };
   return names[type];

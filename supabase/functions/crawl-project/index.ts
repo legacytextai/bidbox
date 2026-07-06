@@ -15,6 +15,7 @@ const PORTAL_PATTERNS: Array<{ type: string; patterns: RegExp[] }> = [
   { type: 'bonfirehub', patterns: [/bonfirehub\.com/i] },
   { type: 'ramp', patterns: [/rampla\.org/i] },
   { type: 'lacounty_dpw', patterns: [/dpw\.lacounty\.gov/i] },
+  { type: 'lacmta', patterns: [/business\.metro\.net/i] },
 ];
 
 function detectPortalType(url: string): string {
