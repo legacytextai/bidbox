@@ -293,7 +293,7 @@ async function downloadListingRows(page, listingUrl, sessionId, log) {
   await page.waitForSelector('a[href="#"]', { timeout: 45000 });
   await page.waitForTimeout(1000);
 
-  const downloadButton = page.getByRole('button', { name: 'Download into PDF' });
+  const downloadButton = page.getByRole('button', { name: 'Download into PDF', exact: true });
   const [download] = await Promise.all([
     page.waitForEvent('download', { timeout: 30000 }),
     downloadButton.click(),
@@ -317,10 +317,14 @@ async function downloadListingRows(page, listingUrl, sessionId, log) {
 }
 
 async function fetchDetailForRow(page, row) {
-  const numberBox = page.getByRole('textbox', { name: 'Solicitation Number' });
+  const numberBox = page.getByRole('textbox', { name: 'Solicitation Number', exact: true });
   await numberBox.fill('');
   await numberBox.fill(row.number);
-  await page.getByRole('button', { name: 'Search' }).click();
+  // exact: true is required — the page also has a "Collapse Search" toggle
+  // link with role="button", and Playwright's default substring matching on
+  // accessible name matches both, causing a strict-mode ambiguity error
+  // (confirmed live).
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
 
   const resultLink = page.locator('a[href="#"]', { hasText: row.number }).first();
   await resultLink.waitFor({ state: 'visible', timeout: 20000 });
