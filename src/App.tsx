@@ -31,6 +31,7 @@ import SubsNetwork from "./pages/SubsNetwork";
 import Opportunities from "./pages/Opportunities";
 import OpportunityReport from "./pages/OpportunityReport";
 import QualificationProfile from "./pages/QualificationProfile";
+import OAuthConsent from "./pages/OAuthConsent";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -49,6 +50,7 @@ const App = () => (
             <Route path="/landing-v1" element={<LandingV1 />} />
             <Route path="/landing-full" element={<LandingFull />} />
             <Route path="/auth" element={<Auth />} />
+            <Route path="/.lovable/oauth/consent" element={<OAuthConsent />} />
             <Route path="/calendar" element={<CalendarDashboard />} />
             <Route path="/opportunities" element={<Opportunities />} />
             <Route path="/opportunities/:id" element={<OpportunityReport />} />
