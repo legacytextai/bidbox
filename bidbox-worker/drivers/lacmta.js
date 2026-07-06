@@ -34,7 +34,7 @@
 // Explicitly out of scope: document acquisition (Oracle iSupplier vendor
 // registration requires manual agency approval), Oracle SSO, OCR.
 
-const { connectBrowserbaseSession } = require('../lib/browserbase');
+const { connectBrowserbaseSession, fetchBrowserbaseDownloadZip } = require('../lib/browserbase');
 
 const DEFAULT_LISTING_URL = 'https://business.metro.net/webcenter/portal/VendorPortal/pages_home/solicitations/openSolicitations';
 
@@ -288,7 +288,7 @@ function applyDetailFields(candidate, fields) {
 
 // ── Playwright orchestration (Browserbase transport) ─────────────────────────
 
-async function downloadListingRows(page, listingUrl, log) {
+async function downloadListingRows(page, listingUrl, sessionId, log) {
   await page.goto(listingUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
   await page.waitForSelector('a[href="#"]', { timeout: 45000 });
   await page.waitForTimeout(1000);
@@ -298,15 +298,18 @@ async function downloadListingRows(page, listingUrl, log) {
     page.waitForEvent('download', { timeout: 30000 }),
     downloadButton.click(),
   ]);
-  // download.path() only resolves to a local filesystem path when Playwright
-  // launched the browser itself. Over a remote CDP connection (Browserbase),
-  // the file lives on the remote machine, so path()+readFileSync() throws
-  // ENOENT locally. createReadStream() streams the bytes over the CDP
-  // connection regardless of where the browser is running.
-  const stream = await download.createReadStream();
-  const chunks = [];
-  for await (const chunk of stream) chunks.push(chunk);
-  const bytes = Buffer.concat(chunks);
+  const failure = await download.failure();
+  if (failure) {
+    throw new Error(`PDF download failed: ${failure}`);
+  }
+  // Neither download.path() nor download.createReadStream() work over a
+  // remote Browserbase CDP connection: both rely on local filesystem access
+  // to the browser process, which doesn't exist remotely. Confirmed live —
+  // createReadStream() silently returned zero bytes rather than throwing.
+  // connectBrowserbaseSession() already enabled Browserbase's download sync
+  // via Browser.setDownloadBehavior; retrieve the synced file through
+  // Browserbase's own session downloads endpoint instead.
+  const bytes = await fetchBrowserbaseDownloadZip(sessionId, log);
   const text = await extractPdfText(bytes);
   const rows = parseListingPdfText(text);
   log(`Listing PDF export parsed rows: ${rows.length}`);
@@ -349,7 +352,7 @@ async function scrapeLacmta(source, log = console.log) {
     const page = session.page;
     await page.setViewportSize({ width: 1440, height: 1000 });
 
-    const rows = await downloadListingRows(page, listingUrl, (msg) => log(`[${source.source_name}] ${msg}`));
+    const rows = await downloadListingRows(page, listingUrl, session.sessionId, (msg) => log(`[${source.source_name}] ${msg}`));
     if (rows.length === 0) {
       recordError('LA Metro listing export parsed 0 rows — export format may have changed');
     }
