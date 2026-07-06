@@ -95,3 +95,59 @@ The response should include `trigger`, `force`, `sources_considered`,
 3. Scan tasks created and completed in `agent_tasks` (`status='complete'`).
 4. New candidates appear in `opportunity_candidates` with `created_at` in the window.
 5. Newly discovered candidates progress to `opportunity_intelligence_status='ready'`.
+
+---
+
+## Nightly Scheduler Health — 2026-07-06 Investigation
+
+Read-only investigation of the midnight refresh pipeline. Overall result: **healthy**.
+
+- Midnight scheduler is healthy.
+- Cron (`nightly-refresh-opportunities`) is firing nightly.
+- Railway worker is processing the queue successfully.
+- No stuck tasks were found.
+- Queue drain time is approximately 10 minutes.
+- LA County DPW scans are healthy.
+- Caltrans scans are healthy.
+
+Three infrastructure items were identified during this investigation and are tracked below as technical debt — none of them indicate the pipeline is failing; they are logging/observability and completeness gaps.
+
+---
+
+## Technical Debt
+
+### 1. PlanetBids false failure detection
+
+**Issue:** Many PlanetBids sources complete successfully and refresh opportunities, but are still marked `failed`.
+
+**Observed symptom:**
+```
+No Bidding rows rendered... found_bids=10
+```
+This appears even though candidates were successfully refreshed in the same run.
+
+**Assessment:** This is primarily an **observability issue**, not an acquisition failure — the scan is doing its job; the status reporting is wrong.
+
+**Future work:** Improve scan-success detection logic so `last_refresh_status` accurately reflects actual scan results (candidates found/refreshed) rather than flagging on this log pattern.
+
+### 2. PlanetBids Ember render timeout
+
+**Observed error:**
+```
+page.waitForSelector(...) Timeout 30000ms hidden
+```
+Occurs on a subset of PlanetBids tenants.
+
+**Future work:** Investigate wait conditions and improve resilience for the affected tenants.
+
+### 3. Expected `document_prefetch` failures (pending authenticated document acquisition)
+
+**Current behavior:** Authenticated PlanetBids document acquisition is not yet complete. Until it ships, expected failures such as:
+```
+No PlanetBids bearer token captured after login
+```
+continue appearing.
+
+**Assessment:** Expected/known noise, not a defect, until authenticated document acquisition is completed.
+
+**Future work:** Once document acquisition ships, revisit logging severity and eliminate this expected-noise failure mode.
