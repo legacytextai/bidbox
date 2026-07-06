@@ -68,46 +68,13 @@ async function connectBrowserbaseSession(log = console.log) {
   return { browser, context, page, sessionId };
 }
 
-// Retrieves every file downloaded during the session as a single zip
-// (Browserbase's session-level downloads endpoint), unzips it in memory via
-// yauzl (same library already used by drivers/archive_extraction.js), and
-// returns the bytes of the first entry. Suited for drivers that trigger
-// exactly one download per session, like lacmta.js's PDF export — a driver
-// triggering multiple downloads would need to return all entries, not just
-// the first.
-async function fetchBrowserbaseDownloadZip(sessionId, log = console.log) {
-  const apiKey = process.env.BROWSERBASE_API_KEY;
-  if (!apiKey) {
-    throw new Error('BROWSERBASE_API_KEY not configured');
-  }
-
-  // Browserbase docs: "Files sync in real time, but large downloads may not
-  // be immediately available" — poll briefly rather than assuming the first
-  // request already has the file.
-  const maxAttempts = 5;
-  let lastZipBytes = null;
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const res = await fetch(`${API_BASE}/sessions/${sessionId}/downloads`, {
-      headers: { 'x-bb-api-key': apiKey },
-    });
-    if (!res.ok) {
-      throw new Error(`Browserbase downloads fetch failed: ${res.status}`);
-    }
-    const zipBytes = Buffer.from(await res.arrayBuffer());
-    if (zipBytes.length > 0) {
-      lastZipBytes = zipBytes;
-      break;
-    }
-    log(`Browserbase downloads not ready yet (attempt ${attempt}/${maxAttempts}) — retrying`);
-    await new Promise((r) => setTimeout(r, 2000));
-  }
-
-  if (!lastZipBytes) {
-    throw new Error('Browserbase downloads endpoint returned no data after retrying');
-  }
-
+// Returns the bytes of the first non-directory entry in a zip buffer, or
+// null if the zip is valid but contains no files (a real possibility here —
+// an empty zip's End-Of-Central-Directory record is ~22 bytes, so it passes
+// a naive "did we get any bytes back" check while still having zero files).
+function extractFirstFileFromZip(zipBytes) {
   return new Promise((resolve, reject) => {
-    yauzl.fromBuffer(lastZipBytes, { lazyEntries: true }, (err, zipfile) => {
+    yauzl.fromBuffer(zipBytes, { lazyEntries: true }, (err, zipfile) => {
       if (err) return reject(err);
       let resolved = false;
       zipfile.readEntry();
@@ -129,10 +96,50 @@ async function fetchBrowserbaseDownloadZip(sessionId, log = console.log) {
         });
       });
       zipfile.on('end', () => {
-        if (!resolved) reject(new Error('Browserbase download zip contained no files'));
+        if (!resolved) resolve(null);
       });
     });
   });
+}
+
+// Retrieves every file downloaded during the session as a single zip
+// (Browserbase's session-level downloads endpoint), unzips it in memory via
+// yauzl (same library already used by drivers/archive_extraction.js), and
+// returns the bytes of the first entry. Suited for drivers that trigger
+// exactly one download per session, like lacmta.js's PDF export — a driver
+// triggering multiple downloads would need to return all entries, not just
+// the first.
+async function fetchBrowserbaseDownloadZip(sessionId, log = console.log) {
+  const apiKey = process.env.BROWSERBASE_API_KEY;
+  if (!apiKey) {
+    throw new Error('BROWSERBASE_API_KEY not configured');
+  }
+
+  // Browserbase docs: "Files sync in real time, but large downloads may not
+  // be immediately available." The endpoint can return a structurally valid
+  // but empty zip (no entries yet) before the file finishes syncing, so the
+  // retry condition must check for an actual file inside, not just a
+  // non-empty HTTP response.
+  const maxAttempts = 6;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const res = await fetch(`${API_BASE}/sessions/${sessionId}/downloads`, {
+      headers: { 'x-bb-api-key': apiKey },
+    });
+    if (!res.ok) {
+      throw new Error(`Browserbase downloads fetch failed: ${res.status}`);
+    }
+    const zipBytes = Buffer.from(await res.arrayBuffer());
+    if (zipBytes.length > 0) {
+      const fileBytes = await extractFirstFileFromZip(zipBytes);
+      if (fileBytes && fileBytes.length > 0) {
+        return fileBytes;
+      }
+    }
+    log(`Browserbase download not synced yet (attempt ${attempt}/${maxAttempts}) — retrying`);
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+
+  throw new Error('Browserbase download did not sync any files after retrying');
 }
 
 module.exports = { connectBrowserbaseSession, fetchBrowserbaseDownloadZip };
