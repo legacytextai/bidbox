@@ -1487,6 +1487,8 @@ MVP boundary:
 
 ### 7.5. F5 — Qualification After Analysis ⏸ PAUSED
 
+> **Architecture note (2026-07-06):** when F5 resumes, qualification output is company-scoped — written to `pursuit_qualifications` under the pursuit model, never to columns on the shared `opportunity_candidates` rows. The existing `auto_status`/`qualification_score` candidate columns and the hardcoded worker `profile_id` (see 5.4) are retired at that point. See `docs/architecture/unified-data-model.md` §4 (canonical vs tenant boundary) and §7 (Qualification Agent).
+
 Purpose: run qualification after Project Intelligence exists.
 
 Current repo support:
@@ -1520,6 +1522,8 @@ MVP boundary:
 ---
 
 ## Task 8 - PHASE G: PURSUIT MANAGEMENT & PROJECT WORKSPACE ❌ NOT STARTED
+
+> **Architecture note (2026-07-06):** Phase G must begin with the tenant-boundary foundation — `companies` + `company_members` + `pursuits`, with triage state cut over from the shared `opportunity_candidates` columns to company-scoped `pursuits` rows — before its remaining workspace work. Building the workspace on the current linkage (global candidate `status`/`review_notes`, single `converted_project_id` pointer) would pour concrete on the single-tenant defect documented in `docs/architecture/unified-data-model.md` (§2, §6 M1–M4) and force a data migration with customer data on board. Pursuit = decision spine; `projects` remains the execution workspace under it. Pending one final engineering review of the tenant-boundary/pursuit refactor before implementation begins.
 
 Purpose:
 
@@ -1864,4 +1868,5 @@ Deferred:
 ### 10.4. Roadmap Ownership
 - `docs/agent-architecture-task-list.md` is the source of truth for Opportunity Intelligence execution work
 - `docs/initiatives/opportunity-intelligence-mvp.md` is the product strategy source of truth
+- `docs/architecture/` is the architectural source of truth (engineering principles, unified data model, Procurement Atlas); on architectural questions it takes precedence over execution docs — see `docs/architecture/README.md` for precedence rules
 - `docs/initiatives/opportunity-intelligence-implementation-plan.md` is the practical implementation plan that connects strategy to this roadmap

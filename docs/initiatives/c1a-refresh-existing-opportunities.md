@@ -4,6 +4,8 @@
 **Phase:** C1A Opportunity Discovery Reliability  
 **Created:** June 2026
 
+> **Architecture note (2026-07-06):** when C1A is picked up, implement it as `opportunity_revisions` (a diff snapshot written where `changedPortalMetadata()` already computes and discards the change set) feeding the Addenda Agent — change detection, addenda classification, deadline-change candidates, and notifications to affected pursuits. See `docs/architecture/unified-data-model.md` §5 (`opportunity_revisions` spec) and §7–8 (Addenda Agent, event flow without a bus). This is the temporal layer of the unified data model, not just a metadata refresh fix.
+
 ## Executive Summary
 
 BidBox discovery currently behaves as insert-only for known opportunities. When a scanner finds a duplicate `source_url`, the worker logs `Already known` and skips the row. That is safe for avoiding duplicate cards, but it prevents parser improvements and updated portal metadata from reaching existing `opportunity_candidates`.
