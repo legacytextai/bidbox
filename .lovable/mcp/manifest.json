@@ -1,0 +1,112 @@
+{
+  "version": 1,
+  "sdk_version": "0.20.0",
+  "path": "/mcp",
+  "auth": {
+    "type": "oauth",
+    "issuer": "https://ztuyjlyuzasbceepezua.supabase.co/auth/v1",
+    "accepted_audiences": [
+      "authenticated"
+    ]
+  },
+  "mcp": {
+    "server": {
+      "name": "bidbox-mcp",
+      "version": "0.1.0",
+      "title": "BidBox"
+    },
+    "tools": [
+      {
+        "name": "list_projects",
+        "title": "List projects",
+        "description": "List the signed-in user's BidBox projects with bid due dates and status.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "description": "Max rows to return (default 25)."
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "live",
+                "dead",
+                "all"
+              ],
+              "description": "Filter by status (default all)."
+            }
+          },
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "get_project",
+        "title": "Get project",
+        "description": "Fetch a single BidBox project with its files and bid submissions.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "project_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Project UUID."
+            }
+          },
+          "required": [
+            "project_id"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "list_opportunities",
+        "title": "List opportunities",
+        "description": "List public-works bid opportunities discovered by BidBox, filterable by county and search term.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "description": "Max rows (default 25)."
+            },
+            "county": {
+              "type": "string",
+              "description": "Filter by county name, e.g. 'Los Angeles'."
+            },
+            "search": {
+              "type": "string",
+              "description": "Free-text match against title/agency."
+            }
+          },
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": null
+      }
+    ]
+  }
+}
