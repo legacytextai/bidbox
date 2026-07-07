@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { Building2, ExternalLink, RefreshCw, ChevronDown, Check, Filter, CalendarCheck2, Bookmark } from "lucide-react";
 import { resolveEstimatedValue, resolvePortalStyle } from "@/lib/opportunityDomain";
+import { fetchCompanyPursuits, upsertPursuit, type PursuitLite } from "@/lib/tenant";
 import { Layout } from "@/components/Layout";
 import {
   TooltipProvider,
@@ -295,6 +296,9 @@ const FacetMultiSelect = ({
 const Opportunities = () => {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [savedCandidateIds, setSavedCandidateIds] = useState<Set<string>>(new Set());
+  // Tenant boundary: company-scoped pursuit rows overlaid on canonical
+  // candidates (dual-read; legacy candidate columns remain the fallback).
+  const [pursuitByCandidate, setPursuitByCandidate] = useState<Map<string, PursuitLite>>(new Map());
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState("all");
   const [sortKey, setSortKey] = useState<SortKey>("due_asc");
@@ -367,6 +371,7 @@ const Opportunities = () => {
     }
 
     const rows: Candidate[] = (data || []).map(mapRow);
+    let pursuits = new Map<string, PursuitLite>();
     if (session) {
       const { data: savedRows, error: savedError } = await (supabase as any)
         .from("saved_opportunities")
@@ -375,6 +380,8 @@ const Opportunities = () => {
       if (!savedError) {
         setSavedCandidateIds(new Set((savedRows ?? []).map((r: any) => r.opportunity_candidate_id).filter(Boolean)));
       }
+      pursuits = await fetchCompanyPursuits();
+      setPursuitByCandidate(pursuits);
     }
 
     if (silent) {
@@ -414,7 +421,10 @@ const Opportunities = () => {
 
     if (!silent) {
       const initialNotes: Record<string, string> = {};
-      rows.forEach((r) => { initialNotes[r.id] = r.review_notes ?? ""; });
+      // Dual-read: pursuit notes take precedence; legacy column is the fallback.
+      rows.forEach((r) => {
+        initialNotes[r.id] = pursuits.get(r.id)?.triage_notes ?? r.review_notes ?? "";
+      });
       setNotes(initialNotes);
       setLoading(false);
     }
@@ -691,12 +701,25 @@ const Opportunities = () => {
 
   const handleNotesSave = async (id: string) => {
     const note = notes[id] ?? "";
+    // Dual-write: pursuits (tenant boundary) + legacy candidate column.
+    // Legacy stays authoritative until the cleanup phase; pursuit write is
+    // fail-soft and never blocks the save.
     const { error } = await supabase
       .from("opportunity_candidates")
       .update({ review_notes: note || null })
       .eq("id", id);
     if (error) {
       toast({ title: "Error", description: "Failed to save notes", variant: "destructive" });
+      return;
+    }
+    const wrote = await upsertPursuit(id, { triage_notes: note || null });
+    if (wrote) {
+      setPursuitByCandidate((prev) => {
+        const next = new Map(prev);
+        const existing = next.get(id);
+        if (existing) next.set(id, { ...existing, triage_notes: note || null });
+        return next;
+      });
     }
   };
 
@@ -855,7 +878,10 @@ const Opportunities = () => {
   }, [candidates, matchesFacets, savedCandidateIds]);
 
   const renderCard = (candidate: Candidate, _index: number, navIds?: string[]) => {
-    const onCalendar = candidate.status === "converted" && !!candidate.converted_project_id;
+    // Dual-read: pursuit linkage first, legacy converted columns as fallback.
+    const pursuitProjectId = pursuitByCandidate.get(candidate.id)?.project_id ?? null;
+    const onCalendar = Boolean(pursuitProjectId) ||
+      (candidate.status === "converted" && !!candidate.converted_project_id);
     const estimatedValue = formatEstimatedValue(candidate.crawl_data);
     const goToOpportunity = () => {
       sessionStorage.setItem(

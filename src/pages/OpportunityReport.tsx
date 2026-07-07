@@ -44,6 +44,7 @@ import { OpportunityOverviewTab } from "@/components/OpportunityOverviewTab";
 import { OpportunityDocumentsTab } from "@/components/OpportunityDocumentsTab";
 import { resolveOIStyle, resolveOILabel } from "@/lib/opportunityDomain";
 import { resolveProjectCounty } from "@/lib/projectCountyResolver";
+import { upsertPursuit } from "@/lib/tenant";
 import type { DossierFinding, DossierCitation } from "@/hooks/useOpportunityDossier";
 import {
   FindingStatus,
@@ -563,6 +564,9 @@ const OpportunityReport = () => {
           .update({ status: "converted", converted_project_id: projectId, opportunity_lifecycle_status: "added_to_calendar" })
           .eq("id", candidate.id);
         if (updateError) throw updateError;
+        // Dual-write to the tenant boundary (fail-soft; the legacy columns
+        // above stay authoritative until the cleanup phase).
+        await upsertPursuit(candidate.id, { stage: "estimating", project_id: projectId });
         setCandidate((cur) => cur ? { ...cur, status: "converted", converted_project_id: projectId, opportunity_lifecycle_status: "added_to_calendar" } : cur);
       };
 

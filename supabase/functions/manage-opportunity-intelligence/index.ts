@@ -106,6 +106,22 @@ async function deleteOpportunityProject(adminClient: any, projectId: string, use
   await adminClient.from("project_trades").delete().eq("project_id", projectId);
   await adminClient.from("project_bid_readiness").delete().eq("project_id", projectId);
 
+  // Tenant boundary dual-write: unlink the owning company's pursuit BEFORE
+  // deleting the project — pursuits.project_id is ON DELETE SET NULL, so the
+  // precise project_id match only exists while the project row does.
+  // Fail-soft: tolerated if the tenant migrations are not applied yet.
+  try {
+    const { error: pursuitResetError } = await adminClient
+      .from("pursuits")
+      .update({ project_id: null, stage: "reviewing" })
+      .eq("project_id", projectId);
+    if (pursuitResetError) {
+      console.warn(`Pursuit unlink skipped (${pursuitResetError.message})`);
+    }
+  } catch (e) {
+    console.warn(`Pursuit unlink skipped: ${e instanceof Error ? e.message : e}`);
+  }
+
   const { error: projectDeleteError } = await adminClient
     .from("projects")
     .delete()
