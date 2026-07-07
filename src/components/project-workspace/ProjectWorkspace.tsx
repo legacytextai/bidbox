@@ -218,7 +218,7 @@ export function ProjectWorkspace({
 
           <div className="flex flex-wrap items-center gap-2">
             <Select value={pursuitStatus} onValueChange={handlePursuitStatusChange} disabled={savingPursuit}>
-              <SelectTrigger className="w-36 h-9 text-sm">
+              <SelectTrigger className={`w-36 h-9 text-sm ${PURSUIT_STATUS_STYLES[ps]}`}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
