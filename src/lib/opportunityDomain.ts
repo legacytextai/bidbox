@@ -2,14 +2,24 @@
 // Cards, Overview tab, and future Project Workspace consume these
 // rather than duplicating formatting logic inline.
 
-export const PORTAL_STYLES: Record<string, string> = {
+import type { PortalType } from "./platformDetection";
+
+type SupportedPortalType = Exclude<PortalType, "unknown">;
+
+export const PORTAL_STYLES = {
   caltrans: "bg-blue-500/10 text-blue-700",
-  planetbids: "bg-purple-500/10 text-purple-700",
+  planetbids: "bg-violet-500/10 text-violet-700",
   epro: "bg-teal-500/10 text-teal-700",
   ersp: "bg-orange-500/10 text-orange-700",
-  bonfirehub: "bg-pink-500/10 text-pink-700",
+  bonfirehub: "bg-fuchsia-500/10 text-fuchsia-700",
   ramp: "bg-indigo-500/10 text-indigo-700",
-};
+  lacounty_dpw: "bg-emerald-500/10 text-emerald-700",
+  lacmta: "bg-rose-500/10 text-rose-700",
+} satisfies Record<SupportedPortalType, string>;
+
+function isSupportedPortalType(portalType: string | null | undefined): portalType is SupportedPortalType {
+  return Boolean(portalType && portalType in PORTAL_STYLES);
+}
 
 export function resolveTitle(candidate: { raw_title: string | null }): string {
   return candidate.raw_title?.trim() || "Untitled Opportunity";
@@ -24,7 +34,7 @@ export function resolvePortalLabel(portalType: string | null | undefined): strin
 }
 
 export function resolvePortalStyle(portalType: string | null | undefined): string {
-  return PORTAL_STYLES[portalType ?? ""] ?? "bg-gray-500/10 text-gray-600";
+  return isSupportedPortalType(portalType) ? PORTAL_STYLES[portalType] : "bg-gray-500/10 text-gray-600";
 }
 
 export function resolveEstimatedValue(crawlData: any): string | null {

@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { Building2, ExternalLink, RefreshCw, ChevronDown, Check, Filter, CalendarCheck2, Bookmark } from "lucide-react";
-import { PORTAL_STYLES, resolveEstimatedValue } from "@/lib/opportunityDomain";
+import { resolveEstimatedValue, resolvePortalStyle } from "@/lib/opportunityDomain";
 import { Layout } from "@/components/Layout";
 import {
   TooltipProvider,
@@ -938,9 +938,7 @@ const Opportunities = () => {
           {candidate.portal_type && (
             <div className="flex items-center gap-2 flex-wrap">
               <span
-                className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${
-                  PORTAL_STYLES[candidate.portal_type] ?? "bg-gray-500/10 text-gray-600"
-                }`}
+                className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${resolvePortalStyle(candidate.portal_type)}`}
               >
                 {candidate.portal_type}
               </span>
