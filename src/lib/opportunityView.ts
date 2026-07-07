@@ -142,7 +142,7 @@ export interface WorkspaceProjectFile {
 export interface WorkspaceProjectTrade {
   id: string;
   trade_type_id: string;
-  trade_types: { name: string } | null;
+  trade_types: { code: string; name: string; category: string | null } | null;
 }
 
 export interface WorkspaceProjectSubmissionFile {

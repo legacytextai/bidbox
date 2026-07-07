@@ -1,6 +1,7 @@
 const REPORT_SCHEMA_VERSION = 'f4_mvp_v1';
 const MAX_CHUNKS_PER_CATEGORY = 18;
 const MAX_CHUNK_CHARS = 1800;
+const MAX_TRADE_TAXONOMY_ITEMS = 120;
 const AI_GATEWAY_URL = process.env.PROJECT_INTELLIGENCE_AI_URL
   || 'https://api.openai.com/v1/chat/completions';
 const AI_MODEL = process.env.PROJECT_INTELLIGENCE_MODEL || 'gpt-5.4-mini';
@@ -236,6 +237,23 @@ function buildEvidencePackets(chunks) {
   return packets;
 }
 
+async function loadTradeTaxonomy(supabase) {
+  const { data, error } = await supabase
+    .from('trade_types')
+    .select('id, code, name, category')
+    .eq('is_active', true)
+    .order('category', { ascending: true })
+    .order('code', { ascending: true })
+    .limit(MAX_TRADE_TAXONOMY_ITEMS);
+  if (error) throw new Error(`Trade taxonomy lookup failed: ${error.message}`);
+  return (data ?? []).map((trade) => ({
+    id: trade.id,
+    code: trade.code,
+    name: trade.name,
+    category: trade.category,
+  }));
+}
+
 function getPortalMetadata(candidate) {
   const crawl = candidate?.crawl_data ?? {};
   return {
@@ -271,7 +289,7 @@ function getPortalMetadata(candidate) {
   };
 }
 
-function buildPrompt({ candidate, evidencePackets }) {
+function buildPrompt({ candidate, evidencePackets, tradeTaxonomy, bidItems }) {
   const portalMetadata = getPortalMetadata(candidate);
   return [
     {
@@ -294,6 +312,8 @@ Core rule: NO CITATION = NO FACT.
   3. Then include one or more bullets starting with "Requirements / Risks:" for major requirements or risks.
 - Bid due date/time is critical. If documents, portal_metadata, or candidate metadata disagree on bid due time, create a key_dates finding with status "conflict" or "needs_review"; do not silently choose one.
 - Mandatory pre-bid/job-walk is critical. Treat required site visits, mandatory pre-bid meetings, attendance lists, job walk sign-in sheets, and pre-bid conference references as critical bid_requirements/key_dates evidence. If document names or portal_metadata indicate a job walk but the exact date/time is unclear, create a mandatory_job_walk finding with status "needs_review".
+- Perform a dedicated trade extraction pass. Review bid schedules, specifications, plans/scope narratives, line items, and requirements evidence. Identify every reasonably required trade using only the provided BidBox trade taxonomy codes. Prefer specific specialty trades over broad general licenses when evidence supports them. Include a trade_breakdown finding for each distinct required trade with value_jsonb.trade_codes containing matching taxonomy code(s). Do not include a trade unless there is cited evidence for the work.
+- Perform a dedicated risk extraction pass. Return risk_flags only for cited schedule, access, traffic control, liquidated damages, mandatory attendance, bonding/insurance, phasing, hazardous material, long-lead, or unusual requirement evidence. Do not invent risk flags.
 
 Return structured findings. Found and conflict findings must include citations.`,
     },
@@ -311,8 +331,14 @@ Return structured findings. Found and conflict findings must include citations.`
           metadata: candidate.crawl_data,
         },
         portal_metadata: portalMetadata,
+        trade_taxonomy: tradeTaxonomy,
+        portal_bid_items: bidItems,
         required_sections: CATEGORIES.map((category) => category.key),
         critical_field_keys: Array.from(CRITICAL_FIELD_KEYS),
+        required_analysis_passes: {
+          trade_breakdown: 'For every required trade supported by evidence, create a cited trade_breakdown finding. value_jsonb must include { trade_codes: string[], rationale: string }. Use only codes from trade_taxonomy.',
+          risk_flags: 'For every material risk supported by evidence, create a cited risk_flags finding. If no risk is supported, omit rather than inventing one.',
+        },
         evidence_packets: evidencePackets,
         output_contract: {
           executive_summary: {
@@ -457,7 +483,7 @@ function parseAiResponse(data, responseStatus) {
   return { report: parsed, diagnostics };
 }
 
-async function callAi({ candidate, evidencePackets }) {
+async function callAi({ candidate, evidencePackets, tradeTaxonomy, bidItems }) {
   const apiKey = getAiKey();
   if (!apiKey) {
     throw new Error('Project Intelligence AI key is not configured. Set OPENAI_API_KEY in the worker environment.');
@@ -471,7 +497,7 @@ async function callAi({ candidate, evidencePackets }) {
     },
     body: JSON.stringify({
       model: AI_MODEL,
-      messages: buildPrompt({ candidate, evidencePackets }),
+      messages: buildPrompt({ candidate, evidencePackets, tradeTaxonomy, bidItems }),
       tools: [getToolSchema()],
       tool_choice: {
         type: 'function',
@@ -792,6 +818,14 @@ async function loadEvidence(supabase, candidateId) {
   if (chunksError) throw new Error(`Chunk lookup failed: ${chunksError.message}`);
   if (!chunks || chunks.length === 0) throw new Error('No processed document chunks found for Project Intelligence');
 
+  const { data: bidItems, error: bidItemsError } = await supabase
+    .from('opportunity_bid_items')
+    .select('item_number, item_code, description, quantity_raw, unit_of_measure, section_name, source_order')
+    .eq('opportunity_candidate_id', candidateId)
+    .order('source_order', { ascending: true })
+    .limit(100);
+  if (bidItemsError) throw new Error(`Bid item lookup failed: ${bidItemsError.message}`);
+
   const docMap = new Map((documents ?? []).map((doc) => [doc.id, doc]));
   const enrichedChunks = chunks
     .map((chunk) => {
@@ -812,6 +846,7 @@ async function loadEvidence(supabase, candidateId) {
     documents: documents ?? [],
     pages: pages ?? [],
     chunks: enrichedChunks,
+    bidItems: bidItems ?? [],
   };
 }
 
@@ -946,6 +981,106 @@ function calculateConfidenceScore(findings) {
   return Number(score.toFixed(2));
 }
 
+function collectTradeCodesFromValue(value) {
+  const codes = new Set();
+  const visit = (item) => {
+    if (item == null) return;
+    if (typeof item === 'string') {
+      const matches = item.match(/\b(?:A|B|C-\d{1,2}|D-\d{1,2})\b/gi) ?? [];
+      matches.forEach((code) => codes.add(code.toUpperCase()));
+      return;
+    }
+    if (Array.isArray(item)) {
+      item.forEach(visit);
+      return;
+    }
+    if (typeof item === 'object') {
+      for (const value of Object.values(item)) visit(value);
+    }
+  };
+  visit(value);
+  return Array.from(codes);
+}
+
+function extractSuggestedTradeCodes(findings) {
+  const codes = new Set();
+  for (const finding of findings) {
+    if (finding.category !== 'trade_breakdown') continue;
+    if (!isFactualStatus(finding.status) && finding.status !== 'needs_review') continue;
+    collectTradeCodesFromValue(finding.value_jsonb).forEach((code) => codes.add(code));
+    collectTradeCodesFromValue(finding.value_text).forEach((code) => codes.add(code));
+  }
+  return Array.from(codes);
+}
+
+async function populateProjectTradesIfEmpty({ supabase, candidateId, findings, log }) {
+  const suggestedCodes = extractSuggestedTradeCodes(findings);
+  if (suggestedCodes.length === 0) {
+    return { populated: false, inserted: 0, reason: 'no_suggested_trade_codes' };
+  }
+
+  const { data: candidate, error: candidateError } = await supabase
+    .from('opportunity_candidates')
+    .select('converted_project_id')
+    .eq('id', candidateId)
+    .maybeSingle();
+  if (candidateError) throw new Error(`Candidate project lookup failed: ${candidateError.message}`);
+
+  let projectId = candidate?.converted_project_id ?? null;
+  if (!projectId) {
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id')
+      .eq('origin', 'opportunity_intelligence')
+      .eq('source_opportunity_candidate_id', candidateId)
+      .maybeSingle();
+    if (projectError) throw new Error(`Linked project lookup failed: ${projectError.message}`);
+    projectId = project?.id ?? null;
+  }
+
+  if (!projectId) {
+    return { populated: false, inserted: 0, reason: 'no_linked_project' };
+  }
+
+  const { count, error: countError } = await supabase
+    .from('project_trades')
+    .select('id', { count: 'exact', head: true })
+    .eq('project_id', projectId);
+  if (countError) throw new Error(`Project trade count failed: ${countError.message}`);
+  if ((count ?? 0) > 0) {
+    return { populated: false, inserted: 0, reason: 'project_trades_not_empty' };
+  }
+
+  const { data: tradeTypes, error: tradeError } = await supabase
+    .from('trade_types')
+    .select('id, code')
+    .in('code', suggestedCodes);
+  if (tradeError) throw new Error(`Suggested trade lookup failed: ${tradeError.message}`);
+
+  const rows = (tradeTypes ?? []).map((trade) => ({
+    project_id: projectId,
+    trade_type_id: trade.id,
+  }));
+  if (rows.length === 0) {
+    return { populated: false, inserted: 0, reason: 'suggested_codes_not_in_taxonomy' };
+  }
+
+  const { error: insertError } = await supabase
+    .from('project_trades')
+    .insert(rows);
+  if (insertError) throw new Error(`Project trade seed insert failed: ${insertError.message}`);
+
+  log(`Seeded ${rows.length} project trade(s) from F4 trade findings for project ${projectId}`);
+  return { populated: true, inserted: rows.length, reason: null };
+}
+
+function categoryCounts(findings) {
+  return findings.reduce((acc, finding) => {
+    acc[finding.category] = (acc[finding.category] ?? 0) + 1;
+    return acc;
+  }, {});
+}
+
 async function runProjectIntelligence(task, supabase, log) {
   const { candidate_id } = task.payload ?? {};
   if (!candidate_id) throw new Error('project_intelligence task missing candidate_id');
@@ -988,11 +1123,17 @@ async function runProjectIntelligence(task, supabase, log) {
   try {
     await updateTaskStage(supabase, task, 'report_generation');
     const evidence = await loadEvidence(supabase, candidate_id);
+    const tradeTaxonomy = await loadTradeTaxonomy(supabase);
     const chunkMap = new Map(evidence.chunks.map((chunk) => [chunk.id, chunk]));
     const pageMap = new Map(evidence.pages.map((page) => [`${page.opportunity_document_id}:${page.page_number}`, page]));
     const evidencePackets = buildEvidencePackets(evidence.chunks);
     const portalMetadata = getPortalMetadata(evidence.candidate);
-    const { report: raw, diagnostics: aiDiagnostics } = await callAi({ candidate: evidence.candidate, evidencePackets });
+    const { report: raw, diagnostics: aiDiagnostics } = await callAi({
+      candidate: evidence.candidate,
+      evidencePackets,
+      tradeTaxonomy,
+      bidItems: evidence.bidItems,
+    });
     log(
       `F4 OpenAI response: status=${aiDiagnostics.http_status} ` +
       `finish_reason=${aiDiagnostics.finish_reason ?? 'unknown'} ` +
@@ -1011,6 +1152,14 @@ async function runProjectIntelligence(task, supabase, log) {
       `citations=${validated.citations.length} rejected=${validated.rejected.length}`
     );
     const rollup = rollupFindings(validated.findings);
+    const tradeSeed = safeReanalysis
+      ? { populated: false, inserted: 0, reason: 'safe_reanalysis_does_not_seed_project_trades' }
+      : await populateProjectTradesIfEmpty({
+          supabase,
+          candidateId: candidate_id,
+          findings: validated.findings,
+          log,
+        });
     const persisted = await replaceReportEvidence(
       supabase,
       report.id,
@@ -1072,7 +1221,11 @@ async function runProjectIntelligence(task, supabase, log) {
             findings_count: validated.findings.length,
             citations_count: validated.citations.length,
             rejected_findings_count: validated.rejected.length,
+            findings_by_category: categoryCounts(validated.findings),
           },
+          trade_taxonomy_count: tradeTaxonomy.length,
+          bid_items_count: evidence.bidItems.length,
+          project_trades_seed: tradeSeed,
           findings_inserted: persisted.findings_inserted,
           citations_inserted: persisted.citations_inserted,
           validator_warnings: warningSummary

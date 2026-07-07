@@ -271,9 +271,9 @@ const OpportunityReport = () => {
     return {
       currentStep: activeAnalysisStage === "metadata_refresh" ? 1 : activeAnalysisStage === "report_generation" ? 2 : 3,
       steps: [
-        { key: "metadata_refresh", label: "Refreshing Source Data", state: currentRank > 1 ? "complete" : "active" },
-        { key: "report_generation", label: "Generating Intelligence Report", state: currentRank > 2 ? "complete" : currentRank === 2 ? "active" : "pending" },
-        { key: "validation", label: activeAnalysisStage === "complete" ? "Complete" : "Validating Findings", state: currentRank > 3 ? "complete" : currentRank === 3 ? "active" : "pending" },
+        { key: "metadata_refresh", label: "Reading all project documents", state: currentRank > 1 ? "complete" : "active" },
+        { key: "report_generation", label: "Building the intelligence report", state: currentRank > 2 ? "complete" : currentRank === 2 ? "active" : "pending" },
+        { key: "validation", label: activeAnalysisStage === "complete" ? "Complete" : "Checking cited findings", state: currentRank > 3 ? "complete" : currentRank === 3 ? "active" : "pending" },
       ],
     };
   }, [activeAnalysisStage]);
@@ -410,6 +410,65 @@ const OpportunityReport = () => {
   const hasMinimumProjectMetadata = Boolean(candidate?.raw_title?.trim() && safeBidDue.value);
   const canAddToCalendar = Boolean(candidate?.converted_project_id || hasMinimumProjectMetadata);
 
+  const collectTradeCodes = (value: unknown): string[] => {
+    const codes = new Set<string>();
+    const visit = (item: unknown) => {
+      if (item == null) return;
+      if (typeof item === "string") {
+        const matches = item.match(/\b(?:A|B|C-\d{1,2}|D-\d{1,2})\b/gi) ?? [];
+        matches.forEach((code) => codes.add(code.toUpperCase()));
+        return;
+      }
+      if (Array.isArray(item)) {
+        item.forEach(visit);
+        return;
+      }
+      if (typeof item === "object") {
+        Object.values(item as Record<string, unknown>).forEach(visit);
+      }
+    };
+    visit(value);
+    return Array.from(codes);
+  };
+
+  const seedProjectTradesFromFindings = async (projectId: string) => {
+    const { count } = await supabase
+      .from("project_trades")
+      .select("id", { count: "exact", head: true })
+      .eq("project_id", projectId);
+    if ((count ?? 0) > 0) return;
+
+    const suggestedCodes = Array.from(new Set(
+      findings
+        .filter((finding) =>
+          finding.category === "trade_breakdown" &&
+          ["found", "needs_review"].includes(finding.status),
+        )
+        .flatMap((finding) => [
+          ...collectTradeCodes(finding.value_jsonb),
+          ...collectTradeCodes(finding.value_text),
+        ]),
+    ));
+    if (suggestedCodes.length === 0) return;
+
+    const { data: tradeTypes, error: tradeError } = await supabase
+      .from("trade_types")
+      .select("id, code")
+      .in("code", suggestedCodes);
+    if (tradeError) throw tradeError;
+
+    const rows = (tradeTypes ?? []).map((trade) => ({
+      project_id: projectId,
+      trade_type_id: trade.id,
+    }));
+    if (rows.length === 0) return;
+
+    const { error: insertError } = await supabase
+      .from("project_trades")
+      .insert(rows as never);
+    if (insertError) throw insertError;
+  };
+
   const queuePostCalendarPreparation = async (candidateId: string) => {
     if (report?.id || analysisWorkActive) return { queued: false, skipped: true };
 
@@ -527,6 +586,7 @@ const OpportunityReport = () => {
           const { error } = await sb.from("projects").update(updates).eq("id", existing.id);
           if (error) throw error;
         }
+        await seedProjectTradesFromFindings(existing.id);
         await syncCandidateLink(existing.id);
         await queuePostCalendarPreparation(candidate.id);
         navigate(`/projects/${existing.id}`);
@@ -574,6 +634,7 @@ const OpportunityReport = () => {
         if (isUniqueViolation(error)) {
           const recovered = await findExistingProject();
           if (recovered?.id) {
+            await seedProjectTradesFromFindings(recovered.id);
             await syncCandidateLink(recovered.id);
             await queuePostCalendarPreparation(candidate.id);
             navigate(`/projects/${recovered.id}`);
@@ -582,6 +643,7 @@ const OpportunityReport = () => {
         }
         throw error;
       }
+      await seedProjectTradesFromFindings(project.id);
       await syncCandidateLink(project.id);
       const preparation = await queuePostCalendarPreparation(candidate.id);
       toast({
@@ -717,7 +779,7 @@ const OpportunityReport = () => {
   const pendingSectionMessage = (() => {
     switch (candidate.analysis_status) {
       case "queued": return "Project Intelligence is queued. The report will appear after document processing and report generation finish.";
-      case "analyzing": return "Generating Project Intelligence from processed document evidence.";
+      case "analyzing": return "Building Project Intelligence from cited document evidence.";
       case "failed": return candidate.analysis_error ?? "Project Intelligence failed.";
       default: return "Intelligence has not been prepared yet. Click Prepare Intelligence to begin.";
     }

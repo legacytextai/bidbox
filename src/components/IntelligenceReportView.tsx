@@ -468,17 +468,17 @@ export function useIntelligenceReportDerivedState({
       steps: [
         {
           key: "metadata_refresh",
-          label: "Refreshing Source Data",
+          label: "Reading all project documents",
           state: currentRank > 1 ? "complete" : "active",
         },
         {
           key: "report_generation",
-          label: "Generating Intelligence Report",
+          label: "Building the intelligence report",
           state: currentRank > 2 ? "complete" : currentRank === 2 ? "active" : "pending",
         },
         {
           key: "validation",
-          label: activeAnalysisStage === "complete" ? "Complete" : "Validating Findings",
+          label: activeAnalysisStage === "complete" ? "Complete" : "Checking cited findings",
           state: currentRank > 3 ? "complete" : currentRank === 3 ? "active" : "pending",
         },
       ],
@@ -550,9 +550,9 @@ export function useIntelligenceReportDerivedState({
     const dps = candidate.document_processing_status ?? "";
     const as_ = candidate.analysis_status ?? "";
     if (ois === "queued" || das === "queued") return "Queued for preparation…";
-    if (das === "acquiring") return "Acquiring source documents…";
-    if (dps === "processing" || ois === "processing_documents") return "Processing source documents…";
-    if (as_ === "analyzing" || ois === "generating_report") return "Generating Intelligence Report…";
+    if (das === "acquiring") return "Downloading project documents…";
+    if (dps === "processing" || ois === "processing_documents") return "Reading all project documents…";
+    if (as_ === "analyzing" || ois === "generating_report") return "Building the intelligence report…";
     if (ois === "failed" || as_ === "failed") return "Preparation failed.";
     return "Opportunity Intelligence has not been prepared. Click Prepare Intelligence to begin.";
   }, [candidate]);

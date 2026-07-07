@@ -798,6 +798,12 @@ const ProjectDetail = () => {
           onDownloadInternalFile={downloadFile}
           onDeleteInternalFile={deleteFile}
           onCopyBidLink={copyBidLink}
+          editingTrades={editingTrades}
+          editedTradeIds={editedTradeIds}
+          savingTrades={savingTrades}
+          onEditingTradesChange={setEditingTrades}
+          onEditedTradeIdsChange={setEditedTradeIds}
+          onSaveTrades={saveTrades}
         />
       </Layout>;
   }

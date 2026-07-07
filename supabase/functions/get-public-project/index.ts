@@ -69,13 +69,28 @@ serve(async (req) => {
       console.log('View count incremented for project:', projectData.id);
     }
 
+    let sourceCandidateId = projectData.source_opportunity_candidate_id || null;
+    if (!sourceCandidateId) {
+      const { data: candidateLink, error: candidateLinkError } = await supabase
+        .from('opportunity_candidates')
+        .select('id')
+        .eq('converted_project_id', projectData.id)
+        .maybeSingle();
+      if (candidateLinkError) {
+        console.error('Error resolving source opportunity candidate:', candidateLinkError);
+      } else {
+        sourceCandidateId = candidateLink?.id || null;
+      }
+    }
+
     let sourceDocuments: any[] = [];
-    if (projectData.origin === 'opportunity_intelligence' && projectData.source_opportunity_candidate_id) {
+    if (sourceCandidateId) {
       const { data: sourceDocsData, error: sourceDocsError } = await supabase
         .from('opportunity_documents')
         .select('id, file_name, file_size, file_type, document_family, document_class, storage_bucket, storage_path, source_url, document_source_order, created_at')
-        .eq('opportunity_candidate_id', projectData.source_opportunity_candidate_id)
+        .eq('opportunity_candidate_id', sourceCandidateId)
         .eq('acquisition_status', 'acquired')
+        .not('storage_path', 'is', null)
         .order('document_source_order', { ascending: true, nullsFirst: false })
         .order('created_at', { ascending: true });
 

@@ -93,6 +93,12 @@ export interface ProjectWorkspaceProps {
   onDownloadInternalFile: (filePath: string, fileName: string) => void;
   onDeleteInternalFile: (fileId: string, filePath: string) => void;
   onCopyBidLink: () => void;
+  editingTrades: boolean;
+  editedTradeIds: string[];
+  savingTrades: boolean;
+  onEditingTradesChange: (open: boolean) => void;
+  onEditedTradeIdsChange: (ids: string[]) => void;
+  onSaveTrades: () => void;
   copied: boolean;
 }
 
@@ -105,6 +111,12 @@ export function ProjectWorkspace({
   onDownloadInternalFile,
   onDeleteInternalFile,
   onCopyBidLink,
+  editingTrades,
+  editedTradeIds,
+  savingTrades,
+  onEditingTradesChange,
+  onEditedTradeIdsChange,
+  onSaveTrades,
   copied,
 }: ProjectWorkspaceProps) {
   const navigate = useNavigate();
@@ -328,6 +340,12 @@ export function ProjectWorkspace({
           bidRoomUrl={bidRoomUrl}
           copied={copied}
           onCopyBidLink={onCopyBidLink}
+          editingTrades={editingTrades}
+          editedTradeIds={editedTradeIds}
+          savingTrades={savingTrades}
+          onEditingTradesChange={onEditingTradesChange}
+          onEditedTradeIdsChange={onEditedTradeIdsChange}
+          onSaveTrades={onSaveTrades}
         />
       )}
 
