@@ -6,6 +6,31 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+interface SourceDocument {
+  id: string;
+  file_name: string | null;
+  file_size: number | null;
+  file_type: string | null;
+  document_family: string | null;
+  document_class: string | null;
+  storage_bucket: string | null;
+  storage_path: string | null;
+  source_url: string | null;
+  document_source_order: number | null;
+  acquisition_status: string | null;
+  created_at: string | null;
+  signed_url?: string | null;
+}
+
+interface ProjectTradeRow {
+  trade_types: {
+    id: string;
+    code: string | null;
+    name: string | null;
+    category: string | null;
+  };
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -70,6 +95,15 @@ serve(async (req) => {
     }
 
     let sourceCandidateId = projectData.source_opportunity_candidate_id || null;
+    const sourceDocumentDiagnostics: Record<string, unknown> = {
+      project_id: projectData.id,
+      source_candidate_resolution: sourceCandidateId ? 'project_link' : 'missing_project_link',
+      source_candidate_id: sourceCandidateId,
+      total_documents: 0,
+      acquired_documents: 0,
+      acquired_with_storage_path: 0,
+      signed_url_failures: 0,
+    };
     if (!sourceCandidateId) {
       const { data: candidateLink, error: candidateLinkError } = await supabase
         .from('opportunity_candidates')
@@ -80,24 +114,48 @@ serve(async (req) => {
         console.error('Error resolving source opportunity candidate:', candidateLinkError);
       } else {
         sourceCandidateId = candidateLink?.id || null;
+        sourceDocumentDiagnostics.source_candidate_resolution = sourceCandidateId ? 'converted_project_id_fallback' : 'no_candidate_link';
+        sourceDocumentDiagnostics.source_candidate_id = sourceCandidateId;
+        if (sourceCandidateId) {
+          const { error: projectLinkUpdateError } = await supabase
+            .from('projects')
+            .update({ source_opportunity_candidate_id: sourceCandidateId })
+            .eq('id', projectData.id)
+            .is('source_opportunity_candidate_id', null);
+          if (projectLinkUpdateError) {
+            console.error('Error backfilling project source opportunity link:', projectLinkUpdateError);
+          }
+        }
       }
     }
 
-    let sourceDocuments: any[] = [];
+    let sourceDocuments: SourceDocument[] = [];
     if (sourceCandidateId) {
       const { data: sourceDocsData, error: sourceDocsError } = await supabase
         .from('opportunity_documents')
-        .select('id, file_name, file_size, file_type, document_family, document_class, storage_bucket, storage_path, source_url, document_source_order, created_at')
+        .select('id, file_name, file_size, file_type, document_family, document_class, storage_bucket, storage_path, source_url, document_source_order, acquisition_status, created_at')
         .eq('opportunity_candidate_id', sourceCandidateId)
-        .eq('acquisition_status', 'acquired')
-        .not('storage_path', 'is', null)
         .order('document_source_order', { ascending: true, nullsFirst: false })
         .order('created_at', { ascending: true });
 
       if (sourceDocsError) {
         console.error('Error fetching source opportunity documents:', sourceDocsError);
       } else {
-        sourceDocuments = await Promise.all((sourceDocsData || []).map(async (doc: any) => {
+        const allSourceDocs = (sourceDocsData || []) as SourceDocument[];
+        const acquiredDocs = allSourceDocs.filter((doc) => doc.acquisition_status === 'acquired');
+        const storedDocs = acquiredDocs.filter((doc) => Boolean(doc.storage_path));
+        sourceDocumentDiagnostics.total_documents = allSourceDocs.length;
+        sourceDocumentDiagnostics.acquired_documents = acquiredDocs.length;
+        sourceDocumentDiagnostics.acquired_with_storage_path = storedDocs.length;
+        if (allSourceDocs.length === 0) {
+          sourceDocumentDiagnostics.empty_reason = 'candidate_link_found_but_no_documents';
+        } else if (acquiredDocs.length === 0) {
+          sourceDocumentDiagnostics.empty_reason = 'documents_exist_but_none_acquired';
+        } else if (storedDocs.length === 0) {
+          sourceDocumentDiagnostics.empty_reason = 'documents_acquired_but_missing_storage_path';
+        }
+
+        sourceDocuments = await Promise.all(storedDocs.map(async (doc) => {
           if (!doc.storage_path) {
             return { ...doc, signed_url: null };
           }
@@ -108,6 +166,7 @@ serve(async (req) => {
             .createSignedUrl(doc.storage_path, 60 * 60);
 
           if (signedUrlError) {
+            sourceDocumentDiagnostics.signed_url_failures = Number(sourceDocumentDiagnostics.signed_url_failures || 0) + 1;
             console.error('Error creating source document signed URL:', {
               document_id: doc.id,
               bucket,
@@ -121,6 +180,7 @@ serve(async (req) => {
       }
     }
 
+    console.log('Source opportunity document diagnostics:', sourceDocumentDiagnostics);
     console.log('Source opportunity documents found:', sourceDocuments.length);
 
     // Fetch associated trades with trade type info
@@ -143,7 +203,7 @@ serve(async (req) => {
     }
 
     // Transform trades data to a simple array
-    const trades = (tradesData || []).map((t: any) => ({
+    const trades = ((tradesData || []) as ProjectTradeRow[]).map((t) => ({
       id: t.trade_types.id,
       code: t.trade_types.code,
       name: t.trade_types.name,

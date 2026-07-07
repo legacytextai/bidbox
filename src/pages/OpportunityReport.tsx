@@ -43,6 +43,7 @@ import { useOpportunityDossier } from "@/hooks/useOpportunityDossier";
 import { OpportunityOverviewTab } from "@/components/OpportunityOverviewTab";
 import { OpportunityDocumentsTab } from "@/components/OpportunityDocumentsTab";
 import { resolveOIStyle, resolveOILabel } from "@/lib/opportunityDomain";
+import { resolveProjectCounty } from "@/lib/projectCountyResolver";
 import type { DossierFinding, DossierCitation } from "@/hooks/useOpportunityDossier";
 import {
   FindingStatus,
@@ -549,6 +550,12 @@ const OpportunityReport = () => {
       const projectLifecycleStatus = hasExistingIntelligence
         ? "project_intelligence_ready"
         : "project_intelligence_preparing";
+      const resolvedCounty = resolveProjectCounty({
+        county: overview?.county,
+        crawlData: candidate.crawl_data,
+        projectAddress: overview?.projectAddress,
+        agency: candidate.agency,
+      });
 
       const syncCandidateLink = async (projectId: string) => {
         const { error: updateError } = await sb
@@ -562,10 +569,10 @@ const OpportunityReport = () => {
       const findExistingProject = async () => {
         const { data: fresh } = await sb.from("opportunity_candidates").select("converted_project_id").eq("id", candidate.id).maybeSingle();
         if (fresh?.converted_project_id) {
-          const { data: p } = await sb.from("projects").select("id, origin, source_opportunity_candidate_id, opportunity_intelligence_report_id, bid_due_at").eq("id", fresh.converted_project_id).maybeSingle();
+          const { data: p } = await sb.from("projects").select("id, origin, source_opportunity_candidate_id, opportunity_intelligence_report_id, bid_due_at, county").eq("id", fresh.converted_project_id).maybeSingle();
           return p;
         }
-        const { data: p } = await sb.from("projects").select("id, origin, source_opportunity_candidate_id, opportunity_intelligence_report_id, bid_due_at").eq("origin", "opportunity_intelligence").eq("source_opportunity_candidate_id", candidate.id).maybeSingle();
+        const { data: p } = await sb.from("projects").select("id, origin, source_opportunity_candidate_id, opportunity_intelligence_report_id, bid_due_at, county").eq("origin", "opportunity_intelligence").eq("source_opportunity_candidate_id", candidate.id).maybeSingle();
         return p;
       };
 
@@ -576,6 +583,7 @@ const OpportunityReport = () => {
         if (!existing.source_opportunity_candidate_id) updates.source_opportunity_candidate_id = candidate.id;
         if (!existing.opportunity_intelligence_report_id && report?.id) updates.opportunity_intelligence_report_id = report.id;
         if (safeBidDue.value && existing.bid_due_at !== safeBidDue.value) updates.bid_due_at = safeBidDue.value;
+        if (!existing.county && resolvedCounty) updates.county = resolvedCounty;
         updates.project_lifecycle_status = projectLifecycleStatus;
         updates.project_intelligence_status = projectIntelligenceStatus;
         if (hasExistingIntelligence) {
@@ -608,6 +616,7 @@ const OpportunityReport = () => {
           gc_id: session.user.id,
           name: candidate.raw_title,
           agency: candidate.agency,
+          county: resolvedCounty,
           bid_due_at: safeBidDue.value,
           source_url: candidate.source_url,
           portal_type: candidate.portal_type,

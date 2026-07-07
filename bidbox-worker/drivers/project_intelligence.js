@@ -30,6 +30,8 @@ const CATEGORIES = [
     keywords: [
       'scope of work', 'work includes', 'project consists', 'description of work',
       'construct', 'rehabilitation', 'improvements', 'location', 'quantities',
+      'bid item', 'schedule of work', 'base bid', 'additive alternate', 'deductive alternate',
+      'limits of work', 'work area', 'exclusion', 'not included',
     ],
   },
   {
@@ -191,7 +193,12 @@ function categoryScore(chunk, category) {
   }
   if (chunk.document_family === 'addenda' && category.key === 'addenda_summary') score += 20;
   if (chunk.document_family === 'contract_documents') score += 4;
-  if (chunk.document_family === 'plans' && category.key === 'scope_summary') score += 3;
+  if (category.key === 'scope_summary') {
+    if (chunk.document_family === 'plans') score += 8;
+    if (chunk.document_family === 'specifications') score += 8;
+    if (chunk.document_family === 'bid_forms') score += 6;
+    if (chunk.document_family === 'contract_documents') score += 6;
+  }
   if (chunk.document_family === 'bid_forms' && category.key === 'bid_requirements') score += 4;
   if (typeof chunk.inferred_precedence_rank === 'number') {
     score += Math.max(0, 12 - Math.min(12, Math.floor(chunk.inferred_precedence_rank / 10)));
@@ -312,6 +319,7 @@ Core rule: NO CITATION = NO FACT.
   3. Then include one or more bullets starting with "Requirements / Risks:" for major requirements or risks.
 - Bid due date/time is critical. If documents, portal_metadata, or candidate metadata disagree on bid due time, create a key_dates finding with status "conflict" or "needs_review"; do not silently choose one.
 - Mandatory pre-bid/job-walk is critical. Treat required site visits, mandatory pre-bid meetings, attendance lists, job walk sign-in sheets, and pre-bid conference references as critical bid_requirements/key_dates evidence. If document names or portal_metadata indicate a job walk but the exact date/time is unclear, create a mandatory_job_walk finding with status "needs_review".
+- Perform a dedicated scope extraction pass. Review bid schedules, specifications, plan sheets, addenda, and scope narratives. Return cited scope_summary findings for major work areas, major scope inclusions, exclusions, quantities, project locations, and limits of work. Prefer concrete work packages and measurable scope over generic project descriptions. If evidence includes bid items or schedules, use them to guide what scope categories to look for, but each factual finding still needs document chunk citations.
 - Perform a dedicated trade extraction pass. Review bid schedules, specifications, plans/scope narratives, line items, and requirements evidence. Identify every reasonably required trade using only the provided BidBox trade taxonomy codes. Prefer specific specialty trades over broad general licenses when evidence supports them. Include a trade_breakdown finding for each distinct required trade with value_jsonb.trade_codes containing matching taxonomy code(s). Do not include a trade unless there is cited evidence for the work.
 - Perform a dedicated risk extraction pass. Return risk_flags only for cited schedule, access, traffic control, liquidated damages, mandatory attendance, bonding/insurance, phasing, hazardous material, long-lead, or unusual requirement evidence. Do not invent risk flags.
 
@@ -336,6 +344,7 @@ Return structured findings. Found and conflict findings must include citations.`
         required_sections: CATEGORIES.map((category) => category.key),
         critical_field_keys: Array.from(CRITICAL_FIELD_KEYS),
         required_analysis_passes: {
+          scope_summary: 'Create cited scope_summary findings for major work areas, inclusions, exclusions, quantities, locations, and work limits found in bid schedules, specifications, plans, or addenda. Do not leave scope_summary empty when cited scope evidence exists.',
           trade_breakdown: 'For every required trade supported by evidence, create a cited trade_breakdown finding. value_jsonb must include { trade_codes: string[], rationale: string }. Use only codes from trade_taxonomy.',
           risk_flags: 'For every material risk supported by evidence, create a cited risk_flags finding. If no risk is supported, omit rather than inventing one.',
         },
@@ -1152,14 +1161,12 @@ async function runProjectIntelligence(task, supabase, log) {
       `citations=${validated.citations.length} rejected=${validated.rejected.length}`
     );
     const rollup = rollupFindings(validated.findings);
-    const tradeSeed = safeReanalysis
-      ? { populated: false, inserted: 0, reason: 'safe_reanalysis_does_not_seed_project_trades' }
-      : await populateProjectTradesIfEmpty({
-          supabase,
-          candidateId: candidate_id,
-          findings: validated.findings,
-          log,
-        });
+    const tradeSeed = await populateProjectTradesIfEmpty({
+      supabase,
+      candidateId: candidate_id,
+      findings: validated.findings,
+      log,
+    });
     const persisted = await replaceReportEvidence(
       supabase,
       report.id,

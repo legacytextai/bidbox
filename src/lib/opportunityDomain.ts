@@ -3,6 +3,7 @@
 // rather than duplicating formatting logic inline.
 
 import type { PortalType } from "./platformDetection";
+import { resolveProjectCounty } from "./projectCountyResolver";
 
 type SupportedPortalType = Exclude<PortalType, "unknown">;
 
@@ -59,10 +60,7 @@ export function resolveLocation(crawlData: any): { projectAddress: string | null
     typeof crawlData?.project_address === "string" && crawlData.project_address.trim()
       ? crawlData.project_address.trim()
       : null;
-  const county =
-    typeof crawlData?.county === "string" && crawlData.county.trim()
-      ? crawlData.county.trim()
-      : null;
+  const county = resolveProjectCounty({ crawlData, projectAddress });
   return { projectAddress, county };
 }
 
