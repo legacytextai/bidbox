@@ -11,9 +11,81 @@ environment — the only paths are Lovable or the Supabase dashboard SQL editor.
 
 ---
 
+## PENDING — Tenant Boundary Refactor foundation (2026-07-06)
+
+### 20260706230000_tenant_companies.sql
+
+**Status:** Pending
+**File:** `supabase/migrations/20260706230000_tenant_companies.sql`
+
+**What it does:**
+Creates the tenant root: `companies`, `company_members`, the
+`is_company_member(uuid)` RLS helper, RLS policies (member SELECT,
+service-role writes), a backfill creating one company per existing profile
+(owner membership), and an AFTER INSERT trigger on `profiles` so new signups
+get a company automatically. Purely additive — nothing existing reads these
+tables until the dual-write frontend deploy.
+
+**Who is blocked:**
+Pursuit dual-writes no-op harmlessly (fail-soft) until this and the pursuits
+migration are applied. No user-facing breakage either way.
+
+**What to do after applying:**
+```sql
+-- company count must equal profile count
+SELECT (SELECT count(*) FROM public.companies)  AS companies,
+       (SELECT count(*) FROM public.profiles)   AS profiles;
+-- every profile has exactly one membership
+SELECT count(*) FROM public.profiles p
+WHERE NOT EXISTS (SELECT 1 FROM public.company_members m WHERE m.profile_id = p.id);
+-- expected: 0
+```
+
+### 20260706231000_tenant_pursuits.sql
+
+**Status:** Pending — apply AFTER 20260706230000
+**File:** `supabase/migrations/20260706231000_tenant_pursuits.sql`
+
+**What it does:**
+Creates `pursuits` (company-scoped tenant opinion about a canonical
+opportunity: stage, triage_notes, project linkage) with company RLS on every
+verb, and backfills from existing data: converted candidates (attributed via
+the owning project's `gc_id` membership; stage mapped from
+`projects.pursuit_status`) and notes-only candidates (attributed to the sole
+company when exactly one exists; otherwise left on legacy columns with a
+NOTICE). Legacy candidate columns are untouched and stay dual-written until
+the cleanup phase.
+
+**What to do after applying:**
+```sql
+-- no duplicates possible (UNIQUE), spot-check totals:
+SELECT count(*) FROM public.pursuits;
+-- every converted candidate has a pursuit with project linkage
+SELECT count(*) FROM public.opportunity_candidates oc
+WHERE oc.converted_project_id IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM public.pursuits pu
+                  WHERE pu.opportunity_candidate_id = oc.id
+                    AND pu.project_id = oc.converted_project_id);
+-- expected: 0
+-- every noted candidate has its notes in a pursuit
+SELECT count(*) FROM public.opportunity_candidates oc
+WHERE oc.review_notes IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM public.pursuits pu
+                  WHERE pu.opportunity_candidate_id = oc.id
+                    AND pu.triage_notes = oc.review_notes);
+-- expected: 0 (single-company era)
+-- re-running the migration must be a no-op (idempotency)
+```
+
+Full production validation runbook: `docs/handoff/2026-07-06-tenant-boundary-refactor.md`.
+
+---
+
+## Applied 2026-07-01 (bundled by Lovable into `20260701175427`, commit `94de189`; cron fix superseded by `20260701194915`, commit `57b4721`) — see `docs/handoff/2026-07-01-oml-completion-agency-expansion.md` §3
+
 ## 20260701150000_reschedule_nightly_refresh_midnight_pdt.sql
 
-**Status:** Pending  
+**Status:** Applied (superseded by `20260701194915`)  
 **File:** `supabase/migrations/20260701150000_reschedule_nightly_refresh_midnight_pdt.sql`  
 **Committed in:** (next commit)
 
@@ -36,6 +108,8 @@ Expected: `schedule = '0 7 * * *'`
 ---
 
 ## 20260701120000_planetbids_login_lock.sql
+
+**Status update 2026-07-06: Applied** (bundled into `20260701175427`).
 
 **Status:** Pending  
 **File:** `supabase/migrations/20260701120000_planetbids_login_lock.sql`  
@@ -62,6 +136,8 @@ to requeue the ~3 failed tasks from the June 2026 OML validation.
 ---
 
 ## 20260701130000_agent_tasks_auth_insert.sql
+
+**Status update 2026-07-06: Applied** (bundled into `20260701175427`).
 
 **Status:** Pending — **this is a user-facing blocker**  
 **File:** `supabase/migrations/20260701130000_agent_tasks_auth_insert.sql`  
@@ -108,6 +184,8 @@ the policy exists in the database.
 ---
 
 ## 20260701140000_opportunity_documents_storage_policy.sql
+
+**Status update 2026-07-06: Applied** (bundled into `20260701175427`).
 
 **Status:** Pending — **this is a user-facing blocker**  
 **File:** `supabase/migrations/20260701140000_opportunity_documents_storage_policy.sql`  
