@@ -12,7 +12,8 @@
 |---|---|
 | [`engineering-principles.md`](engineering-principles.md) | The constitution — timeless principles every change is measured against |
 | [`unified-data-model.md`](unified-data-model.md) | The four-ring data architecture: canonical/tenant boundary, agent architecture, estimating workflow OS |
-| [`procurement-atlas.md`](procurement-atlas.md) | The expansion control plane: registry, recon codification, coverage health |
+| [`procurement-atlas.md`](procurement-atlas.md) | The expansion control plane: registry, recon codification, coverage health. Looks **outward** — *"what work exists?"* |
+| [`knowledge-atlas.md`](knowledge-atlas.md) | **Vision (intentionally deferred):** the contractor's compounding organizational memory. Looks **inward** — *"what have we learned?"* Not an initiative; no execution documents derive from it until post-MVP customer validation |
 
 ---
 
