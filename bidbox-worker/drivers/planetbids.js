@@ -1090,6 +1090,21 @@ async function scrapePlanetBids(payload, log) {
               };
             });
 
+            if (!raw.raw_title || !raw.due_date_raw) {
+              const detailDiagnostics = await page.evaluate(() => ({
+                page_title: document.title,
+                root_containers: {
+                  bo_detail_content: Boolean(document.querySelector('#bo-detail-content')),
+                  ember_application: Boolean(document.querySelector('.ember-application, [class*="ember-view"]')),
+                  app_root: Boolean(document.querySelector('#app, [data-test-root], main')),
+                  body: Boolean(document.body),
+                },
+                body_preview: (document.body?.innerText ?? '').replace(/\s+/g, ' ').trim().substring(0, 800),
+                body_chars: (document.body?.innerText ?? '').length,
+              })).catch(() => null);
+              log(`[${source_name}] Detail metadata incomplete before normalization: url=${detailUrl}; parser=planetbids_scan_detail_body_text_v1; title=${JSON.stringify(raw.raw_title ?? null)}; bid_due=${JSON.stringify(raw.due_date_raw ?? null)}; department=${JSON.stringify(raw.department ?? null)}; county=${JSON.stringify(raw.county ?? null)}; roots=${JSON.stringify(detailDiagnostics?.root_containers ?? {})}; page_title=${JSON.stringify(detailDiagnostics?.page_title ?? '')}; body_chars=${detailDiagnostics?.body_chars ?? 0}; body_preview=${detailDiagnostics?.body_preview ?? ''}`);
+            }
+
             const _debugTitle = (raw.raw_title ?? '');
             const _isDebugTarget = detailUrl.includes('142261');
 

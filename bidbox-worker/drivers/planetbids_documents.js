@@ -132,6 +132,52 @@ function parseEstimatedValueDetails(raw) {
   };
 }
 
+function pacificOffsetHoursForDate(year, month, day) {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Los_Angeles',
+      timeZoneName: 'shortOffset',
+    }).formatToParts(new Date(Date.UTC(year, month - 1, day, 12, 0, 0)));
+    const tzName = parts.find((part) => part.type === 'timeZoneName')?.value ?? '';
+    const match = tzName.match(/GMT([+-]\d{1,2})(?::?(\d{2}))?/i);
+    if (match) return Math.abs(Number(match[1]));
+  } catch {
+    // Fall through to a conservative California bidding-season default.
+  }
+  return month >= 3 && month <= 10 ? 7 : 8;
+}
+
+function parseBidDueDate(raw) {
+  if (!raw) return null;
+  const text = String(raw).replace(/\s+/g, ' ').trim();
+  const explicitPacific = text.match(
+    /\b(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2})(?::(\d{2}))?\s*(AM|PM)\s*(?:\(?\s*(PDT|PST|PT)\s*\)?)?/i
+  );
+  if (explicitPacific) {
+    const [, monthText, dayText, yearText, hourText, minuteText = '0', meridiem, tzText] = explicitPacific;
+    let hour = Number(hourText);
+    const minute = Number(minuteText);
+    if (/PM/i.test(meridiem) && hour !== 12) hour += 12;
+    if (/AM/i.test(meridiem) && hour === 12) hour = 0;
+    const year = Number(yearText);
+    const month = Number(monthText);
+    const day = Number(dayText);
+    const offsetHours = /PST/i.test(tzText || '')
+      ? 8
+      : /PDT/i.test(tzText || '')
+        ? 7
+        : pacificOffsetHoursForDate(year, month, day);
+    const d = new Date(Date.UTC(year, month - 1, day, hour + offsetHours, minute, 0));
+    return isNaN(d.getTime()) ? null : d.toISOString();
+  }
+  try {
+    const d = new Date(text);
+    return isNaN(d.getTime()) ? null : d.toISOString();
+  } catch {
+    return null;
+  }
+}
+
 function parseBooleanSignal(value) {
   if (value === true || value === false) return value;
   const text = cleanText(value).toLowerCase();
@@ -1168,9 +1214,12 @@ async function extractPlanetBidsBidItems(page, candidate, log) {
 }
 
 async function extractPortalMetadata(page, log) {
+  const finalUrl = page.url();
+  const pageTitle = await page.title().catch(() => '');
   const raw = await page.evaluate(() => {
     const clean = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
     const bodyText = document.body?.innerText ?? '';
+    const selectorFailures = [];
 
     const field = (label) => {
       const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -1199,7 +1248,17 @@ async function extractPortalMetadata(page, log) {
         if (parentMatch?.[1]) return clean(parentMatch[1]).substring(0, 500);
       }
 
+      selectorFailures.push(label);
       return null;
+    };
+
+    const cleanTitle = (t) => {
+      if (!t) return null;
+      return t
+        .replace(/\s*Add to My Bids[\s\S]*/i, '')
+        .replace(/\s*REMAINING[\s\S]*/i, '')
+        .replace(/\s+(?:[A-Z]{1,4}-\d{2}-\d{3,5}|\d{2,4}-\d{3,5})\s*$/, '')
+        .trim() || null;
     };
 
     // Parses the "Pre-Bid Meeting Information" section from bodyText.
@@ -1354,8 +1413,27 @@ async function extractPortalMetadata(page, log) {
     );
     const jobWalkPairs = extractJobWalkSection();
     const preBidPairs = extractPreBidMeetingSection();
+    const titleEl = document.querySelector(
+      "h1, h2, [class*='title'], [class*='bid-name'], [class*='project-name']"
+    );
+    const raw_title = cleanTitle(
+      (titleEl && titleEl.innerText && titleEl.innerText.trim()) ||
+      field('Bid Title') ||
+      field('Project Title') ||
+      field('Project Name') ||
+      field('Title') ||
+      null
+    );
+    const due_date_raw =
+      field('Closing Date') ||
+      field('Bid Due Date') ||
+      field('Bid Due') ||
+      field('Due Date') ||
+      null;
 
     return {
+      raw_title: raw_title ? raw_title.substring(0, 500) : null,
+      due_date_raw,
       estimated_value_raw: findEstimateRaw(),
       license_requirements:
         field('License Requirements') ||
@@ -1449,6 +1527,21 @@ async function extractPortalMetadata(page, log) {
         null,
       county: field('County') || field('Location County') || null,
       scope_text: scopeMatch ? scopeMatch[1].trim().substring(0, 3000) : null,
+      addenda_count: (bodyText.match(/\baddenda?\b/gi) ?? []).length || null,
+      document_count: document.querySelectorAll('[href*="download"], [class*="document" i], [class*="file" i]').length || null,
+      _debug: {
+        parserPath: 'planetbids_detail_body_text_v2',
+        rootContainers: {
+          bo_detail_content: Boolean(document.querySelector('#bo-detail-content')),
+          ember_application: Boolean(document.querySelector('.ember-application, [class*="ember-view"]')),
+          app_root: Boolean(document.querySelector('#app, [data-test-root], main')),
+          body: Boolean(document.body),
+        },
+        pageTitle: document.title,
+        bodyTextLength: bodyText.length,
+        bodyPreview: bodyText.replace(/\s+/g, ' ').trim().substring(0, 800),
+        selectorFailures,
+      },
     };
   }).catch((e) => {
     log(`Portal metadata extraction skipped: ${e.message}`);
@@ -1458,6 +1551,8 @@ async function extractPortalMetadata(page, log) {
   const estimate = parseEstimatedValueDetails(raw.estimated_value_raw);
   const jobWalkMetadata = normalizeJobWalkMetadata(raw);
   const metadata = {
+    raw_title: raw.raw_title ?? null,
+    due_date_raw: raw.due_date_raw ?? null,
     estimated_value: estimate.estimated_value,
     estimated_value_raw: estimate.estimated_value_raw,
     estimated_value_low: estimate.estimated_value_low,
@@ -1475,8 +1570,30 @@ async function extractPortalMetadata(page, log) {
     additional_details: raw.additional_details ?? null,
     county: raw.county ?? null,
     scope_text: raw.scope_text ?? null,
+    addenda_count: raw.addenda_count ?? null,
+    document_count: raw.document_count ?? null,
     portal_metadata_refreshed_at: new Date().toISOString(),
   };
+
+  log(`PlanetBids detail diagnostics: final_url=${finalUrl}; page_title="${pageTitle}"; parser=${raw._debug?.parserPath ?? 'unknown'}; roots=${JSON.stringify(raw._debug?.rootContainers ?? {})}; body_chars=${raw._debug?.bodyTextLength ?? 0}`);
+  log(`PlanetBids raw detail metadata before normalization: ${JSON.stringify({
+    title: raw.raw_title ?? null,
+    solicitation: extractBidId(finalUrl),
+    bid_due: raw.due_date_raw ?? null,
+    posting_date: null,
+    department: raw.department ?? null,
+    county: raw.county ?? null,
+    estimated_value: raw.estimated_value_raw ?? null,
+    location: raw.project_address ?? null,
+    description: raw.scope_text ? raw.scope_text.substring(0, 240) : null,
+    addenda_count: raw.addenda_count ?? null,
+    document_count: raw.document_count ?? null,
+  })}`);
+  const criticalMissing = ['raw_title', 'due_date_raw', 'department', 'county']
+    .filter((key) => !raw[key]);
+  if (criticalMissing.length > 0) {
+    log(`PlanetBids selector misses for critical fields: ${criticalMissing.join(', ')}; failed_labels=${(raw._debug?.selectorFailures ?? []).slice(0, 30).join(', ')}; body_preview=${raw._debug?.bodyPreview ?? ''}`);
+  }
 
   const populated = Object.entries(metadata)
     .filter(([key, value]) => key !== 'portal_metadata_refreshed_at' && value !== null && value !== '')
@@ -1502,9 +1619,26 @@ async function mergeCandidatePortalMetadata(supabase, candidate, portalMetadata,
     ...nextMetadata,
   };
 
+  const updatePayload = {
+    crawl_data: crawlData,
+  };
+  if (nextMetadata.raw_title) updatePayload.raw_title = nextMetadata.raw_title;
+  if (nextMetadata.due_date_raw) {
+    const parsedBidDue = parseBidDueDate(nextMetadata.due_date_raw);
+    if (parsedBidDue) updatePayload.bid_due_at = parsedBidDue;
+  }
+  if (nextMetadata.estimated_value !== undefined) updatePayload.estimated_value = nextMetadata.estimated_value;
+  if (nextMetadata.estimated_value_low !== undefined) updatePayload.estimated_value_low = nextMetadata.estimated_value_low;
+  if (nextMetadata.estimated_value_high !== undefined) updatePayload.estimated_value_high = nextMetadata.estimated_value_high;
+  if (nextMetadata.county) updatePayload.county = nextMetadata.county;
+  if (nextMetadata.project_address) updatePayload.project_address = nextMetadata.project_address;
+  if (nextMetadata.department) updatePayload.portal_department = nextMetadata.department;
+  const bidId = candidate.portal_bid_id ?? candidate.crawl_data?.bid_id ?? extractBidId(candidate.source_url);
+  if (bidId) updatePayload.portal_bid_id = bidId;
+
   const { error } = await supabase
     .from('opportunity_candidates')
-    .update({ crawl_data: crawlData })
+    .update(updatePayload)
     .eq('id', candidate.id);
 
   if (error) {
@@ -1512,7 +1646,7 @@ async function mergeCandidatePortalMetadata(supabase, candidate, portalMetadata,
     return null;
   }
 
-  log('Candidate crawl_data updated with portal metadata');
+  log(`Candidate portal metadata promoted: ${Object.keys(updatePayload).join(', ')}`);
   return crawlData;
 }
 
