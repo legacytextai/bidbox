@@ -20,11 +20,11 @@ DECLARE
 BEGIN
   SELECT id INTO target_user_id
   FROM auth.users
-  WHERE lower(email) = lower('constructionaisolutionsco@gmail.com')
+  WHERE lower(email) = lower('constructionaisolutions.co@gmail.com')
   LIMIT 1;
 
   IF target_user_id IS NULL THEN
-    RAISE NOTICE 'seed_admin_role: no auth.users row for constructionaisolutionsco@gmail.com — grant skipped; re-run after the account signs up';
+    RAISE NOTICE 'seed_admin_role: no auth.users row for constructionaisolutions.co@gmail.com — grant skipped; re-run after the account signs up';
     RETURN;
   END IF;
 
