@@ -1746,6 +1746,71 @@ export type Database = {
           },
         ]
       }
+      pursuits: {
+        Row: {
+          company_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          opportunity_candidate_id: string
+          project_id: string | null
+          stage: string
+          triage_notes: string | null
+          updated_at: string
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          opportunity_candidate_id: string
+          project_id?: string | null
+          stage?: string
+          triage_notes?: string | null
+          updated_at?: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          opportunity_candidate_id?: string
+          project_id?: string | null
+          stage?: string
+          triage_notes?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pursuits_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pursuits_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pursuits_opportunity_candidate_id_fkey"
+            columns: ["opportunity_candidate_id"]
+            isOneToOne: false
+            referencedRelation: "opportunity_candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pursuits_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       saved_opportunities: {
         Row: {
           created_at: string
