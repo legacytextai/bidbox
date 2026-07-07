@@ -222,10 +222,15 @@ export function ProjectWorkspace({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="reviewing">Reviewing</SelectItem>
-                <SelectItem value="pursuing">Pursuing</SelectItem>
-                <SelectItem value="passed">Passed</SelectItem>
-                <SelectItem value="submitted">Submitted</SelectItem>
+                {(["reviewing", "pursuing", "passed", "submitted"] as PursuitStatus[]).map((status) => (
+                  <SelectItem
+                    key={status}
+                    value={status}
+                    className={status === ps ? PURSUIT_STATUS_STYLES[status] : undefined}
+                  >
+                    {PURSUIT_STATUS_LABELS[status]}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
 
