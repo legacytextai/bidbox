@@ -11,6 +11,7 @@ interface CallListButtonProps {
   projectName: string;
   gcId: string;
   hasSelectedTrades: boolean;
+  label?: string;
 }
 
 function getEmptyCallListToast(diagnostics: CallListDiagnostics) {
@@ -54,7 +55,8 @@ export function CallListButton({
   projectId, 
   projectName, 
   gcId,
-  hasSelectedTrades 
+  hasSelectedTrades,
+  label = "Export Call List",
 }: CallListButtonProps) {
   const { toast } = useToast();
   const [isGenerating, setIsGenerating] = useState(false);
@@ -114,7 +116,7 @@ export function CallListButton({
       ) : (
         <Phone className="h-4 w-4" />
       )}
-      Export Call List
+      {label}
     </Button>
   );
 }

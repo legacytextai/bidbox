@@ -4,7 +4,6 @@ import { ExternalLink, Loader2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { CallListButton } from "@/components/CallListButton";
-import { BidListButton } from "@/components/BidListButton";
 import { TradeMultiSelect } from "@/components/TradeMultiSelect";
 import { getCategoryColor } from "@/lib/tradeTypes";
 import { cn } from "@/lib/utils";
@@ -59,7 +58,7 @@ export function CoverageTab({
           <div>
             <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Required Trades</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              These trades drive call lists, bid lists, and public Bid Room coverage.
+              These trades drive outreach lists and public Bid Room coverage.
             </p>
           </div>
           <Dialog open={editingTrades} onOpenChange={onEditingTradesChange}>
@@ -110,7 +109,7 @@ export function CoverageTab({
 
         {projectTrades.length === 0 ? (
           <div className="rounded-md border border-dashed border-border p-5 text-sm text-muted-foreground">
-            Add required trades to start building call lists, bid lists, and coverage tracking.
+            Add required trades to start building outreach lists and coverage tracking.
           </div>
         ) : (
           <div className="flex flex-wrap gap-2">
@@ -133,13 +132,7 @@ export function CoverageTab({
             projectName={project.name}
             gcId={project.gc_id ?? ""}
             hasSelectedTrades={projectTrades.length > 0}
-          />
-          <BidListButton
-            projectId={project.id}
-            projectName={project.name}
-            gcId={project.gc_id ?? ""}
-            hasSelectedTrades={projectTrades.length > 0}
-            projectCounty={project.county ?? undefined}
+            label="Generate Outreach List"
           />
         </div>
       </div>
