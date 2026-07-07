@@ -4,6 +4,10 @@ const { connectBrowserbaseSession, fetchBrowserbaseDownloadZip } = require('../l
 const DEFAULT_LISTING_URL = 'https://caleprocure.ca.gov/pages/Events-BS3/event-search.aspx';
 const DEFAULT_DETAIL_LIMIT = 300;
 
+function sourceLabel(source) {
+  return source?.name ?? source?.source_name ?? 'Cal eProcure';
+}
+
 function collapseWs(text) {
   return (text ?? '').replace(/\s+/g, ' ').trim();
 }
@@ -126,52 +130,175 @@ async function openBrowser(log) {
   return { browser, context, page, sessionId: null, transport: 'local_playwright' };
 }
 
-async function waitForSearchRows(page) {
+async function waitForSearchRows(page, timeout = 60000) {
   await page.waitForLoadState('domcontentloaded', { timeout: 60000 }).catch(() => {});
   await page.waitForFunction(() => {
-    const bodyText = document.body?.innerText ?? '';
-    const hasResultsText = /Showing Results|Event ID|Event Name|Department Name/i.test(bodyText);
-    const hasGridIds = Array.from(document.querySelectorAll('[id]')).some((el) => /RESP_INQA_HD_VW(?:_GR)?\$\d+#2/.test(el.id));
-    return hasResultsText || hasGridIds;
-  }, { timeout: 60000 });
+    const visible = (el) => {
+      if (!el) return false;
+      const style = window.getComputedStyle(el);
+      return style.display !== 'none' && style.visibility !== 'hidden' && el.getClientRects().length > 0;
+    };
+    const renderedRows = Array.from(document.querySelectorAll(
+      '#datatable-ready [data-if-label="tblBodyTr"], [data-if-label="tblBodyTr"]'
+    )).filter((row) => visible(row) && /\S/.test(row.innerText ?? ''));
+    const psRows = Array.from(document.querySelectorAll(
+      'tr[id^="trRESP_INQA_HD_VW_GR$0_row"], tr[id^="trRESP_INQA_HD_VW$0_row"]'
+    )).filter((row) => visible(row) && /\S/.test(row.innerText ?? ''));
+    const pagerText = document.body?.innerText?.match(/Showing Results\s+\d+\s*-\s*\d+\s+of\s+\d+/i);
+    return renderedRows.length > 0 || psRows.length > 0 || Boolean(pagerText);
+  }, { timeout });
   await page.waitForTimeout(1500);
+}
+
+async function waitForSearchShell(page) {
+  await page.waitForLoadState('domcontentloaded', { timeout: 60000 }).catch(() => {});
+  await page.waitForFunction(() => {
+    return Boolean(
+      document.querySelector('#searchForm')
+      || document.querySelector('#RESP_INQA_WK_INQ_AUC_GO_PB')
+      || /Event Search/i.test(document.body?.innerText ?? '')
+    );
+  }, { timeout: 60000 });
+  await page.waitForTimeout(1000);
+}
+
+async function clickSearch(page, log) {
+  const selectors = [
+    '#RESP_INQA_WK_INQ_AUC_GO_PB',
+    '[data-if-source*="RESP_INQA_WK_INQ_AUC_GO_PB"]',
+  ];
+
+  for (const selector of selectors) {
+    const control = page.locator(selector).first();
+    if (await control.count().catch(() => 0)) {
+      await control.click({ timeout: 10000 });
+      log(`Cal eProcure Search clicked via ${selector}`);
+      return true;
+    }
+  }
+
+  const textButton = page.getByRole('button', { name: /^Search$/i }).first();
+  if (await textButton.count().catch(() => 0)) {
+    await textButton.click({ timeout: 10000 });
+    log('Cal eProcure Search clicked via role=button');
+    return true;
+  }
+
+  const textLink = page.getByText(/^Search$/i).first();
+  if (await textLink.count().catch(() => 0)) {
+    await textLink.click({ timeout: 10000 });
+    log('Cal eProcure Search clicked via visible text');
+    return true;
+  }
+
+  log('Cal eProcure Search control not found');
+  return false;
+}
+
+async function captureSearchDiagnostics(page, stage, log) {
+  const diagnostics = await page.evaluate((stageLabel) => {
+    const clean = (value) => (value || '').replace(/\s+/g, ' ').trim();
+    const resultTable =
+      document.querySelector('#datatable-ready')
+      || document.querySelector('[data-if-label="tbl"]')
+      || document.querySelector('table');
+    return {
+      stage: stageLabel,
+      title: document.title || null,
+      url: window.location.href,
+      body_preview: clean(document.body?.innerText ?? '').slice(0, 1200),
+      iframe_count: document.querySelectorAll('iframe').length,
+      datatable_ready_rows: document.querySelectorAll('#datatable-ready [data-if-label="tblBodyTr"]').length,
+      template_rows: document.querySelectorAll('[data-if-label="tblBodyTr"]').length,
+      peoplesoft_rows: document.querySelectorAll('tr[id^="trRESP_INQA_HD_VW_GR$0_row"], tr[id^="trRESP_INQA_HD_VW$0_row"]').length,
+      event_id_cells: document.querySelectorAll('[data-if-label="tdEventId"], a[id^="AUC_ID_COL$"], a[id^="AUC_ID_BUS_UNIT$"]').length,
+      pager_text: clean(document.body?.innerText ?? '').match(/Showing Results\s+\d+\s*-\s*\d+\s+of\s+\d+/i)?.[0] ?? null,
+      result_html_preview: resultTable?.outerHTML?.slice(0, 1500) ?? null,
+    };
+  }, stage);
+
+  log(`Cal eProcure diagnostics ${stage}: ${JSON.stringify(diagnostics)}`);
+  return diagnostics;
 }
 
 async function collectListingRows(page, log) {
   const rows = await page.evaluate(() => {
     const text = (el) => (el?.innerText || el?.textContent || '').replace(/\s+/g, ' ').trim();
-    const byId = (id) => document.getElementById(id);
+    const visible = (el) => {
+      if (!el) return false;
+      const style = window.getComputedStyle(el);
+      return style.display !== 'none' && style.visibility !== 'hidden' && el.getClientRects().length > 0;
+    };
+    const readCell = (row, label, selectors = []) => {
+      const byLabel = row.querySelector(`[data-if-label="${label}"]`);
+      const labelText = text(byLabel);
+      if (labelText) return labelText;
+      for (const selector of selectors) {
+        const value = text(row.querySelector(selector));
+        if (value) return value;
+      }
+      return '';
+    };
+    const collectAnchors = (row) => Array.from(row?.querySelectorAll('a[href], button, [onclick]') ?? []).map((el) => ({
+      text: text(el),
+      id: el.id || null,
+      name: el.getAttribute('name') || null,
+      href: el.href || el.getAttribute('href') || null,
+      onclick: el.getAttribute('onclick') || null,
+      html: el.outerHTML || null,
+    }));
     const result = [];
     const seen = new Set();
 
-    for (const eventCell of document.querySelectorAll('[id]')) {
-      const idMatch = eventCell.id.match(/^(RESP_INQA_HD_VW(?:_GR)?)\$(\d+)#2$/);
-      if (!idMatch) continue;
-      const [, base, rowIndex] = idMatch;
-      const eventId = text(eventCell);
-      if (!eventId || seen.has(`${base}:${rowIndex}:${eventId}`)) continue;
-      seen.add(`${base}:${rowIndex}:${eventId}`);
+    const renderedRows = Array.from(document.querySelectorAll(
+      '#datatable-ready [data-if-label="tblBodyTr"], [data-if-label="tblBodyTr"]'
+    )).filter((row) => visible(row) && /\S/.test(text(row)));
 
-      const row = eventCell.closest('tr');
+    for (const row of renderedRows) {
+      const eventCell = row.querySelector('[data-if-label="tdEventId"], a[id^="AUC_ID_COL$"], a[id^="AUC_ID_BUS_UNIT$"]');
+      const eventId = text(eventCell);
+      if (!eventId || /\[Event ID\]/i.test(eventId) || seen.has(`rendered:${eventId}`)) continue;
+      seen.add(`rendered:${eventId}`);
+
+      const publishedDateRaw = readCell(row, 'tdPubDate', ['[id^="AUC_DTTM_FINISH_FR$"]']);
+      const endDateRaw = readCell(row, 'tdEndDate', ['[id^="RESP_INQA1_WK_AUC_DTTM_FINISH$"]', '[id^="RESP_INQA_HD_VW_AUC_DTTM_FINISH$"]']);
+      const rowHtml = row.outerHTML ?? '';
+      result.push({
+        eventId,
+        title: readCell(row, 'tdEventName', ['[id^="RESP_INQA1_WK_ZZ_AUC_NAME$"]', '[id^="RESP_INQA_HD_VW_ZZ_AUC_NAME$"]']),
+        department: readCell(row, 'tdDepName', ['[id^="BUS_UNIT_TBL_FS_DESCR$"]']),
+        publishedDateRaw,
+        endDateRaw,
+        status: readCell(row, 'tdStatus', ['[id^="ZZ_DERIVED_DESCR"]']),
+        rowText: text(row),
+        rowHtml,
+        eventCellId: eventCell?.id || null,
+        anchors: collectAnchors(row),
+      });
+    }
+
+    if (result.length > 0) return result;
+
+    for (const row of document.querySelectorAll('tr[id^="trRESP_INQA_HD_VW_GR$0_row"], tr[id^="trRESP_INQA_HD_VW$0_row"]')) {
+      const eventCell = row.querySelector('a[id^="AUC_ID_COL$"], a[id^="AUC_ID_BUS_UNIT$"], [data-if-label="tdEventId"]');
+      const eventId = text(eventCell);
+      if (!eventId || seen.has(`ps:${eventId}`)) continue;
+      seen.add(`ps:${eventId}`);
+
       const rowHtml = row?.outerHTML ?? '';
       const rowText = text(row);
-      const anchors = Array.from(row?.querySelectorAll('a[href], button, [onclick]') ?? []).map((el) => ({
-        text: text(el),
-        href: el.href || el.getAttribute('href') || null,
-        onclick: el.getAttribute('onclick') || null,
-        html: el.outerHTML || null,
-      }));
 
       result.push({
         eventId,
-        title: text(byId(`${base}$${rowIndex}#3`)),
-        department: text(byId(`${base}$${rowIndex}#1`)),
-        publishedDateRaw: text(byId(`${base}$${rowIndex}#6`)),
-        endDateRaw: text(byId(`${base}$${rowIndex}#7`)),
-        status: text(byId(`${base}$${rowIndex}#8`)),
+        title: readCell(row, 'tdEventName', ['[id^="RESP_INQA1_WK_ZZ_AUC_NAME$"]', '[id^="RESP_INQA_HD_VW_ZZ_AUC_NAME$"]']),
+        department: readCell(row, 'tdDepName', ['[id^="BUS_UNIT_TBL_FS_DESCR$"]']),
+        publishedDateRaw: readCell(row, 'tdPubDate', ['[id^="AUC_DTTM_FINISH_FR$"]']),
+        endDateRaw: readCell(row, 'tdEndDate', ['[id^="RESP_INQA1_WK_AUC_DTTM_FINISH$"]', '[id^="RESP_INQA_HD_VW_AUC_DTTM_FINISH$"]']),
+        status: readCell(row, 'tdStatus', ['[id^="ZZ_DERIVED_DESCR"]']),
         rowText,
         rowHtml,
-        anchors,
+        eventCellId: eventCell?.id || null,
+        anchors: collectAnchors(row),
       });
     }
 
@@ -191,12 +318,8 @@ async function collectListingRows(page, log) {
         status: cells.find((c) => /Posted|Open|Closed|Awarded/i.test(c)) ?? null,
         rowText: text(row),
         rowHtml: row.outerHTML,
-        anchors: Array.from(row.querySelectorAll('a[href], button, [onclick]')).map((el) => ({
-          text: text(el),
-          href: el.href || el.getAttribute('href') || null,
-          onclick: el.getAttribute('onclick') || null,
-          html: el.outerHTML || null,
-        })),
+        eventCellId: row.querySelector('a[href], button, [onclick], td')?.id || null,
+        anchors: collectAnchors(row),
       });
     }
 
@@ -470,28 +593,39 @@ async function capturePackageDownloadDiagnostics(page, sessionId, log) {
 async function scrapeCalEprocure(source, log = console.log) {
   const listingUrl = source.listing_url || DEFAULT_LISTING_URL;
   const detailLimit = parseNumberEnv('CALEPROCURE_MAX_DETAILS', DEFAULT_DETAIL_LIMIT);
+  const sourceName = sourceLabel(source);
   const candidates = [];
   const errorMessages = [];
   let session;
 
   const recordError = (message) => {
     errorMessages.push(message);
-    log(`[${source.source_name}] ${message}`);
+    log(`[${sourceName}] ${message}`);
   };
 
   try {
     session = await openBrowser(log);
     const { browser, page, sessionId, transport } = session;
-    log(`[${source.source_name}] Opening Cal eProcure via ${transport}: ${listingUrl}`);
+    log(`[${sourceName}] Opening Cal eProcure via ${transport}: ${listingUrl}`);
 
     await page.goto(listingUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    await waitForSearchRows(page);
+    await waitForSearchShell(page);
+    await captureSearchDiagnostics(page, 'after_load', log);
+
+    await waitForSearchRows(page, 10000).catch((e) => {
+      log(`Cal eProcure initial row wait did not observe rendered rows: ${e.message}`);
+    });
 
     let rows = await collectListingRows(page, log);
     if (rows.length === 0) {
-      const searchButton = page.getByRole('button', { name: /^Search$/i }).first();
-      await searchButton.click({ timeout: 10000 }).catch(() => {});
-      await waitForSearchRows(page);
+      await clickSearch(page, log).catch((e) => {
+        log(`Cal eProcure Search click failed: ${e.message}`);
+        return false;
+      });
+      await waitForSearchRows(page, 60000).catch((e) => {
+        log(`Cal eProcure post-search row wait did not observe rendered rows: ${e.message}`);
+      });
+      await captureSearchDiagnostics(page, 'after_search', log);
       rows = await collectListingRows(page, log);
     }
 
@@ -505,7 +639,7 @@ async function scrapeCalEprocure(source, log = console.log) {
       detailTargets.push({ row, target });
     }
 
-    log(`[${source.source_name}] Cal eProcure detail targets resolved: ${detailTargets.length}/${rows.length}`);
+    log(`[${sourceName}] Cal eProcure detail targets resolved: ${detailTargets.length}/${rows.length}`);
 
     let packageDiagnosticsCaptured = false;
     for (const { row, target } of detailTargets.slice(0, detailLimit)) {
@@ -526,14 +660,14 @@ async function scrapeCalEprocure(source, log = console.log) {
           continue;
         }
         candidates.push(candidate);
-        log(`[${source.source_name}] Parsed Cal eProcure event ${candidate.portal_bid_id}: ${candidate.raw_title}`);
+        log(`[${sourceName}] Parsed Cal eProcure event ${candidate.portal_bid_id}: ${candidate.raw_title}`);
       } catch (e) {
         recordError(`Cal eProcure detail extraction failed for ${target.sourceUrl}: ${e.message}`);
       }
     }
 
     if (detailTargets.length > detailLimit) {
-      log(`[${source.source_name}] Detail limit ${detailLimit} reached; ${detailTargets.length - detailLimit} target(s) left for next controlled scan`);
+      log(`[${sourceName}] Detail limit ${detailLimit} reached; ${detailTargets.length - detailLimit} target(s) left for next controlled scan`);
     }
 
     await browser.close().catch(() => {});
