@@ -5,6 +5,16 @@ function extractBidId(url) {
   return m ? m[1] : null;
 }
 
+function extractPortalId(url) {
+  const m = String(url ?? '').match(/\/portal\/(\d+)/);
+  return m ? m[1] : null;
+}
+
+function buildPlanetBidsDetailUrl(portalId, bidId) {
+  if (!portalId || !bidId) return null;
+  return `https://vendors.planetbids.com/portal/${portalId}/bo/bo-detail/${bidId}`;
+}
+
 function pacificOffsetHoursForDate(year, month, day) {
   try {
     const parts = new Intl.DateTimeFormat('en-US', {
@@ -216,11 +226,150 @@ function parseFoundBidsCount(value) {
   return Number.parseInt(text, 10);
 }
 
+function addPlanetBidsDetailUrl(urls, portalId, bidId) {
+  const normalized = String(bidId ?? '').trim();
+  if (!/^\d{4,9}$/.test(normalized)) return;
+  const url = buildPlanetBidsDetailUrl(portalId, normalized);
+  if (url) urls.add(url);
+}
+
+function valueHasBidSignals(value) {
+  const text = String(value ?? '').toLowerCase();
+  return /\b(bid|bidding|opportunit|project|solicitation|invitation|closing|due|remaining|stage|status|title)\b/.test(text);
+}
+
+function objectHasBidSignals(obj) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
+  const keys = Object.keys(obj);
+  const keySignal = keys.some(valueHasBidSignals);
+  const typeSignal = valueHasBidSignals(obj.type);
+  const attrSignal = obj.attributes && typeof obj.attributes === 'object'
+    ? Object.keys(obj.attributes).some(valueHasBidSignals)
+    : false;
+  const valueSignal = [
+    obj.title,
+    obj.name,
+    obj.bidTitle,
+    obj.bid_title,
+    obj.projectTitle,
+    obj.project_title,
+    obj.invitationNumber,
+    obj.invitation_number,
+    obj.stage,
+    obj.status,
+  ].some(valueHasBidSignals);
+  return keySignal || typeSignal || attrSignal || valueSignal;
+}
+
+function responseUrlHasBidListingSignals(responseUrl) {
+  try {
+    const parsed = new URL(responseUrl);
+    const haystack = `${parsed.pathname} ${parsed.search}`.toLowerCase();
+    if (/\b(download|downloadable|file|document|attachment|line-item|oauth|token|vendor|profile|company|notification)\b/.test(haystack)) {
+      return false;
+    }
+    return /\b(bid|bids|bidding|opportunit|solicitation|bo-search|event)\b/.test(haystack);
+  } catch {
+    return false;
+  }
+}
+
+function collectPlanetBidsApiDetailUrls(json, portalId, responseUrl = '') {
+  const urls = new Set();
+  if (!portalId || json === null || json === undefined) return [];
+
+  const responseLooksBidRelated = responseUrlHasBidListingSignals(responseUrl);
+  const seen = new Set();
+
+  const collectFromRoute = (value) => {
+    const text = String(value ?? '');
+    const matches = text.matchAll(
+      /(?:https?:\/\/vendors\.planetbids\.com)?\/portal\/\d+\/bo\/bo-detail\/\d+|\/bo\/bo-detail\/\d+|\/bo-detail\/\d+/gi
+    );
+    for (const match of matches) {
+      const bidId = extractBidId(match[0]);
+      if (bidId) addPlanetBidsDetailUrl(urls, portalId, bidId);
+    }
+  };
+
+  const collectIdCandidates = (obj, likelyBidObject, allowGenericId) => {
+    if (!likelyBidObject) return;
+    const attrs = obj.attributes && typeof obj.attributes === 'object' ? obj.attributes : {};
+    const candidates = [
+      obj.bid_id,
+      obj.bidId,
+      obj.bidID,
+      obj.bid_id_fk,
+      obj.bidNumberId,
+      obj.bo_id,
+      obj.boId,
+      attrs.bid_id,
+      attrs.bidId,
+      attrs.bidID,
+      attrs.bid_id_fk,
+      attrs.bidNumberId,
+      attrs.bo_id,
+      attrs.boId,
+    ];
+    for (const candidate of candidates) {
+      addPlanetBidsDetailUrl(urls, portalId, candidate);
+    }
+    if (allowGenericId) addPlanetBidsDetailUrl(urls, portalId, obj.id);
+  };
+
+  const walk = (value, path = '') => {
+    if (value === null || value === undefined) return;
+    if (typeof value === 'string' || typeof value === 'number') {
+      collectFromRoute(value);
+      return;
+    }
+    if (typeof value !== 'object') return;
+    if (seen.has(value)) return;
+    seen.add(value);
+
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => walk(item, `${path}.${index}`));
+      return;
+    }
+
+    const bidShapedObject = objectHasBidSignals(value);
+    const likelyBidObject =
+      bidShapedObject ||
+      responseLooksBidRelated ||
+      /\b(data|bids?|opportunit(?:y|ies)|solicitations?|results?|rows?)\b/i.test(path);
+    const allowGenericId =
+      bidShapedObject ||
+      /\b(bids?|opportunit(?:y|ies)|solicitations?|results?|rows?)\b/i.test(path);
+    collectIdCandidates(value, likelyBidObject, allowGenericId);
+
+    for (const [key, child] of Object.entries(value)) {
+      const childPath = path ? `${path}.${key}` : key;
+      if (typeof child === 'string' || typeof child === 'number') {
+        if (valueHasBidSignals(key)) addPlanetBidsDetailUrl(urls, portalId, child);
+        collectFromRoute(child);
+      } else {
+        walk(child, childPath);
+      }
+    }
+  };
+
+  walk(json);
+  return [...urls];
+}
+
 async function extractBidDetailUrlsFromPage(page, baseUrl) {
   return page.evaluate((base) => {
     const urls = new Set();
     const baseParsed = new URL(base);
-    const portalPrefix = baseParsed.pathname.match(/\/portal\/\d+/)?.[0] ?? '';
+    const portalId = baseParsed.pathname.match(/\/portal\/(\d+)/)?.[1] ?? null;
+    const portalPrefix = portalId ? `/portal/${portalId}` : '';
+
+    const addBidId = (rawValue) => {
+      if (!portalId) return;
+      const value = String(rawValue ?? '').trim();
+      if (!/^\d{4,9}$/.test(value)) return;
+      urls.add(`https://vendors.planetbids.com/portal/${portalId}/bo/bo-detail/${value}`);
+    };
 
     const addUrl = (rawValue) => {
       let value = String(rawValue ?? '').trim();
@@ -244,11 +393,17 @@ async function extractBidDetailUrlsFromPage(page, baseUrl) {
     };
 
     document
-      .querySelectorAll('a[href], [href], [data-href], [onclick]')
+      .querySelectorAll('a[href], [href], [data-href], [onclick], [data-bid-id], [data-bidid]')
       .forEach((el) => {
         addUrl(el.getAttribute('href'));
         addUrl(el.getAttribute('data-href'));
         addUrl(el.getAttribute('onclick'));
+        addBidId(el.getAttribute('data-bid-id'));
+        addBidId(el.getAttribute('data-bidid'));
+        for (const attr of el.attributes ?? []) {
+          addUrl(attr.value);
+          if (/\bbid\b/i.test(attr.name)) addBidId(attr.value);
+        }
       });
 
     const html = document.documentElement?.innerHTML ?? '';
@@ -401,6 +556,9 @@ async function scrapePlanetBids(payload, log) {
 
         let bearerToken = null;
         let apiResponsesObserved = 0;
+        const portalId = extractPortalId(listing_url);
+        const apiDetailUrls = new Set();
+        const apiExtractionTasks = [];
         page.on('request', (req) => {
           if (req.url().includes('api-external.prod.planetbids.com')) {
             const auth = req.headers()['authorization'] ?? '';
@@ -410,6 +568,15 @@ async function scrapePlanetBids(payload, log) {
         page.on('response', (res) => {
           if (isPlanetBidsApiResponse(res)) {
             apiResponsesObserved++;
+            const responseUrl = res.url();
+            apiExtractionTasks.push(
+              res.json()
+                .then((json) => collectPlanetBidsApiDetailUrls(json, portalId, responseUrl))
+                .then((urls) => {
+                  for (const url of urls) apiDetailUrls.add(url);
+                })
+                .catch(() => {})
+            );
           }
         });
 
@@ -436,23 +603,28 @@ async function scrapePlanetBids(payload, log) {
             return;
           }
 
-          detailUrlFallbacks = await extractBidDetailUrlsFromPage(page, listing_url);
+          await Promise.allSettled(apiExtractionTasks);
+          const domDetailUrls = await extractBidDetailUrlsFromPage(page, listing_url);
+          const apiDerivedDetailUrls = [...apiDetailUrls];
+          detailUrlFallbacks = [...new Set([...domDetailUrls, ...apiDerivedDetailUrls])];
           if (detailUrlFallbacks.length > 0) {
             extractionMode = 'detail_url_fallback';
             log(
               `[${source_name}] Bidding row locator found 0 rows, but ${detailUrlFallbacks.length} ` +
-              `bid detail link(s) were present. Falling back to direct detail navigation. ` +
+              `bid detail target(s) were resolved. Falling back to direct detail navigation. ` +
+              `dom_detail_links=${domDetailUrls.length}; api_detail_links=${apiDerivedDetailUrls.length}; ` +
               `api_responses=${apiResponsesObserved}; tr_count=${diagnostics.tr_count}; ` +
               `role_row_count=${diagnostics.role_row_count}; found_bids=${diagnostics.found_bids_text ?? 'n/a'}`
             );
           } else {
             const signal = foundBidsCount !== null || apiResponsesObserved > 0
-              ? 'Listing data was observed, but no usable bid detail links were found.'
-              : 'No listing data or usable bid detail links were found.';
+              ? 'Listing data was observed, but no usable bid detail targets were found.'
+              : 'No listing data or usable bid detail targets were found.';
             recordError(
               `${signal} final_url=${diagnostics.final_url}; ` +
               `api_responses=${apiResponsesObserved}; tr_count=${diagnostics.tr_count}; ` +
               `role_row_count=${diagnostics.role_row_count}; found_bids=${diagnostics.found_bids_text ?? 'n/a'}; ` +
+              `api_detail_links=${apiDerivedDetailUrls.length}; dom_detail_links=${domDetailUrls.length}; ` +
               `Body preview: ${diagnostics.body_preview}`
             );
             if (diagnostics.result_html_preview) {
