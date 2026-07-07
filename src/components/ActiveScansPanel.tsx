@@ -38,6 +38,7 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
 const PORTAL_LABEL_OVERRIDES: Record<string, string> = {
   planetbids: "PlanetBids",
   caltrans: "Caltrans",
+  caleprocure: "Cal eProcure",
 };
 
 function portalLabel(portalType: string): string {

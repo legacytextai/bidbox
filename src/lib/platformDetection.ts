@@ -12,6 +12,7 @@ export type PortalType =
   | 'ramp'
   | 'lacounty_dpw'
   | 'lacmta'
+  | 'caleprocure'
   | 'unknown';
 
 interface PortalPattern {
@@ -75,6 +76,12 @@ const PORTAL_PATTERNS: PortalPattern[] = [
       /business\.metro\.net/i,
     ],
   },
+  {
+    type: 'caleprocure',
+    patterns: [
+      /caleprocure\.ca\.gov/i,
+    ],
+  },
 ];
 
 /**
@@ -107,6 +114,7 @@ export function getPortalDisplayName(type: PortalType): string {
     ramp: 'RAMP LA',
     lacounty_dpw: 'LA County DPW',
     lacmta: 'LA Metro',
+    caleprocure: 'Cal eProcure',
     unknown: 'External Source',
   };
   return names[type];

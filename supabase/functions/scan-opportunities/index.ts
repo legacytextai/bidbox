@@ -49,7 +49,7 @@ async function qualifyCandidates(authHeader: string) {
 async function queueWorkerScanSources(
   sources: OpportunitySource[],
   supabase: ReturnType<typeof createClient>,
-  taskType: "planetbids_scan" | "caltrans_scan" | "lacounty_dpw_scan" | "lacmta_scan",
+  taskType: "planetbids_scan" | "caltrans_scan" | "lacounty_dpw_scan" | "lacmta_scan" | "caleprocure_scan",
   label: string,
   triggerReason: string,
   window: string,
@@ -396,7 +396,8 @@ serve(async (req) => {
     const caltransSources = allSources.filter((source) => source.portal_type === "caltrans");
     const lacountyDpwSources = allSources.filter((source) => source.portal_type === "lacounty_dpw");
     const lacmtaSources = allSources.filter((source) => source.portal_type === "lacmta");
-    const otherSources = allSources.filter((source) => !["planetbids", "caltrans", "lacounty_dpw", "lacmta"].includes(source.portal_type));
+    const caleprocureSources = allSources.filter((source) => source.portal_type === "caleprocure");
+    const otherSources = allSources.filter((source) => !["planetbids", "caltrans", "lacounty_dpw", "lacmta", "caleprocure"].includes(source.portal_type));
 
     const runs: SourceRunResult[] = [];
     if (planetbidsSources.length > 0) {
@@ -416,6 +417,11 @@ serve(async (req) => {
 
     if (lacmtaSources.length > 0) {
       const queuedRuns = await queueWorkerScanSources(lacmtaSources, supabase, "lacmta_scan", "LA Metro", triggerReason, window);
+      runs.push(...queuedRuns);
+    }
+
+    if (caleprocureSources.length > 0) {
+      const queuedRuns = await queueWorkerScanSources(caleprocureSources, supabase, "caleprocure_scan", "Cal eProcure", triggerReason, window);
       runs.push(...queuedRuns);
     }
 
