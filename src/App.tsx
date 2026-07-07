@@ -24,6 +24,7 @@ import Settings from "./pages/Settings";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
 import AdminAnalytics from "./pages/AdminAnalytics";
+import AdminCoverage from "./pages/AdminCoverage";
 import AdminNetworkSubs from "./pages/AdminNetworkSubs";
 import SubcontractorDirectory from "./pages/SubcontractorDirectory";
 import CalendarDashboard from "./pages/CalendarDashboard";
@@ -62,6 +63,7 @@ const App = () => (
             <Route path="/settings/profile" element={<QualificationProfile />} />
             <Route path="/privacy" element={<PrivacyPolicy />} />
             <Route path="/terms" element={<TermsOfService />} />
+            <Route path="/admin/coverage" element={<AdminCoverage />} />
             <Route path="/admin/analytics" element={<AdminAnalytics />} />
             <Route path="/admin/network-subs" element={<AdminNetworkSubs />} />
             <Route path="/settings/subcontractors" element={<SubcontractorDirectory />} />

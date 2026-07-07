@@ -1,8 +1,10 @@
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { FolderOpen, Settings, LogOut, Users, Calendar, Globe, Search, SlidersHorizontal } from "lucide-react";
+import { FolderOpen, Settings, LogOut, Users, Calendar, Globe, Search, SlidersHorizontal, ShieldCheck } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useIsAdmin } from "@/hooks/useIsAdmin";
+import { ADMIN_NAV } from "@/components/admin/adminNav";
 import bidboxLogo from "@/assets/bidbox-logo.png";
 import {
   Sidebar,
@@ -23,6 +25,7 @@ interface SidebarNavProps {
 const AppSidebar = ({ onNavigate }: SidebarNavProps) => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { isAdmin } = useIsAdmin();
 
   const handleLogout = async () => {
     const { error } = await supabase.auth.signOut();
@@ -98,6 +101,27 @@ const AppSidebar = ({ onNavigate }: SidebarNavProps) => {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {isAdmin && (
+          <SidebarGroup>
+            <SidebarGroupLabel className="flex items-center gap-1.5">
+              <ShieldCheck className="h-3.5 w-3.5" />
+              Admin
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {ADMIN_NAV.map((item) => (
+                  <SidebarMenuItem key={item.path}>
+                    <SidebarMenuButton onClick={() => handleNavigation(item.path)}>
+                      <item.icon className="h-4 w-4 mr-3" />
+                      <span>{item.title}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
 
       <SidebarFooter className="border-t border-border">

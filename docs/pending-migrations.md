@@ -11,6 +11,36 @@ environment — the only paths are Lovable or the Supabase dashboard SQL editor.
 
 ---
 
+## PENDING — Admin role seed (2026-07-07)
+
+### 20260707120000_seed_admin_role.sql
+
+**Status:** Pending
+**File:** `supabase/migrations/20260707120000_seed_admin_role.sql`
+
+**What it does:**
+Grants the `admin` role (existing `user_roles`/`has_role` architecture,
+migration `20251130211130`) to `constructionaisolutionsco@gmail.com`.
+Idempotent; NOTICE + no-op if the account does not exist yet. The Admin
+section of the app (sidebar group + `/admin/coverage`) is visible only to
+users with this role — no emails are hardcoded in application code.
+
+**Who is blocked:**
+The Admin sidebar section and Coverage Dashboard are invisible to the
+intended admin until this is applied (existing admins, if any, see them
+immediately).
+
+**What to do after applying:**
+```sql
+SELECT u.email, r.role FROM public.user_roles r
+JOIN auth.users u ON u.id = r.user_id WHERE r.role = 'admin';
+-- expect: constructionaisolutionsco@gmail.com listed
+```
+Then sign in as that account — the Admin group appears in the sidebar with
+Coverage, Analytics, and Network Subs.
+
+---
+
 ## PENDING — Tenant Boundary Refactor foundation (2026-07-06)
 
 ### 20260706230000_tenant_companies.sql
