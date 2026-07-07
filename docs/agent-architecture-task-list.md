@@ -1523,7 +1523,9 @@ MVP boundary:
 
 ## Task 8 - PHASE G: PURSUIT MANAGEMENT & PROJECT WORKSPACE ❌ NOT STARTED
 
-> **Architecture note (2026-07-06):** Phase G must begin with the tenant-boundary foundation — `companies` + `company_members` + `pursuits`, with triage state cut over from the shared `opportunity_candidates` columns to company-scoped `pursuits` rows — before its remaining workspace work. Building the workspace on the current linkage (global candidate `status`/`review_notes`, single `converted_project_id` pointer) would pour concrete on the single-tenant defect documented in `docs/architecture/unified-data-model.md` (§2, §6 M1–M4) and force a data migration with customer data on board. Pursuit = decision spine; `projects` remains the execution workspace under it. Pending one final engineering review of the tenant-boundary/pursuit refactor before implementation begins.
+> **Architecture note (2026-07-06):** Phase G must begin with the tenant-boundary foundation — `companies` + `company_members` + `pursuits`, with triage state cut over from the shared `opportunity_candidates` columns to company-scoped `pursuits` rows — before its remaining workspace work. Building the workspace on the current linkage (global candidate `status`/`review_notes`, single `converted_project_id` pointer) would pour concrete on the single-tenant defect documented in `docs/architecture/unified-data-model.md` (§2, §6 M1–M4) and force a data migration with customer data on board. Pursuit = decision spine; `projects` remains the execution workspace under it.
+>
+> **Status update (2026-07-06, later):** the final engineering review approved the refactor and the foundation + dual-write phases are implemented (commits `217a97f`, `4c59588`; migrations `20260706230000`/`20260706231000` pending production application). Legacy candidate columns remain dual-written until the cleanup phase. Production validation runbook and remaining-debt register: `docs/handoff/2026-07-06-tenant-boundary-refactor.md`. Phase G workspace work should link `projects` via `pursuits.project_id` and read/write triage exclusively through `pursuits`.
 
 Purpose:
 
