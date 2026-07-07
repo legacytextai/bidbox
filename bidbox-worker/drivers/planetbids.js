@@ -202,11 +202,74 @@ function createBiddingRowsLocator(page) {
     .filter({ hasText: /(?:Bid|RFI|RFP|RFQ|RFQual|IPWB|Posted|Project|Invitation|Due Date|Remaining)/i });
 }
 
+async function waitForDocumentReady(page, timeout = 30000) {
+  return page.waitForFunction(
+    () => ['interactive', 'complete'].includes(document.readyState),
+    { timeout }
+  ).then(() => true).catch(() => false);
+}
+
+function parseFoundBidsCount(value) {
+  if (value === null || value === undefined) return null;
+  const text = String(value).replace(/,/g, '').trim();
+  if (!/^\d+$/.test(text)) return null;
+  return Number.parseInt(text, 10);
+}
+
+async function extractBidDetailUrlsFromPage(page, baseUrl) {
+  return page.evaluate((base) => {
+    const urls = new Set();
+    const baseParsed = new URL(base);
+    const portalPrefix = baseParsed.pathname.match(/\/portal\/\d+/)?.[0] ?? '';
+
+    const addUrl = (rawValue) => {
+      let value = String(rawValue ?? '').trim();
+      if (!value) return;
+
+      const routeMatch = value.match(
+        /(?:https?:\/\/vendors\.planetbids\.com)?\/portal\/\d+\/bo\/bo-detail\/\d+|\/bo\/bo-detail\/\d+|\/bo-detail\/\d+/i
+      );
+      if (routeMatch) value = routeMatch[0];
+      if (/^\/bo-detail\/\d+/i.test(value) && portalPrefix) value = `${portalPrefix}/bo${value}`;
+      if (/^\/bo\/bo-detail\/\d+/i.test(value) && portalPrefix) value = `${portalPrefix}${value}`;
+
+      try {
+        const url = new URL(value, base);
+        if (url.hostname !== 'vendors.planetbids.com') return;
+        if (!/\/portal\/\d+\/bo\/bo-detail\/\d+$/i.test(url.pathname)) return;
+        urls.add(url.href.split('#')[0]);
+      } catch {
+        // Ignore malformed attributes from the Ember shell.
+      }
+    };
+
+    document
+      .querySelectorAll('a[href], [href], [data-href], [onclick]')
+      .forEach((el) => {
+        addUrl(el.getAttribute('href'));
+        addUrl(el.getAttribute('data-href'));
+        addUrl(el.getAttribute('onclick'));
+      });
+
+    const html = document.documentElement?.innerHTML ?? '';
+    const matches = html.matchAll(
+      /(?:https?:\/\/vendors\.planetbids\.com)?\/portal\/\d+\/bo\/bo-detail\/\d+|\/bo\/bo-detail\/\d+|\/bo-detail\/\d+/gi
+    );
+    for (const match of matches) addUrl(match[0]);
+
+    return [...urls];
+  }, baseUrl).catch(() => []);
+}
+
 async function waitForResultsReady(page, sourceName, log, apiReady = null) {
   apiReady ??= page.waitForResponse(isPlanetBidsApiResponse, { timeout: 25000 }).catch(() => null);
 
-  await page.waitForSelector('body', { timeout: 30000 });
+  const domReady = waitForDocumentReady(page, 30000);
   const apiResponse = await apiReady;
+  const domReadyObserved = await domReady;
+  if (!apiResponse && !domReadyObserved) {
+    await page.waitForSelector('body', { state: 'attached', timeout: 5000 }).catch(() => null);
+  }
   if (apiResponse) {
     log(`[${sourceName}] PlanetBids API response observed: ${apiResponse.url().substring(0, 180)}`);
   } else {
@@ -234,7 +297,8 @@ async function clickSearchIfAvailable(page, sourceName, log) {
   log(`[${sourceName}] No Bidding rows after initial load — clicking Search`);
   const apiReady = page.waitForResponse(isPlanetBidsApiResponse, { timeout: 20000 }).catch(() => null);
   await searchButton.click();
-  await page.waitForSelector('body', { timeout: 30000 });
+  await waitForDocumentReady(page, 30000);
+  await page.waitForSelector('body', { state: 'attached', timeout: 5000 }).catch(() => null);
   const apiResponse = await apiReady;
   if (apiResponse) {
     log(`[${sourceName}] PlanetBids API response observed after Search`);
@@ -360,12 +424,48 @@ async function scrapePlanetBids(payload, log) {
         }
         log(`[${source_name}] ${rowCount} Bidding row(s) found`);
 
+        let detailUrlFallbacks = [];
+        let extractionMode = 'dom_rows';
         if (rowCount === 0) {
           const pageText = await page.locator('body').innerText({ timeout: 5000 }).catch(() => '');
-          if (/no\s+(open\s+)?(bid|opportunit|record)|no\s+data|nothing\s+found/i.test(pageText)) {
+          const diagnostics = await captureZeroRowDiagnostics(page);
+          const foundBidsCount = parseFoundBidsCount(diagnostics.found_bids_text);
+          const noResultsText = /no\s+(open\s+)?(bid|opportunit|record)|no\s+data|nothing\s+found/i.test(pageText);
+          if (noResultsText || foundBidsCount === 0) {
             log(`[${source_name}] No active bidding rows found`);
             return;
           }
+
+          detailUrlFallbacks = await extractBidDetailUrlsFromPage(page, listing_url);
+          if (detailUrlFallbacks.length > 0) {
+            extractionMode = 'detail_url_fallback';
+            log(
+              `[${source_name}] Bidding row locator found 0 rows, but ${detailUrlFallbacks.length} ` +
+              `bid detail link(s) were present. Falling back to direct detail navigation. ` +
+              `api_responses=${apiResponsesObserved}; tr_count=${diagnostics.tr_count}; ` +
+              `role_row_count=${diagnostics.role_row_count}; found_bids=${diagnostics.found_bids_text ?? 'n/a'}`
+            );
+          } else {
+            const signal = foundBidsCount !== null || apiResponsesObserved > 0
+              ? 'Listing data was observed, but no usable bid detail links were found.'
+              : 'No listing data or usable bid detail links were found.';
+            recordError(
+              `${signal} final_url=${diagnostics.final_url}; ` +
+              `api_responses=${apiResponsesObserved}; tr_count=${diagnostics.tr_count}; ` +
+              `role_row_count=${diagnostics.role_row_count}; found_bids=${diagnostics.found_bids_text ?? 'n/a'}; ` +
+              `Body preview: ${diagnostics.body_preview}`
+            );
+            if (diagnostics.result_html_preview) {
+              log(`[${source_name}] Results HTML preview: ${diagnostics.result_html_preview}`);
+            }
+            errors++;
+            return;
+          }
+        }
+
+        const targetCount = detailUrlFallbacks.length > 0 ? detailUrlFallbacks.length : rowCount;
+
+        if (targetCount === 0) {
           const diagnostics = await captureZeroRowDiagnostics(page);
           recordError(
             `No Bidding rows rendered. final_url=${diagnostics.final_url}; ` +
@@ -380,33 +480,41 @@ async function scrapePlanetBids(payload, log) {
           return;
         }
 
-        for (let i = 0; i < rowCount; i++) {
+        for (let i = 0; i < targetCount; i++) {
           try {
-            if (i > 0) {
+            if (i > 0 && extractionMode === 'dom_rows') {
               await gotoListingAndWait(page, listing_url, source_name, log);
               await page.waitForTimeout(Math.floor(Math.random() * 1000)); // FIX 4: jitter
             }
 
-            const rows = biddingRows();
-            const currentCount = await rows.count();
-            if (i >= currentCount) {
-              log(`[${source_name}] Row ${i}: no longer present — skipping`);
-              continue;
-            }
+            if (extractionMode === 'detail_url_fallback') {
+              const fallbackDetailUrl = detailUrlFallbacks[i];
+              log(`[${source_name}] Opening fallback detail ${i + 1}/${targetCount}: ${fallbackDetailUrl}`);
+              await page.goto(fallbackDetailUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+              await waitForDocumentReady(page, 30000);
+              await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+              await page.waitForTimeout(1000 + Math.floor(Math.random() * 1000));
+            } else {
+              const rows = biddingRows();
+              const currentCount = await rows.count();
+              if (i >= currentCount) {
+                log(`[${source_name}] Row ${i}: no longer present — skipping`);
+                continue;
+              }
 
-            log(`[${source_name}] Clicking row ${i + 1}/${rowCount}`);
-            await rows.nth(i).click();
-            await page.waitForURL('**/bo-detail/**', { timeout: 25000 });
+              log(`[${source_name}] Clicking row ${i + 1}/${targetCount}`);
+              await rows.nth(i).click();
+              await page.waitForURL('**/bo-detail/**', { timeout: 25000 });
+              await page.waitForTimeout(1000 + Math.floor(Math.random() * 1000)); // FIX 4: jitter
+            }
 
             const detailUrl = page.url();
             const bidId = extractBidId(detailUrl);
             if (!bidId) {
-              log(`[${source_name}] Row ${i}: unexpected URL after click: ${detailUrl} — skipping`);
+              log(`[${source_name}] Item ${i}: unexpected detail URL: ${detailUrl} — skipping`);
               errors++;
               continue;
             }
-
-            await page.waitForTimeout(1000 + Math.floor(Math.random() * 1000)); // FIX 4: jitter
 
             // ── DOM INSPECTION (bid 142261 / Polytechnic High School only) ──────────
             // No parsing, no regex. Captured once and persisted to agent_tasks.payload.
@@ -919,7 +1027,7 @@ async function scrapePlanetBids(payload, log) {
 
             log(`[${source_name}] Row ${i + 1}: bid_id=${bidId} title="${(raw.raw_title ?? '').substring(0, 60)}"`);
           } catch (e) {
-            recordError(`Row ${i}: error — ${e.message}`);
+            recordError(`Item ${i}: error — ${e.message}`);
             errors++;
           }
         }
@@ -965,7 +1073,7 @@ async function scrapePlanetBids(payload, log) {
           log(`[${source_name}] No bearer token captured — file manifests skipped`);
         }
 
-        log(`[${source_name}] Scan complete. candidates=${candidates.length} errors=${errors}`);
+        log(`[${source_name}] Scan complete. candidates=${candidates.length} errors=${errors} extraction_mode=${extractionMode} api_responses=${apiResponsesObserved}`);
       })(),
       timeoutPromise,
     ]);
