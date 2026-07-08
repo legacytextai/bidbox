@@ -253,7 +253,11 @@ async function discoverProjects(page, categoryIds, states, log) {
 async function fetchProjectDetails(page, ids, log) {
   const concurrency = parseNumberEnv('OPENGOV_DETAIL_CONCURRENCY', 6);
 
-  const out = await page.evaluate(async ({ apiBase, ids, concurrency }) => {
+  const maxBidItems = parseNumberEnv('OPENGOV_MAX_BID_ITEMS', 500);
+  const enableVisible = parseBool2('OPENGOV_VISIBLE_METADATA', true);
+
+  const out = await page.evaluate(async ({ apiBase, ids, concurrency, maxBidItems, enableVisible }) => {
+    const cap = (s, n) => (typeof s === 'string' ? s.slice(0, n) : null);
     const slim = (p) => {
       const docManifest = (arr) => (Array.isArray(arr) ? arr : []).map((a) => ({
         id: a.id ?? null,
@@ -263,6 +267,55 @@ async function fetchProjectDetails(page, ids, log) {
         filename: a.filename ?? null,
         file_extension: a.fileExtension ?? null,
         type: a.type ?? null,
+      }));
+      // Phase 2.5: addenda in their real shape (Phase 2 wrongly used the
+      // attachment manifest shape). addendums[] carry number/description/
+      // releasedAt/status/diff — not filename/fileExtension.
+      const addendaList = (Array.isArray(p.addendums) ? p.addendums : []).map((a) => ({
+        id: a.id ?? null,
+        number: a.number ?? null,
+        title: a.titleDisplay ?? a.title ?? null,
+        description_excerpt: cap(a.description ?? null, 800),
+        released_at: a.releasedAt ?? a.released_at ?? null,
+        status: a.status ?? null,
+        type: a.type ?? null,
+        is_notice: a.isNotice ?? null,
+        has_changes: Boolean(a.diff),
+      }));
+      // Phase 2.5: native bid items from priceTables[].priceItems[] (structured).
+      const bidItems = [];
+      let bidItemsTruncated = false;
+      for (const table of (Array.isArray(p.priceTables) ? p.priceTables : [])) {
+        const tableTitle = (table.title && typeof table.title === 'string') ? table.title : null;
+        for (const it of (Array.isArray(table.priceItems) ? table.priceItems : [])) {
+          if (it.isHeaderRow) continue;
+          if (bidItems.length >= maxBidItems) { bidItemsTruncated = true; break; }
+          bidItems.push({
+            item_number: it.lineItem ?? it.number ?? null,
+            description: cap(it.description ?? null, 1000),
+            quantity: it.quantity ?? null,
+            unit_of_measure: it.unitToMeasure ?? it.unitOfMeasure ?? null,
+            unit_price: it.unitPrice ?? null,
+            section_name: tableTitle,
+            price_table_id: table.id ?? null,
+            source_order: it.orderById ?? null,
+          });
+        }
+        if (bidItemsTruncated) break;
+      }
+      // Phase 2.5: criteria text (holds the engineer's estimate + notice/scope
+      // prose) — returned capped for Node-side parsing.
+      const criteria = (Array.isArray(p.criteria) ? p.criteria : []).map((c) => ({
+        title: c.title ?? c.name ?? null,
+        description: cap(c.description ?? null, 6000),
+      })).filter((c) => c.description);
+      // Section index (structure only).
+      const sections = (Array.isArray(p.projectSections) ? p.projectSections : []).map((s) => ({
+        title: s.title ?? null,
+        short_name: s.shortName ?? null,
+        order: s.orderById ?? null,
+        section_type: s.section_type ?? null,
+        section_number: s.sectionNumber ?? null,
       }));
       return {
         contact: {
@@ -289,13 +342,22 @@ async function fetchProjectDetails(page, ids, log) {
         },
         timeline: p.timelineConfig ?? null,
         documents: docManifest(p.attachments),
-        addenda: docManifest(p.addendums),
+        addenda: addendaList,
         flags: {
           show_bids: p.showBids ?? null,
           sealed_bid: p.showBidsWithPricing ?? null,
           is_doc_builder: p.isDocBuilder ?? null,
           uses_external_document: p.useExternalDocument ?? null,
+          show_planholders: p.showPlanholders ?? null,
+          has_sealed_bid: p.hasSealedBid ?? null,
         },
+        // Phase 2.5 additions (parsed further in Node):
+        visible: enableVisible ? {
+          bid_items: bidItems,
+          bid_items_truncated: bidItemsTruncated,
+          criteria,
+          sections,
+        } : null,
       };
     };
 
@@ -316,7 +378,7 @@ async function fetchProjectDetails(page, ids, log) {
       }));
     }
     return { result, errors };
-  }, { apiBase: API_BASE, ids, concurrency });
+  }, { apiBase: API_BASE, ids, concurrency, maxBidItems, enableVisible });
 
   if (out.errors.length) {
     log(`OpenGov detail enrichment: ${Object.keys(out.result).length}/${ids.length} enriched, ${out.errors.length} detail error(s) (isolated): ${out.errors.slice(0, 3).join(' | ')}`);
@@ -329,6 +391,82 @@ async function fetchProjectDetails(page, ids, log) {
 function cleanBidId(financialId) {
   if (!financialId) return null;
   return String(financialId).replace(/[;\s]+$/g, '').trim() || null;
+}
+
+// ── Phase 2.5 parsers (pure Node, fixture-testable) ──────────────────────────
+
+// Engineer's estimate: conservative parse over criteria descriptions. Only
+// accepts a dollar amount that sits within ~120 chars of "estimate"/"engineer"
+// to avoid picking arbitrary dollar figures out of body text. Returns the
+// first confident match: { value:number, raw:string, source:string } or null.
+function parseEngineerEstimate(criteria) {
+  if (!Array.isArray(criteria)) return null;
+  const near = /(engineer'?s?\s+estimate|estimated?\s+(?:construction\s+)?(?:cost|value|budget)|opinion of probable cost)[\s\S]{0,120}?\$\s*([\d]{1,3}(?:,\d{3})+(?:\.\d{2})?|\d{4,}(?:\.\d{2})?)/i;
+  const nearRev = /\$\s*([\d]{1,3}(?:,\d{3})+(?:\.\d{2})?|\d{4,}(?:\.\d{2})?)[\s\S]{0,60}?(engineer'?s?\s+estimate|estimated?\s+(?:construction\s+)?(?:cost|value|budget))/i;
+  for (const c of criteria) {
+    const text = c.description || '';
+    const m = text.match(near) || text.match(nearRev);
+    if (m) {
+      const rawAmount = (m[2] && /\d/.test(m[2])) ? m[2] : m[1];
+      const value = Number(String(rawAmount).replace(/,/g, ''));
+      if (Number.isFinite(value) && value >= 1000) {
+        return { value, raw: `$${rawAmount}`, source: `criteria:${c.title || 'unknown'}` };
+      }
+    }
+  }
+  return null;
+}
+
+// Solicitation / project number, best-effort. Returns a string or null.
+function parseSolicitationNumber(criteria) {
+  if (!Array.isArray(criteria)) return null;
+  const patterns = [
+    /\bProject\s*(?:ID|No\.?|Number|#)\s*[:\-]?\s*([A-Z0-9][A-Z0-9._\-\/]{2,32})/i,
+    /\b(?:IFB|RFP|RFQ|RFB|Bid)\s*(?:No\.?|#)?\s*[:\-]?\s*([A-Z0-9][A-Z0-9._\-\/]{2,32})/i,
+    /\b(\d{2,4}-(?:IFB|RFP|RFQ|RFB)-[A-Z0-9\-]{2,24})/i,
+  ];
+  for (const c of criteria) {
+    const text = c.description || '';
+    for (const re of patterns) {
+      const m = text.match(re);
+      if (m && m[1]) {
+        const val = m[1].replace(/[.,;]+$/, '').trim();
+        // Guard against trivially short/garbage captures.
+        if (val.length >= 3 && /[0-9]/.test(val)) return val;
+      }
+    }
+  }
+  return null;
+}
+
+// Short scope excerpt (capped) from a Scope-titled criteria, else the first
+// non-Notice criteria. Purely for the lightweight summary — not full text.
+function buildScopeExcerpt(criteria, maxLen = 1500) {
+  if (!Array.isArray(criteria) || criteria.length === 0) return null;
+  const scope = criteria.find((c) => /scope/i.test(c.title || ''));
+  const chosen = scope || criteria.find((c) => !/notice/i.test(c.title || '')) || criteria[0];
+  if (!chosen || !chosen.description) return null;
+  const text = String(chosen.description).replace(/\s+/g, ' ').trim();
+  return text ? text.slice(0, maxLen) : null;
+}
+
+// Map OpenGov visible.bid_items into the shape bid_items.js normalizeBidItem
+// consumes. Metadata only (unit_price is bidder-supplied/blank in solicitations).
+function mapBidItemsForPersist(visibleBidItems, { projectId, sourceUrl }) {
+  if (!Array.isArray(visibleBidItems)) return [];
+  return visibleBidItems.map((it, i) => ({
+    item_number: it.item_number != null ? String(it.item_number) : null,
+    description: it.description || null,
+    unit_of_measure: it.unit_of_measure || null,
+    quantity: it.quantity ?? null,
+    unit_price: it.unit_price ?? null,
+    section_name: it.section_name || 'Schedule of Bid',
+    source_portal: 'opengov',
+    source_opportunity_id: projectId != null ? String(projectId) : null,
+    source_url: sourceUrl || null,
+    extraction_method: 'portal_tab',
+    source_order: it.source_order ?? i + 1,
+  })).filter((r) => r.description);
 }
 
 // Normalize an OpenGov project list object into a BidBox candidate. When a
@@ -389,12 +527,42 @@ function buildCandidate(project, detail = null) {
     crawl_data.pre_bid = detail.pre_bid ?? null;
     crawl_data.timeline = detail.timeline ?? null;
     crawl_data.flags = detail.flags ?? null;
-    // Document/addenda manifest: metadata only (id, sharedId, filename, type) so
+    // Document manifest: metadata only (id, sharedId, filename, type) so
     // Phase 3 knows what to fetch and the UI can show availability now.
     crawl_data.documents = documents;
     crawl_data.document_count = documents.length;
+    // Addenda: corrected shape (number, description, releasedAt, status, has_changes).
     crawl_data.addenda = addenda;
     crawl_data.addenda_count = addenda.length;
+  }
+
+  // ── Phase 2.5: portal-visible metadata (parsed from the same payload) ──
+  let estimatedValue = null;
+  let promotedBidId = bidId;
+  let bidItemsForPersist = [];
+  const visible = enriched && detail.visible ? detail.visible : null;
+  if (visible) {
+    const estimate = parseEngineerEstimate(visible.criteria);
+    const solicitation = parseSolicitationNumber(visible.criteria);
+    const scopeExcerpt = buildScopeExcerpt(visible.criteria);
+    const bidItems = Array.isArray(visible.bid_items) ? visible.bid_items : [];
+    bidItemsForPersist = mapBidItemsForPersist(bidItems, { projectId: project.id, sourceUrl: source_url });
+
+    crawl_data.extraction_method = 'opengov_v2_5_visible_metadata';
+    crawl_data.opengov_visible_metadata = {
+      estimated_value: estimate ? estimate.value : null,
+      estimated_value_raw: estimate ? estimate.raw : null,
+      estimated_value_source: estimate ? estimate.source : null,
+      solicitation_number: solicitation,
+      scope_excerpt: scopeExcerpt,
+      sections: Array.isArray(visible.sections) ? visible.sections : [],
+      bid_item_count: bidItemsForPersist.length,
+      bid_items_truncated: Boolean(visible.bid_items_truncated),
+      extracted_at: new Date().toISOString(),
+    };
+
+    if (estimate) estimatedValue = estimate.value;                 // promote to typed column
+    if (solicitation) promotedBidId = solicitation;               // prefer real solicitation number
   }
 
   // Prefer org address for locality; fall back to contact city/state from detail.
@@ -405,22 +573,29 @@ function buildCandidate(project, detail = null) {
         ? [detail.contact.city, detail.contact.state, detail.contact.zip].filter(Boolean).join(', ') || null
         : null);
 
-  return {
+  const candidate = {
     source_url,
-    raw_title: project.title || bidId || String(project.id),
+    raw_title: project.title || promotedBidId || String(project.id),
     agency,
     bid_due_at: project.proposalDeadline || null,
-    estimated_value: null,
+    estimated_value: estimatedValue,          // Phase 2.5: engineer's estimate when confidently parsed
     estimated_value_low: null,
     estimated_value_high: null,
     county: null,            // OpenGov detail exposes no county field
     project_address: project_address || null,
     required_licenses: null,
     required_naics: null,
-    portal_bid_id: bidId || String(project.id),
+    portal_bid_id: promotedBidId || String(project.id),
     portal_department: dept.name || null,
     crawl_data,
   };
+  // Transient field consumed by runScan to persist opportunity_bid_items after
+  // the candidate is upserted. Not part of portalOwnedCandidateFields, so it is
+  // never written to opportunity_candidates.
+  if (bidItemsForPersist.length > 0) {
+    Object.defineProperty(candidate, '_bidItems', { value: bidItemsForPersist, enumerable: false });
+  }
+  return candidate;
 }
 
 async function scrapeOpenGov(source, log = console.log) {
@@ -512,4 +687,9 @@ module.exports = {
   cleanBidId,
   detailUrl,
   scrapeOpenGov,
+  // Phase 2.5 parsers (exported for fixture tests)
+  parseEngineerEstimate,
+  parseSolicitationNumber,
+  buildScopeExcerpt,
+  mapBidItemsForPersist,
 };

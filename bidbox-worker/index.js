@@ -6,6 +6,7 @@ const { scrapeLaCountyDpw } = require('./drivers/lacounty_dpw');
 const { scrapeLacmta } = require('./drivers/lacmta');
 const { scrapeCalEprocure } = require('./drivers/caleprocure');
 const { scrapeOpenGov } = require('./drivers/opengov');
+const { replaceBidItemsForCandidate } = require('./drivers/bid_items');
 const { acquirePlanetBidsDocuments, runPlanetBidsBidItemScan } = require('./drivers/planetbids_documents');
 const { runPortalIntelligence } = require('./drivers/portal_intelligence');
 const { acquireCaltransDocuments } = require('./drivers/caltrans_documents');
@@ -548,6 +549,31 @@ async function runScan(task, supabase, driver) {
       } else {
         unchangedCount++;
         log(`[${source_name}] Already current: ${candidate.source_url}`);
+      }
+
+      // Portal-native bid items carried on the candidate (e.g. OpenGov
+      // priceTables → opportunity_bid_items). Generic: any driver may attach
+      // `_bidItems`. Non-fatal — a persistence failure never fails the scan.
+      if (Array.isArray(candidate._bidItems) && candidate._bidItems.length > 0 && saved.candidate?.id) {
+        try {
+          const result = await replaceBidItemsForCandidate({
+            supabase,
+            candidateId: saved.candidate.id,
+            items: candidate._bidItems,
+            methods: ['portal_tab'],
+            defaults: {
+              sourcePortal: portal_type,
+              extractionMethod: 'portal_tab',
+              sourceOpportunityId: candidate.portal_bid_id ?? null,
+              sourceUrl: candidate.source_url ?? null,
+            },
+            log,
+          });
+          log(`[${source_name}] Bid items for ${candidate.source_url}: ${result.inserted} stored`);
+        } catch (e) {
+          log(`[${source_name}] Bid item persist failed for ${candidate.source_url}: ${e.message}`);
+          errorMessages.push(`Bid item persist failed: ${e.message}`);
+        }
       }
 
       if (saved.preparation?.queued) preparationQueued++;
