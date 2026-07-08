@@ -11,6 +11,41 @@ environment — the only paths are Lovable or the Supabase dashboard SQL editor.
 
 ---
 
+## PENDING — OpenGov Phase 1 discovery driver (2026-07-07)
+
+### 20260707230000_seed_opengov_source.sql
+
+**Status:** Pending
+**File:** `supabase/migrations/20260707230000_seed_opengov_source.sql`
+
+**What it does:**
+Seeds OpenGov as a first-class portal: one global `opportunity_sources` row
+(`portal_type='opengov'`, "OpenGov — California Construction",
+`scan_enabled=false`/`refresh_enabled=false` pending live validation) plus a
+`portal_drivers` row (`opengov` → `opengov_driver`, `browserbase`). Additive +
+idempotent (`ON CONFLICT (listing_url)` / `ON CONFLICT (portal_type)`); the
+conflict update never re-disables an operator-enabled source.
+
+**Depends on (Railway worker + env):**
+- Worker deployed with `bidbox-worker/drivers/opengov.js` and the `opengov_scan`
+  wiring (commit accompanying this migration).
+- Env vars `OPENGOV_EMAIL` / `OPENGOV_PASSWORD` set in Railway.
+- `BROWSERBASE_API_KEY` / `BROWSERBASE_PROJECT_ID` (already present for
+  PlanetBids/LACMTA).
+
+**What to do after applying (validation, then enable):**
+```sql
+-- confirm the source + driver rows exist
+SELECT id, name, portal_type, scan_enabled FROM opportunity_sources WHERE portal_type='opengov';
+SELECT * FROM portal_drivers WHERE portal_type='opengov';
+```
+Then trigger one manual scan (worker picks up an `opengov_scan` task), confirm
+`opportunity_candidates` rows appear with `portal_type='opengov'`, populated
+titles/agencies/due dates/source URLs, then flip `scan_enabled`/`refresh_enabled`
+to true. Full runbook in the Phase 1 deliverables / handoff.
+
+---
+
 ## PENDING — Admin role seed (2026-07-07)
 
 ### 20260707120000_seed_admin_role.sql

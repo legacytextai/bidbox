@@ -17,6 +17,7 @@ const PORTAL_PATTERNS: Array<{ type: string; patterns: RegExp[] }> = [
   { type: 'lacounty_dpw', patterns: [/dpw\.lacounty\.gov/i] },
   { type: 'lacmta', patterns: [/business\.metro\.net/i] },
   { type: 'caleprocure', patterns: [/caleprocure\.ca\.gov/i] },
+  { type: 'opengov', patterns: [/procurement\.opengov\.com/i] },
 ];
 
 function detectPortalType(url: string): string {

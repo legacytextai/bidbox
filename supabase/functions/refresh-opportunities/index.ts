@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-refresh-secret",
 };
 
-type TaskType = "planetbids_scan" | "caltrans_scan" | "lacounty_dpw_scan" | "lacmta_scan" | "caleprocure_scan";
+type TaskType = "planetbids_scan" | "caltrans_scan" | "lacounty_dpw_scan" | "lacmta_scan" | "caleprocure_scan" | "opengov_scan";
 
 // One-time backfill: queues Opportunity Intelligence for candidates that existed
 // before the autonomous pipeline was deployed. Runs once per environment, gated by
@@ -131,6 +131,7 @@ function resolveTaskType(portalType: string): TaskType | null {
   if (portalType === "lacounty_dpw") return "lacounty_dpw_scan";
   if (portalType === "lacmta") return "lacmta_scan";
   if (portalType === "caleprocure") return "caleprocure_scan";
+  if (portalType === "opengov") return "opengov_scan";
   return null;
 }
 
@@ -224,7 +225,7 @@ serve(async (req) => {
       .from("agent_tasks")
       .select("id, task_type, status, payload")
       .in("status", ["pending", "running", "retrying"])
-      .in("task_type", ["planetbids_scan", "caltrans_scan", "lacounty_dpw_scan", "lacmta_scan", "caleprocure_scan"]);
+      .in("task_type", ["planetbids_scan", "caltrans_scan", "lacounty_dpw_scan", "lacmta_scan", "caleprocure_scan", "opengov_scan"]);
 
     if (activeTaskError) {
       console.error("refresh-opportunities active task lookup failed:", activeTaskError);

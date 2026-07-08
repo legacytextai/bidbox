@@ -13,6 +13,7 @@ export type PortalType =
   | 'lacounty_dpw'
   | 'lacmta'
   | 'caleprocure'
+  | 'opengov'
   | 'unknown';
 
 interface PortalPattern {
@@ -82,6 +83,13 @@ const PORTAL_PATTERNS: PortalPattern[] = [
       /caleprocure\.ca\.gov/i,
     ],
   },
+  {
+    type: 'opengov',
+    patterns: [
+      /procurement\.opengov\.com/i,
+      /\.opengov\.com.*(?:procurement|project|portal)/i,
+    ],
+  },
 ];
 
 /**
@@ -115,6 +123,7 @@ export function getPortalDisplayName(type: PortalType): string {
     lacounty_dpw: 'LA County DPW',
     lacmta: 'LA Metro',
     caleprocure: 'Cal eProcure',
+    opengov: 'OpenGov',
     unknown: 'External Source',
   };
   return names[type];

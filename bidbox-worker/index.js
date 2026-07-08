@@ -5,6 +5,7 @@ const { scrapeCaltrans } = require('./drivers/caltrans');
 const { scrapeLaCountyDpw } = require('./drivers/lacounty_dpw');
 const { scrapeLacmta } = require('./drivers/lacmta');
 const { scrapeCalEprocure } = require('./drivers/caleprocure');
+const { scrapeOpenGov } = require('./drivers/opengov');
 const { acquirePlanetBidsDocuments, runPlanetBidsBidItemScan } = require('./drivers/planetbids_documents');
 const { runPortalIntelligence } = require('./drivers/portal_intelligence');
 const { acquireCaltransDocuments } = require('./drivers/caltrans_documents');
@@ -523,6 +524,10 @@ async function runCalEprocureScan(task, supabase) {
   return runScan(task, supabase, scrapeCalEprocure);
 }
 
+async function runOpenGovScan(task, supabase) {
+  return runScan(task, supabase, scrapeOpenGov);
+}
+
 async function runBidItemScan(task, supabase) {
   const { candidate_id } = task.payload ?? {};
   if (!candidate_id) throw new Error('bid_item_scan task missing candidate_id');
@@ -944,7 +949,7 @@ async function claimNextTask() {
     .from('agent_tasks')
     .select('*')
     .eq('status', 'pending')
-    .in('task_type', ['planetbids_scan', 'caltrans_scan', 'lacounty_dpw_scan', 'lacmta_scan', 'caleprocure_scan', 'bid_item_scan', 'portal_intelligence', 'document_prefetch', 'project_analysis', 'document_processing', 'project_intelligence'])
+    .in('task_type', ['planetbids_scan', 'caltrans_scan', 'lacounty_dpw_scan', 'lacmta_scan', 'caleprocure_scan', 'opengov_scan', 'bid_item_scan', 'portal_intelligence', 'document_prefetch', 'project_analysis', 'document_processing', 'project_intelligence'])
     .order('priority', { ascending: false })
     .order('created_at', { ascending: true })
     .limit(1)
@@ -1022,6 +1027,12 @@ async function runDocumentPrefetchTask(task, supabase) {
   } else if (candidate.portal_type === 'caleprocure') {
     log('Cal eProcure document acquisition not implemented (Phase 2) — skipping');
     result = { found: 0, acquired: 0, skipped: 0, failed: 0 };
+  } else if (candidate.portal_type === 'opengov') {
+    // Phase 1 is discovery-only. OpenGov document acquisition (pre-signed S3
+    // URLs embedded in project detail) is Phase 3. Return an empty result so
+    // the auto-queued prefetch completes cleanly instead of throwing.
+    log('OpenGov document acquisition not implemented (Phase 3) — skipping');
+    result = { found: 0, acquired: 0, skipped: 0, failed: 0 };
   } else {
     throw new Error(`document_prefetch not implemented for portal_type=${candidate.portal_type}`);
   }
@@ -1043,6 +1054,8 @@ async function processTask(task) {
       result = await runLacmtaScan(task, supabase);
     } else if (task.task_type === 'caleprocure_scan') {
       result = await runCalEprocureScan(task, supabase);
+    } else if (task.task_type === 'opengov_scan') {
+      result = await runOpenGovScan(task, supabase);
     } else if (task.task_type === 'bid_item_scan') {
       result = await runBidItemScan(task, supabase);
     } else if (task.task_type === 'portal_intelligence') {
@@ -1059,7 +1072,7 @@ async function processTask(task) {
       throw new Error(`Unsupported task type: ${task.task_type}`);
     }
 
-    const taskResult = ['planetbids_scan', 'caltrans_scan', 'lacounty_dpw_scan', 'lacmta_scan', 'caleprocure_scan'].includes(task.task_type)
+    const taskResult = ['planetbids_scan', 'caltrans_scan', 'lacounty_dpw_scan', 'lacmta_scan', 'caleprocure_scan', 'opengov_scan'].includes(task.task_type)
       ? {
           found: result.found,
           new: result.new,
@@ -1077,8 +1090,10 @@ async function processTask(task) {
                 ? 'lacmta_discovery_v1'
                 : task.task_type === 'caleprocure_scan'
                   ? 'caleprocure_discovery_v1'
-                  : 'planetbids_discovery',
-          document_acquisition_supported: task.task_type !== 'caleprocure_scan',
+                  : task.task_type === 'opengov_scan'
+                    ? 'opengov_discovery_v1'
+                    : 'planetbids_discovery',
+          document_acquisition_supported: !['caleprocure_scan', 'opengov_scan'].includes(task.task_type),
           trigger_reason: task.payload?.trigger_reason ?? task.trigger_reason ?? null,
           refresh_window: task.payload?.refresh_window ?? task.refresh_window ?? null,
         }
@@ -1175,7 +1190,7 @@ async function processTask(task) {
       })
       .eq('id', task.id);
 
-    if (['planetbids_scan', 'caltrans_scan', 'lacounty_dpw_scan', 'lacmta_scan', 'caleprocure_scan'].includes(task.task_type)) {
+    if (['planetbids_scan', 'caltrans_scan', 'lacounty_dpw_scan', 'lacmta_scan', 'caleprocure_scan', 'opengov_scan'].includes(task.task_type)) {
       console.log(`[${ts()}] Task ${task.id} complete: found=${result.found} new=${result.new} refreshed=${result.refreshed ?? 0} unchanged=${result.unchanged ?? 0} errors=${result.errors}`);
       await maybeQualifyCandidates();
     } else if (task.task_type === 'document_processing') {
@@ -1198,7 +1213,7 @@ async function processTask(task) {
     }
 
     console.error(`[${ts()}] Task ${task.id} failed: ${e.message}`);
-    if (['planetbids_scan', 'caltrans_scan', 'lacounty_dpw_scan', 'lacmta_scan', 'caleprocure_scan'].includes(task.task_type) && task.payload?.source_id) {
+    if (['planetbids_scan', 'caltrans_scan', 'lacounty_dpw_scan', 'lacmta_scan', 'caleprocure_scan', 'opengov_scan'].includes(task.task_type) && task.payload?.source_id) {
       await supabase
         .from('opportunity_sources')
         .update({
