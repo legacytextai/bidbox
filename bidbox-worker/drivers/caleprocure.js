@@ -346,7 +346,32 @@ function attrSelector(value) {
   return String(value ?? '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
+function isClosedContextError(error) {
+  return /Target page, context or browser has been closed|Browser has been closed|context has been closed|page has been closed/i.test(error?.message ?? String(error ?? ''));
+}
+
+function makeClosedContextError(message) {
+  const error = new Error(message);
+  error.code = 'CALEPROCURE_CONTEXT_CLOSED';
+  return error;
+}
+
+function isClosedContextAbort(error) {
+  return error?.code === 'CALEPROCURE_CONTEXT_CLOSED' || isClosedContextError(error);
+}
+
+async function pageIsUsable(page) {
+  try {
+    if (!page || page.isClosed()) return false;
+    const context = page.context();
+    return context.pages().some((candidate) => candidate === page && !candidate.isClosed());
+  } catch {
+    return false;
+  }
+}
+
 async function hasListingRows(page) {
+  if (!(await pageIsUsable(page))) return false;
   return page.evaluate(() => {
     const visible = (el) => {
       if (!el) return false;
@@ -446,6 +471,7 @@ async function waitForRecognizableDetail(page, eventId) {
 }
 
 async function locateListingRowClickTargets(page, row) {
+  if (!(await pageIsUsable(page))) throw makeClosedContextError(`Cal eProcure listing page is closed before locating ${row.eventId ?? 'unknown event'}`);
   const tokenPrefix = `bidbox-cale-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const descriptors = await page.evaluate(({ eventId, title, eventCellId, tokenPrefix: prefix }) => {
     const clean = (value) => (value || '').replace(/\s+/g, ' ').trim();
@@ -486,6 +512,9 @@ async function locateListingRowClickTargets(page, row) {
       || rows.find((el) => title && clean(el.innerText || el.textContent).includes(title))
       || rows[0]
       || document;
+    if (rowWithTitle !== document) {
+      rowWithTitle.scrollIntoView({ block: 'center', inline: 'nearest' });
+    }
     const raw = [];
     const add = (el, label, score) => {
       if (!el || raw.includes(el)) return;
@@ -540,6 +569,28 @@ async function locateListingRowClickTargets(page, row) {
       if (title && text === title) add(el, 'visible-title-cell', 60);
     }
 
+    const globalExactEventNodes = Array.from(document.querySelectorAll('a, button, [role="button"], [onclick], [data-if-ps-clickable="true"], td, span, div'))
+      .filter((el) => visible(el) && clean(el.innerText || el.textContent) === eventId);
+    for (const el of globalExactEventNodes) {
+      add(el, 'global-visible-event-id-text', 88);
+      let parent = el.parentElement;
+      for (let depth = 0; parent && depth < 5; depth += 1, parent = parent.parentElement) {
+        if (visible(parent) && clickableish(parent)) add(parent, `global-visible-clickable-ancestor:${depth + 1}`, 86 - depth);
+      }
+    }
+
+    const globalTitleNodes = title
+      ? Array.from(document.querySelectorAll('a, button, [role="button"], [onclick], [data-if-ps-clickable="true"], td, span, div'))
+        .filter((el) => visible(el) && clean(el.innerText || el.textContent) === title)
+      : [];
+    for (const el of globalTitleNodes) {
+      add(el, 'global-visible-title-text', 65);
+      let parent = el.parentElement;
+      for (let depth = 0; parent && depth < 5; depth += 1, parent = parent.parentElement) {
+        if (visible(parent) && clickableish(parent)) add(parent, `global-visible-title-clickable-ancestor:${depth + 1}`, 63 - depth);
+      }
+    }
+
     return candidates
       .sort((a, b) => Number(b.visible) - Number(a.visible) || b.score - a.score)
       .slice(0, 12);
@@ -557,12 +608,19 @@ async function locateListingRowClickTargets(page, row) {
 }
 
 async function clickRowAndCaptureDetail(page, row, log) {
-  const clickTargets = await locateListingRowClickTargets(page, row);
+  let clickTargets = await locateListingRowClickTargets(page, row);
+  if (clickTargets.length === 0) {
+    await page.waitForTimeout(500).catch(() => {});
+    clickTargets = await locateListingRowClickTargets(page, row);
+  }
   let lastError = null;
   const attempted = [];
 
   for (const target of clickTargets) {
     try {
+      if (!(await pageIsUsable(page))) throw makeClosedContextError(`Cal eProcure listing page closed before clicking ${row.eventId ?? 'unknown event'}`);
+      const context = page.context();
+      const pagesBefore = new Set(context.pages());
       attempted.push({
         label: target.descriptor.label,
         visible: target.descriptor.visible,
@@ -570,7 +628,9 @@ async function clickRowAndCaptureDetail(page, row, log) {
         tag: target.descriptor.tag,
       });
       const popupPromise = page.waitForEvent('popup', { timeout: 1500 }).catch(() => null);
+      const newPagePromise = context.waitForEvent('page', { timeout: 1500 }).catch(() => null);
       if (target.descriptor.visible) {
+        await target.locator.scrollIntoViewIfNeeded({ timeout: 5000 }).catch(() => {});
         await target.locator.click({ timeout: 15000 });
       } else {
         await target.locator.evaluate((el) => {
@@ -580,14 +640,20 @@ async function clickRowAndCaptureDetail(page, row, log) {
         }, undefined, { timeout: 15000 });
       }
       const popup = await popupPromise;
-      const detailPage = popup || page;
+      const newPage = await newPagePromise;
+      const openedPage = popup || (newPage && !pagesBefore.has(newPage) ? newPage : null);
+      if (page.isClosed() && !openedPage) {
+        throw makeClosedContextError(`Cal eProcure click closed the listing page for ${row.eventId ?? 'unknown event'}`);
+      }
+
+      const detailPage = openedPage || page;
       await waitForRecognizableDetail(detailPage, row.eventId);
       const finalUrl = detailPage.url();
       const parsed = parseCanonicalDetailUrl(finalUrl, row.eventId);
       const detail = await extractDetailMetadata(detailPage);
 
-      if (popup) {
-        await popup.close().catch(() => {});
+      if (openedPage && openedPage !== page) {
+        await openedPage.close().catch(() => {});
       }
 
       return {
@@ -601,6 +667,7 @@ async function clickRowAndCaptureDetail(page, row, log) {
       };
     } catch (e) {
       lastError = e;
+      if (isClosedContextAbort(e)) throw e;
     }
   }
 
@@ -608,12 +675,19 @@ async function clickRowAndCaptureDetail(page, row, log) {
 }
 
 async function restoreListingPage(page, listingUrl, log) {
+  if (!(await pageIsUsable(page))) {
+    throw makeClosedContextError('Cal eProcure listing page closed before restore');
+  }
   if (await hasListingRows(page)) return;
 
   await page.goBack({ waitUntil: 'domcontentloaded', timeout: 30000 }).catch((e) => {
+    if (isClosedContextAbort(e)) throw e;
     log(`Cal eProcure goBack after detail failed: ${e.message}`);
   });
 
+  if (!(await pageIsUsable(page))) {
+    throw makeClosedContextError('Cal eProcure listing page closed during restore');
+  }
   if (await hasListingRows(page)) return;
 
   log('Cal eProcure listing table not restored after detail; reloading listing and rerunning Search');
@@ -888,6 +962,10 @@ async function scrapeCalEprocure(source, log = console.log) {
     detail_navigation_static_success: 0,
     detail_navigation_click_success: 0,
     detail_navigation_failed: 0,
+    detail_navigation_aborted_context_closed: false,
+    detail_navigation_aborted_after_row: null,
+    detail_navigation_remaining_skipped: 0,
+    candidates_inserted: 0,
   };
   let session;
 
@@ -926,8 +1004,18 @@ async function scrapeCalEprocure(source, log = console.log) {
     telemetry.listing_rows_observed = rows.length;
     let firstFailedRowLogged = false;
     let packageDiagnosticsCaptured = false;
-    for (const row of rows.slice(0, detailLimit)) {
+    const rowsToProcess = rows.slice(0, detailLimit);
+    let abortDetailLoop = false;
+    for (let rowIndex = 0; rowIndex < rowsToProcess.length; rowIndex += 1) {
+      const row = rowsToProcess[rowIndex];
       let shouldRestoreListing = false;
+      if (!(await pageIsUsable(page))) {
+        telemetry.detail_navigation_aborted_context_closed = true;
+        telemetry.detail_navigation_aborted_after_row = row.eventId ?? null;
+        telemetry.detail_navigation_remaining_skipped = rowsToProcess.length - rowIndex;
+        errorMessages.push(`Cal eProcure detail navigation aborted: listing page closed before ${row.eventId || 'unknown event'}; skipped ${telemetry.detail_navigation_remaining_skipped} remaining row(s)`);
+        break;
+      }
       telemetry.detail_navigation_attempted++;
       try {
         let target = resolveRowDetailTarget(row);
@@ -963,6 +1051,7 @@ async function scrapeCalEprocure(source, log = console.log) {
           continue;
         }
         candidates.push(candidate);
+        telemetry.candidates_inserted = candidates.length;
         log(`[${sourceName}] Parsed Cal eProcure event ${candidate.portal_bid_id}: ${candidate.raw_title}`);
       } catch (e) {
         telemetry.detail_navigation_failed++;
@@ -970,13 +1059,29 @@ async function scrapeCalEprocure(source, log = console.log) {
           await logFailedRowDiagnostics(page, row, `detail_navigation_failed:${e.message}`, log).catch(() => {});
           firstFailedRowLogged = true;
         }
+        if (isClosedContextAbort(e)) {
+          telemetry.detail_navigation_aborted_context_closed = true;
+          telemetry.detail_navigation_aborted_after_row = row.eventId ?? null;
+          telemetry.detail_navigation_remaining_skipped = rowsToProcess.length - rowIndex - 1;
+          errorMessages.push(`Cal eProcure detail navigation aborted after ${row.eventId || 'unknown event'}: context/page closed; skipped ${telemetry.detail_navigation_remaining_skipped} remaining row(s)`);
+          abortDetailLoop = true;
+        }
       } finally {
-        if (shouldRestoreListing) {
+        if (shouldRestoreListing && !abortDetailLoop) {
           await restoreListingPage(page, listingUrl, log).catch((e) => {
+            if (isClosedContextAbort(e)) {
+              telemetry.detail_navigation_aborted_context_closed = true;
+              telemetry.detail_navigation_aborted_after_row = row.eventId ?? null;
+              telemetry.detail_navigation_remaining_skipped = rowsToProcess.length - rowIndex - 1;
+              errorMessages.push(`Cal eProcure detail navigation aborted during restore after ${row.eventId || 'unknown event'}: context/page closed; skipped ${telemetry.detail_navigation_remaining_skipped} remaining row(s)`);
+              abortDetailLoop = true;
+              return;
+            }
             recordError(`Cal eProcure listing restore failed after ${row.eventId || '(unknown)'}: ${e.message}`);
           });
         }
       }
+      if (abortDetailLoop) break;
     }
 
     log(`[${sourceName}] Cal eProcure detail navigation summary: ${JSON.stringify(telemetry)}`);
