@@ -29,6 +29,7 @@ interface QualificationProfile {
 
 interface Candidate {
   id:                  string;
+  portal_type:         string | null;
   raw_title:           string | null;
   agency:              string | null;
   bid_due_at:          string | null;
@@ -70,6 +71,121 @@ function formatDollar(value: number): string {
   return `$${Math.round(value)}`;
 }
 
+function normalizeTitle(title: string | null): string {
+  return String(title ?? "")
+    .toLowerCase()
+    .replace(/[’']/g, "'")
+    .replace(/[^a-z0-9/&+\-\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function includesAny(title: string, patterns: RegExp[]): boolean {
+  return patterns.some((pattern) => pattern.test(title));
+}
+
+const PUBLIC_WORKS_TITLE_PATTERNS: RegExp[] = [
+  /\bbridge\b/,
+  /\broadway\b/,
+  /\broad\b/,
+  /\bpavement\b/,
+  /\bpaving\b/,
+  /\bdrainage\b/,
+  /\blighting\b/,
+  /\btraffic\b/,
+  /\bsignal\b/,
+  /\bsewer\b/,
+  /\bwastewater\b/,
+  /\bpotable water\b/,
+  /\bwater well(s)?\b/,
+  /\bwell(s)?\b/,
+  /\butilities\b/,
+  /\butility\b/,
+  /\belectrical\b/,
+  /\bev supply equipment\b/,
+  /\bev charging\b/,
+  /\bcharging infrastructure\b/,
+  /\bsite improvement(s)?\b/,
+  /\bpark(s)?\b/,
+  /\bfacilit(y|ies)\b/,
+  /\bbuilding(s)?\b/,
+  /\bhvac\b/,
+  /\bpipeline\b/,
+  /\bsidewalk\b/,
+  /\bsurvey(ing)?\b/,
+  /\ba&e\b/,
+  /\barchitectural\b/,
+  /\bengineering\b/,
+  /\benvironmental\b/,
+  /\bceqa\b/,
+  /\bconstruction\b/,
+  /\bconstruction management\b/,
+  /\bimprovement(s)?\b/,
+  /\brehabilitation\b/,
+  /\brehab\b/,
+  /\breplacement\b/,
+  /\brenovation\b/,
+  /\bmodernization\b/,
+  /\broad rocking\b/,
+];
+
+const NON_PUBLIC_WORKS_TITLE_PATTERNS: Array<{ reason: string; patterns: RegExp[] }> = [
+  {
+    reason: "Non-public-works software / IT procurement",
+    patterns: [
+      /\bcannabis\b.*\b(integration|system|software|platform)\b/,
+      /\b(integration|system|software|platform)\b.*\bcannabis\b/,
+      /\bsoftware\b/,
+      /\bsaas\b/,
+      /\bit services?\b/,
+      /\binformation technology\b/,
+      /\bmanaged cybersecurity\b/,
+      /\bcybersecurity\b/,
+      /\bcalnet\b/,
+      /\btechnical access portal\b/,
+      /\bportal\b.*\b(m&o|maintenance|operations?)\b/,
+      /\b(m&o|maintenance|operations?)\b.*\bportal\b/,
+      /\bsaphire\b/,
+      /\bdata system\b/,
+    ],
+  },
+  {
+    reason: "Non-public-works funding program",
+    patterns: [
+      /\bbroadband funding\b/,
+      /\bfunding program\b/,
+      /\bgrant program\b/,
+    ],
+  },
+  {
+    reason: "Municipal operations outside construction scope",
+    patterns: [
+      /\bjanitorial\b/,
+      /\bcustodial\b/,
+      /\bguard services?\b/,
+      /\bsecurity services?\b/,
+      /\btowing services?\b/,
+    ],
+  },
+];
+
+function classifyCalEprocurePublicWorks(title: string | null): { red: boolean; reason: string | null } {
+  const normalized = normalizeTitle(title);
+  if (!normalized) return { red: false, reason: null };
+
+  const nonPublicWorks = NON_PUBLIC_WORKS_TITLE_PATTERNS.find(({ patterns }) => includesAny(normalized, patterns));
+  if (!nonPublicWorks) return { red: false, reason: null };
+
+  // Explicit construction/public-works scope wins over broad terms like
+  // "system", "portal", or "services" so EV charging, utilities, wells,
+  // roadway, A&E, and environmental work stay visible.
+  if (includesAny(normalized, PUBLIC_WORKS_TITLE_PATTERNS)) {
+    return { red: false, reason: null };
+  }
+
+  return { red: true, reason: nonPublicWorks.reason };
+}
+
 function qualifyCandidate(
   candidate: Candidate,
   profile: QualificationProfile,
@@ -87,6 +203,18 @@ function qualifyCandidate(
       : parseValueFromTitle(candidate.raw_title);
 
   // ── Red rules (first match wins, return immediately) ─────────────────────
+
+  if (candidate.portal_type === "caleprocure") {
+    const domainClassification = classifyCalEprocurePublicWorks(candidate.raw_title);
+    if (domainClassification.red) {
+      return {
+        id: candidate.id,
+        auto_status: "red",
+        auto_status_reason: domainClassification.reason ?? "Non-public-works procurement",
+        qualification_score: 0,
+      };
+    }
+  }
 
   // Bid due date is already in the past
   if (candidate.bid_due_at) {
@@ -297,7 +425,7 @@ serve(async (req) => {
     // Load pending candidates (skip any that have been manually reviewed)
     let query = supabase
       .from("opportunity_candidates")
-      .select("id, raw_title, agency, bid_due_at, scope_text, estimated_value, county, required_licenses, required_naics, crawl_data")
+      .select("id, portal_type, raw_title, agency, bid_due_at, scope_text, estimated_value, county, required_licenses, required_naics, crawl_data")
       .eq("status", "pending");
 
     if (candidateId) {

@@ -122,6 +122,88 @@ function portalOwnedCandidateFields({ source_id, source_name, portal_type, candi
   };
 }
 
+function supportsDocumentPrefetch(portalType) {
+  // Discovery-only drivers deliberately stop at metadata. Their scan task
+  // result reports document_acquisition_supported=false, and new candidates
+  // should not enqueue no-op document_prefetch work.
+  return !['caleprocure', 'opengov'].includes(portalType);
+}
+
+async function markCalEprocureDuplicateOfCaltrans({ supabase, source_id, candidate, caltransDuplicate, triggerReason, log }) {
+  const now = new Date().toISOString();
+  const duplicateCrawlData = {
+    ...(candidate.crawl_data ?? {}),
+    duplicate_of_caltrans: true,
+    duplicate_of_candidate_id: caltransDuplicate.id,
+    duplicate_of_source_url: caltransDuplicate.source_url,
+    duplicate_match_field: 'portal_bid_id',
+    duplicate_match_value: candidate.portal_bid_id,
+    duplicate_marked_at: now,
+  };
+
+  const { data: existing, error: lookupError } = await supabase
+    .from('opportunity_candidates')
+    .select('id, crawl_data')
+    .eq('portal_type', 'caleprocure')
+    .eq('portal_bid_id', candidate.portal_bid_id)
+    .maybeSingle();
+  if (lookupError) throw new Error(`Cal eProcure duplicate lookup failed: ${lookupError.message}`);
+
+  const updatePayload = {
+    source_id,
+    source_url: candidate.source_url,
+    raw_title: candidate.raw_title,
+    agency: candidate.agency,
+    bid_due_at: candidate.bid_due_at,
+    estimated_value: candidate.estimated_value ?? null,
+    estimated_value_low: candidate.estimated_value_low ?? null,
+    estimated_value_high: candidate.estimated_value_high ?? null,
+    county: candidate.county ?? null,
+    project_address: candidate.project_address ?? null,
+    required_licenses: candidate.required_licenses ?? null,
+    required_naics: candidate.required_naics ?? null,
+    portal_department: candidate.portal_department ?? null,
+    crawl_data: {
+      ...(existing?.crawl_data ?? {}),
+      ...duplicateCrawlData,
+    },
+    auto_status: 'red',
+    auto_status_reason: `Duplicate of Caltrans-native opportunity ${candidate.portal_bid_id}`,
+    qualification_score: 0,
+    qualified_at: now,
+    last_metadata_refreshed_at: now,
+    metadata_refresh_source: 'scan',
+    metadata_refresh_trigger: triggerReason,
+  };
+
+  if (existing?.id) {
+    const { error } = await supabase
+      .from('opportunity_candidates')
+      .update(updatePayload)
+      .eq('id', existing.id);
+    if (error) throw new Error(`Cal eProcure duplicate update failed: ${error.message}`);
+    log(`Marked Cal eProcure duplicate ${candidate.portal_bid_id} as duplicate_of_caltrans (${existing.id} -> ${caltransDuplicate.id})`);
+    return { state: 'duplicate_marked', candidate_id: existing.id };
+  }
+
+  const { data: inserted, error } = await supabase
+    .from('opportunity_candidates')
+    .insert({
+      ...updatePayload,
+      portal_type: 'caleprocure',
+      portal_bid_id: candidate.portal_bid_id,
+      opportunity_lifecycle_status: 'discovered',
+      opportunity_intelligence_status: 'not_requested',
+      metadata_refresh_count: 1,
+      last_metadata_changed_at: now,
+    })
+    .select('id')
+    .single();
+  if (error) throw new Error(`Cal eProcure duplicate insert failed: ${error.message}`);
+  log(`Inserted suppressed Cal eProcure duplicate ${candidate.portal_bid_id} as duplicate_of_caltrans (${inserted.id} -> ${caltransDuplicate.id})`);
+  return { state: 'duplicate_inserted', candidate_id: inserted.id };
+}
+
 // ── PRE-BID FORENSIC DEBUG REPORT ────────────────────────────────────────────
 // Persists DOM inspection + pipeline stages to agent_tasks.payload._debug_prebid.
 // Fires only for candidates with _debugPreBid or _domInspection set (bid 142972).
@@ -254,24 +336,27 @@ async function persistScannedCandidate({ supabase, source_id, source_name, porta
       ? { queued: false, reason: piError.message }
       : { queued: true };
 
-    // Queue document_prefetch — downloads original portal documents immediately
-    // after discovery so they're in storage before the user clicks Prepare Intelligence.
-    // Priority 2 (lower than bid_item_scan/portal_intelligence). Does NOT trigger F3.
-    const { error: dpError } = await supabase.from('agent_tasks').insert({
-      task_type: 'document_prefetch',
-      status: 'pending',
-      priority: 2,
-      trigger_reason: triggerReason,
-      payload: {
-        candidate_id: inserted.id,
-        source_url: inserted.source_url,
-        portal_type: inserted.portal_type,
-        source_name: source_name,
-      },
-    });
-    const documentPrefetchTask = dpError
-      ? { queued: false, reason: dpError.message }
-      : { queued: true };
+    let documentPrefetchTask = { queued: false, reason: 'document_acquisition_not_supported' };
+    if (supportsDocumentPrefetch(inserted.portal_type)) {
+      // Queue document_prefetch — downloads original portal documents immediately
+      // after discovery so they're in storage before the user clicks Prepare Intelligence.
+      // Priority 2 (lower than bid_item_scan/portal_intelligence). Does NOT trigger F3.
+      const { error: dpError } = await supabase.from('agent_tasks').insert({
+        task_type: 'document_prefetch',
+        status: 'pending',
+        priority: 2,
+        trigger_reason: triggerReason,
+        payload: {
+          candidate_id: inserted.id,
+          source_url: inserted.source_url,
+          portal_type: inserted.portal_type,
+          source_name: source_name,
+        },
+      });
+      documentPrefetchTask = dpError
+        ? { queued: false, reason: dpError.message }
+        : { queued: true };
+    }
 
     return { state: 'new', candidate: inserted, metadataChanged: true, preparation: { queued: false, duplicate: false, skipped: true, reason: 'oml_scan_no_auto_trigger' }, bidItemTask, portalIntelligenceTask, documentPrefetchTask };
   }
@@ -429,6 +514,14 @@ async function runScan(task, supabase, driver) {
           throw new Error(`Caltrans duplicate check failed: ${duplicateError.message}`);
         }
         if (caltransDuplicate?.id) {
+          await markCalEprocureDuplicateOfCaltrans({
+            supabase,
+            source_id,
+            candidate,
+            caltransDuplicate,
+            triggerReason: trigger_reason,
+            log,
+          });
           unchangedCount++;
           log(`[${source_name}] Skipping Cal eProcure duplicate ${candidate.portal_bid_id}: exact Caltrans candidate ${caltransDuplicate.id}`);
           continue;
@@ -556,6 +649,9 @@ async function runPortalIntelligenceTask(task, supabase) {
   if (!candidate_id) throw new Error('portal_intelligence task missing candidate_id');
   const logs = [];
   const log = (msg) => { logs.push(`[${new Date().toISOString()}] ${msg}`); console.log(msg); };
+  // Portal Intelligence writes portal_summary from portal metadata only. It is
+  // intentionally separate from full Opportunity Intelligence/F4, so it does
+  // not advance opportunity_intelligence_status out of not_requested.
   const result = await runPortalIntelligence({ supabase, candidateId: candidate_id, log });
   return { ...result, logs };
 }
