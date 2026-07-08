@@ -1,4 +1,5 @@
 const { chromium } = require('playwright');
+const { createBrowserbaseSessionId } = require('../lib/browserbase');
 
 function extractBidId(url) {
   const m = url.match(/\/bo-detail\/(\d+)/);
@@ -528,23 +529,15 @@ async function scrapePlanetBids(payload, log) {
     await Promise.race([
       (async () => {
         log(`[${source_name}] Creating Browserbase session`);
-        const sessionRes = await fetch('https://www.browserbase.com/v1/sessions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-bb-api-key': bbApiKey,
-          },
-          body: JSON.stringify({ projectId: bbProjectId }),
-        });
-
-        if (!sessionRes.ok) {
-          const errText = await sessionRes.text();
-          recordError(`Browserbase session failed: ${sessionRes.status} — ${errText.substring(0, 200)}`);
+        // Centralized create with concurrency gate + 429/503 backoff (see lib/browserbase).
+        let sessionId;
+        try {
+          sessionId = await createBrowserbaseSessionId(bbApiKey, bbProjectId, log);
+        } catch (e) {
+          recordError(e.message);
           errors++;
           return;
         }
-
-        const { id: sessionId } = await sessionRes.json();
         log(`[${source_name}] Session: ${sessionId}`);
 
         const wsUrl = `wss://connect.browserbase.com?apiKey=${bbApiKey}&sessionId=${sessionId}`;

@@ -4,6 +4,7 @@ const {
   isArchiveFile,
 } = require('./archive_extraction');
 const { replacePortalBidItemsForCandidate } = require('./bid_items');
+const { createBrowserbaseSessionId } = require('../lib/browserbase');
 
 const DOCUMENT_BUCKET = 'opportunity-documents';
 const API_HOST = 'api-external.prod.planetbids.com';
@@ -424,21 +425,8 @@ async function createBrowserbasePage(log) {
   if (!bbApiKey) throw new Error('BROWSERBASE_API_KEY not configured');
 
   log('Creating Browserbase session for document acquisition');
-  const sessionRes = await fetch('https://www.browserbase.com/v1/sessions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-bb-api-key': bbApiKey,
-    },
-    body: JSON.stringify({ projectId: bbProjectId }),
-  });
-
-  if (!sessionRes.ok) {
-    const errText = await sessionRes.text();
-    throw new Error(`Browserbase session failed: ${sessionRes.status} — ${errText.substring(0, 200)}`);
-  }
-
-  const { id: sessionId } = await sessionRes.json();
+  // Centralized create with concurrency gate + 429/503 backoff (see lib/browserbase).
+  const sessionId = await createBrowserbaseSessionId(bbApiKey, bbProjectId, log);
   log(`Browserbase session created: ${sessionId}`);
 
   const wsUrl = `wss://connect.browserbase.com?apiKey=${bbApiKey}&sessionId=${sessionId}`;

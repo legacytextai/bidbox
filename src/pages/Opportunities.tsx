@@ -99,6 +99,15 @@ const isClosedCandidate = (c: { bid_due_at: string | null }) => {
   return !isNaN(t) && t < Date.now();
 };
 
+// Portal scans can persist a candidate at discovery — before metadata
+// enrichment fills in the title — so the row briefly has a null/empty
+// raw_title and renders as "Untitled Opportunity". These are kept in the DB for
+// auditability but should not clutter the main "All" feed; like auto-Red /
+// low-relevance rows they are routed into the collapsible "Filtered Out"
+// section (still viewable, never hidden or deleted).
+const isIncompleteCandidate = (c: { raw_title: string | null }) =>
+  !c.raw_title || c.raw_title.trim() === "";
+
 const AUTO_RANK: Record<string, number> = {
   green: 0,
   yellow: 1,
@@ -866,6 +875,7 @@ const Opportunities = () => {
     const isFilteredOut = (candidate: Candidate) =>
       activeFilter === "all" &&
       (candidate.auto_status === "red" ||
+        isIncompleteCandidate(candidate) ||
         classifyOpportunityTitle(candidate.raw_title).relevance === "low");
 
     const visible: Candidate[] = [];
@@ -891,6 +901,7 @@ const Opportunities = () => {
   const tabCounts = useMemo(() => {
     const isHiddenFromMainAll = (candidate: Candidate) =>
       candidate.auto_status === "red" ||
+      isIncompleteCandidate(candidate) ||
       classifyOpportunityTitle(candidate.raw_title).relevance === "low";
     const matching = candidates.filter(matchesFacets);
     return {

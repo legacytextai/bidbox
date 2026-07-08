@@ -38,9 +38,26 @@ let lastQualifyAt = 0;
 // (acquire_planetbids_lock / release_planetbids_lock) in the migration
 // 20260701120000_planetbids_login_lock.sql.
 
+// ── Env guardrail helpers ─────────────────────────────────────────────────────
+function envNumber(name, fallback) {
+  const v = Number(process.env[name]);
+  return Number.isFinite(v) && v >= 0 ? v : fallback;
+}
+function envBool(name, fallback) {
+  const v = process.env[name];
+  if (v == null || v === '') return fallback;
+  return /^(1|true|yes|on)$/i.test(String(v).trim());
+}
+
 const PLANETBIDS_LOCK_TTL_SECONDS = 600;   // 10 min — covers longest browser session
-const PLANETBIDS_LOCK_RETRY_DELAY_MS = 20_000;  // 20 s between retries
-const PLANETBIDS_LOCK_MAX_RETRIES = 15;    // up to 5 min of waiting
+const PLANETBIDS_LOCK_RETRY_DELAY_MS = envNumber('PLANETBIDS_LOCK_RETRY_DELAY_MS', 20_000);  // 20 s between retries
+// Cap the lock wait so a worker is never held for many minutes when many
+// PlanetBids document_prefetch tasks contend for the single login lock.
+// Default 3 attempts × 20 s ≈ 1 min (was 15 × 20 s = 5 min).
+const PLANETBIDS_LOCK_MAX_RETRIES = envNumber('PLANETBIDS_LOCK_MAX_WAIT_ATTEMPTS', 3);
+// After giving up the lock wait, cool down before releasing the worker so it
+// doesn't immediately re-claim the same task and hot-loop on the lock.
+const PLANETBIDS_LOCK_REQUEUE_DELAY_MS = envNumber('PLANETBIDS_LOCK_REQUEUE_DELAY_MS', 15_000);
 
 class PlanetBidsLockTimeoutError extends Error {
   constructor(attempts) {
@@ -339,7 +356,20 @@ async function persistScannedCandidate({ supabase, source_id, source_name, porta
       : { queued: true };
 
     let documentPrefetchTask = { queued: false, reason: 'document_acquisition_not_supported' };
-    if (supportsDocumentPrefetch(inserted.portal_type)) {
+    // Kill switch — broad/nightly PlanetBids scans are metadata-only by default.
+    // PlanetBids is the dominant portal (many sources × many opportunities), and
+    // auto-enqueuing a document_prefetch per new candidate floods the queue with
+    // Browserbase+login work that saturates every worker (Browserbase 429s,
+    // login-lock contention). Documents are still acquired on demand when the
+    // user runs Prepare Intelligence (project_analysis path). Set
+    // PLANETBIDS_AUTO_DOCUMENT_PREFETCH_ENABLED=true to restore auto-prefetch.
+    const autoPrefetchAllowed =
+      inserted.portal_type === 'planetbids'
+        ? envBool('PLANETBIDS_AUTO_DOCUMENT_PREFETCH_ENABLED', false)
+        : true;
+    if (supportsDocumentPrefetch(inserted.portal_type) && !autoPrefetchAllowed) {
+      documentPrefetchTask = { queued: false, reason: 'planetbids_auto_document_prefetch_disabled' };
+    } else if (supportsDocumentPrefetch(inserted.portal_type)) {
       // Queue document_prefetch — downloads original portal documents immediately
       // after discovery so they're in storage before the user clicks Prepare Intelligence.
       // Priority 2 (lower than bid_item_scan/portal_intelligence). Does NOT trigger F3.
@@ -1335,6 +1365,12 @@ async function processTask(task) {
         .from('agent_tasks')
         .update({ status: 'pending', started_at: null, error: null })
         .eq('id', task.id);
+      // Brief cooldown before this worker returns to the poll loop so it does not
+      // immediately re-claim the same task and hot-loop on the contended lock;
+      // gives the current lock holder time to finish and release.
+      if (PLANETBIDS_LOCK_REQUEUE_DELAY_MS > 0) {
+        await new Promise((r) => setTimeout(r, PLANETBIDS_LOCK_REQUEUE_DELAY_MS));
+      }
       return;
     }
 

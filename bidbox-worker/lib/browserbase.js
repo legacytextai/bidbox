@@ -14,6 +14,67 @@ const yauzl = require('yauzl');
 const SESSIONS_URL = 'https://www.browserbase.com/v1/sessions';
 const API_BASE = 'https://api.browserbase.com/v1';
 
+// ── Global session-creation guardrails (Browserbase account rate limits) ─────
+// Browserbase enforces an account-wide concurrent-session / request-rate limit.
+// Bursts (a nightly multi-portal scan plus auto document_prefetch) trip HTTP 429
+// "Too Many Requests" on session creation. Two guardrails smooth this:
+//   1. an in-process concurrency gate on session CREATION (per replica), and
+//   2. a cooldown/backoff retry loop on 429/503 responses.
+// NOTE: the concurrency gate is per Node process — true global concurrency
+// across N Railway replicas is ~N × BROWSERBASE_GLOBAL_CONCURRENCY. During
+// recovery, keep the replica count low and/or rely on the reduced task volume
+// (PlanetBids auto document_prefetch is disabled by default via the worker
+// kill switch). A DB-backed global lock (like the PlanetBids login lock) is the
+// follow-up if a hard cross-replica cap is ever required.
+const BROWSERBASE_GLOBAL_CONCURRENCY = Math.max(1, Number(process.env.BROWSERBASE_GLOBAL_CONCURRENCY) || 1);
+const BROWSERBASE_429_COOLDOWN_MS = Math.max(0, Number(process.env.BROWSERBASE_429_COOLDOWN_MS) || 30_000);
+const BROWSERBASE_429_MAX_RETRIES = Math.max(0, Number(process.env.BROWSERBASE_429_MAX_RETRIES) || 5);
+
+let _bbActive = 0;
+const _bbWaiters = [];
+function _bbAcquire() {
+  if (_bbActive < BROWSERBASE_GLOBAL_CONCURRENCY) { _bbActive++; return Promise.resolve(); }
+  return new Promise((resolve) => _bbWaiters.push(resolve));
+}
+function _bbRelease() {
+  _bbActive = Math.max(0, _bbActive - 1);
+  const next = _bbWaiters.shift();
+  if (next) { _bbActive++; next(); }
+}
+const _sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Create a Browserbase session id behind the concurrency gate with 429/503
+// backoff. Shared by every session-create site so rate-limit handling is
+// consistent. Returns the session id; throws on non-retryable failure or once
+// retries are exhausted (caller keeps its own surrounding error handling).
+async function createBrowserbaseSessionId(apiKey, projectId, log = console.log) {
+  if (!apiKey) throw new Error('BROWSERBASE_API_KEY not configured');
+  await _bbAcquire();
+  try {
+    for (let attempt = 1; ; attempt++) {
+      const res = await fetch(SESSIONS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-bb-api-key': apiKey },
+        body: JSON.stringify({ projectId: projectId ?? '' }),
+      });
+      if (res.ok) {
+        const { id } = await res.json();
+        return id;
+      }
+      const errText = await res.text().catch(() => '');
+      const rateLimited = res.status === 429 || res.status === 503;
+      if (rateLimited && attempt <= BROWSERBASE_429_MAX_RETRIES) {
+        log(`Browserbase rate-limited (HTTP ${res.status}); cooling down ${BROWSERBASE_429_COOLDOWN_MS}ms before retry ${attempt}/${BROWSERBASE_429_MAX_RETRIES}`);
+        await _sleep(BROWSERBASE_429_COOLDOWN_MS);
+        continue;
+      }
+      throw new Error(`Browserbase session failed: ${res.status} — ${errText.substring(0, 200)}`);
+    }
+  } finally {
+    _bbRelease();
+  }
+}
+
 // Throws on any failure (missing API key, session-create HTTP error, CDP
 // connect failure) rather than the accumulate-and-return-early style used
 // inline in planetbids.js, so callers can handle it with their own existing
@@ -27,21 +88,7 @@ async function connectBrowserbaseSession(log = console.log) {
   }
 
   log('Creating Browserbase session');
-  const sessionRes = await fetch(SESSIONS_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-bb-api-key': apiKey,
-    },
-    body: JSON.stringify({ projectId }),
-  });
-
-  if (!sessionRes.ok) {
-    const errText = await sessionRes.text();
-    throw new Error(`Browserbase session failed: ${sessionRes.status} — ${errText.substring(0, 200)}`);
-  }
-
-  const { id: sessionId } = await sessionRes.json();
+  const sessionId = await createBrowserbaseSessionId(apiKey, projectId, log);
   log(`Browserbase session: ${sessionId}`);
 
   const wsUrl = `wss://connect.browserbase.com?apiKey=${apiKey}&sessionId=${sessionId}`;
@@ -142,4 +189,4 @@ async function fetchBrowserbaseDownloadZip(sessionId, log = console.log) {
   throw new Error('Browserbase download did not sync any files after retrying');
 }
 
-module.exports = { connectBrowserbaseSession, fetchBrowserbaseDownloadZip };
+module.exports = { connectBrowserbaseSession, fetchBrowserbaseDownloadZip, createBrowserbaseSessionId };
