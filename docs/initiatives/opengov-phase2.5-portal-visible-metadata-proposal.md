@@ -1,7 +1,7 @@
-# OpenGov Phase 2.5 — Portal-Visible Metadata Enrichment (PROPOSAL)
+# OpenGov Phase 2.5 — Portal-Visible Metadata Enrichment (ACCEPTED / COMPLETE)
 
 **Date:** 2026-07-08
-**Status:** 🔬 Proposal — **investigation complete, awaiting approval. No code written.**
+**Status:** ✅ **Accepted, implemented, deployed, production-validated.** Commits `00626de` (implementation) + `465d5e9` (HTML-strip parser fix). Validation tasks `8f9a004b…` + `b1aa79ff…`. Full acceptance record: `docs/handoff/2026-07-08-opengov-phase1-validation.md` (Phase 2.5 section). This document is retained as the design/rationale of record.
 **Scope:** OpenGov driver only. Not Cal eProcure / PlanetBids / Caltrans / LA County. Not document acquisition (Phase 3). Not full Opportunity Intelligence. Not UI redesign. Not global scan behavior.
 **Builds on:** `bidbox-worker/drivers/opengov.js` (Phase 1 discovery + Phase 2 API detail enrichment, both live & validated — `docs/handoff/2026-07-08-opengov-phase1-validation.md`).
 

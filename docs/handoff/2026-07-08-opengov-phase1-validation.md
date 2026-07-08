@@ -87,3 +87,50 @@ Every sample has: title, agency, bid due date, source URL, OpenGov project id, c
 - **OpenGov detail has NO county/serviceArea field** (that was a Cal eProcure pattern; the Phase 1 note was wrong). `county` stays null; locality is carried via `agency` + contact/org city/state. This is a portal limitation, not a driver defect.
 - Document manifest stores metadata only (`id`, `shared_id`, `filename`, `file_extension`, `type`) — the expiring pre-signed `url` is intentionally omitted (re-derived fresh in Phase 3).
 - No regressions: other drivers' `document_prefetch` tasks kept completing throughout (01:16–01:18 UTC).
+
+---
+
+# OpenGov Phase 2.5 — Portal-Visible Metadata (ACCEPTED, 2026-07-08)
+
+**Status:** ✅ Complete, deployed, production-validated, and **accepted**. OpenGov Phase 1 + Phase 2 + Phase 2.5 are all done.
+
+## Accepted scope (§4.1 of the proposal)
+Parsing-only over the `GET /api/v1/project/:id` payload Phase 2 already fetches — **no new API calls, no DOM scraping, no browser navigation, no document work.** Implemented:
+- **Native bid items** from `priceTables[].priceItems[]` → persisted to `opportunity_bid_items` (`source_portal='opengov'`, `extraction_method='portal_tab'`) via the existing `bid_items.js` helper. **Bid Items card lights up with zero UI change.**
+- **Engineer's estimate** parsed from `criteria[].description` → promoted to typed `estimated_value` when confident.
+- **Solicitation / project number** → promoted to `portal_bid_id` when confidently parsed.
+- **Corrected addenda** from `addendums[]` (`number, title, description excerpt, released_at, status, has_changes`) — fixed a Phase 2 shape bug.
+- **Section index + capped scope excerpt** + bond/pre-bid/planholder flags, under `crawl_data.opengov_visible_metadata`.
+- `portal_intelligence` regenerates `portal_summary` from the enriched data automatically (no summary-generator change).
+
+## Final accepted commits
+- `00626de` — OpenGov Phase 2.5 implementation.
+- `465d5e9` — HTML-strip parser fix (estimate/solicitation): OpenGov `criteria` descriptions are HTML; `&rsquo;`/tags broke the first parse. Added `stripHtml()` before parsing; reordered solicitation patterns so the full `NN-IFB-NNN` wins and bare short numerics (e.g. `029`) are rejected.
+
+## Validation tasks (accepted)
+- `8f9a004b-b900-4318-bc61-8bd6e05ccfad` — first Phase 2.5 validation (bid items ✓; surfaced the two HTML parser bugs).
+- `b1aa79ff-ce42-4068-8e1e-fd585ee38cec` — parser-fix re-validation on `465d5e9` (both bad fields corrected).
+
+Both were single, controlled `opengov_scan` runs (priority 5, source-only), `found:125 / refreshed:125 / errors:0`.
+
+## Force Main acceptance results (`275299`, West County Wastewater)
+- `estimated_value = 1361000` ✓ (was null → fixed; `$1,361,000`)
+- `portal_bid_id = 26-IFB-029` ✓ (was garbage `029` → fixed)
+- `opportunity_bid_items` = **8 rows** (Mobilization LS, Site A Launch Assembly, Site B Plug Valve, Site D Receive Assembly, potholing 5a/5b) — Bid Items card no longer shows "No native bid items available."
+- addenda = 3 (corrected shape, `has_changes` set) · sections = 9 · regression intact (contacts, procurement, timeline, pre-bid, 9-doc manifest, `portal_summary` regenerated).
+
+## Pasadena & San Mateo validation notes
+- **Pasadena Fence `268037`:** `estimated_value` honestly **null** (as-needed IFB, no engineer's estimate in the notice); solicitation parsed correctly → `2026-IFB-LM-0328`; **21 bid items**; 19 sections; regression intact.
+- **San Mateo Paving `277456`:** `estimated_value` honestly **null**; solicitation honestly null (`portal_bid_id=E5074` from the `financialId` fallback); **0 bid items** — honestly none (project states "DO NOT submit bids in OpenGov"; no price table); 10 sections; regression intact.
+- The honest-null cases confirm the parser extracts when present and cleanly returns null when absent — no false positives.
+
+## Guardrails (both runs)
+- **No document acquisition triggered.** `document_prefetch` tasks created = **0**; `opportunity_documents` rows for opengov = **0**; no storage uploads.
+- Queue stayed clean (empty before and after each run); no global scan; no other portals (Cal eProcure / PlanetBids / Caltrans / LA County DPW) touched.
+
+## Explicitly deferred (not implemented; require new scope)
+- **Phase 3 — document acquisition** (pre-signed S3 `attachments[].url` → `opportunity-documents`). The Phase 2 manifest + Phase 2.5 counts already catalog what to fetch.
+- **Q&A thread extraction** — served by a separate (unidentified) endpoint, not in the detail payload.
+- **Followers / planholders extraction** — separate gated endpoint **and** a privacy decision (vendor contact info); do not ingest without product/privacy sign-off.
+
+*OpenGov work is paused here. No further OpenGov scans or changes without a new explicit scope.*
