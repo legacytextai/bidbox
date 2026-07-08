@@ -360,17 +360,65 @@ async function hasListingRows(page) {
 }
 
 async function logFailedRowDiagnostics(page, row, reason, log) {
-  const pageState = await page.evaluate(() => ({
-    title: document.title || null,
-    url: window.location.href,
-  })).catch(() => ({ title: null, url: page.url() }));
+  const pageState = await page.evaluate((eventId) => {
+    const clean = (value) => (value || '').replace(/\s+/g, ' ').trim();
+    const visible = (el) => {
+      if (!el) return false;
+      const style = window.getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return style.display !== 'none'
+        && style.visibility !== 'hidden'
+        && Number(style.opacity || '1') !== 0
+        && rect.width > 0
+        && rect.height > 0;
+    };
+    const summarize = (el) => {
+      const rect = el.getBoundingClientRect();
+      return {
+        tag: el.tagName.toLowerCase(),
+        id: el.id || null,
+        name: el.getAttribute('name'),
+        href: el.getAttribute('href'),
+        role: el.getAttribute('role'),
+        onclick: el.getAttribute('onclick'),
+        data_if_label: el.getAttribute('data-if-label'),
+        data_if_ps_clickable: el.getAttribute('data-if-ps-clickable'),
+        text: clean(el.innerText || el.textContent).slice(0, 200),
+        visible: visible(el),
+        box: rect.width || rect.height ? {
+          x: Math.round(rect.x),
+          y: Math.round(rect.y),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+        } : null,
+        html: el.outerHTML.slice(0, 500),
+      };
+    };
+    const candidates = Array.from(document.querySelectorAll(
+      'a, button, [role="button"], [onclick], [data-if-ps-clickable="true"], td, span, div'
+    )).filter((el) => clean(el.innerText || el.textContent).includes(eventId));
+    const summaries = candidates.slice(0, 20).map(summarize);
+    return {
+      title: document.title || null,
+      url: window.location.href,
+      visible_candidate_targets: summaries.filter((item) => item.visible).slice(0, 10),
+      hidden_candidate_targets: summaries.filter((item) => !item.visible).slice(0, 10),
+    };
+  }, row.eventId ?? '').catch(() => ({
+    title: null,
+    url: page.url(),
+    visible_candidate_targets: [],
+    hidden_candidate_targets: [],
+  }));
 
   log(`Cal eProcure first failed detail row diagnostics: ${JSON.stringify({
     reason,
     event_id: row.eventId ?? null,
     title: row.title ?? null,
     eventCellId: row.eventCellId ?? null,
-    anchors: (row.anchors ?? []).map((anchor) => ({
+    visible_candidate_targets: pageState.visible_candidate_targets,
+    hidden_candidate_targets: pageState.hidden_candidate_targets,
+    anchors: (row.anchors ?? []).slice(0, 10).map((anchor) => ({
       id: anchor.id ?? null,
       name: anchor.name ?? null,
       href: anchor.href ?? null,
@@ -378,7 +426,7 @@ async function logFailedRowDiagnostics(page, row, reason, log) {
       text: anchor.text ?? null,
     })),
     row_text: row.rowText ?? null,
-    row_html_snippet: (row.rowHtml ?? '').slice(0, 2000),
+    row_html_snippet: (row.rowHtml ?? '').slice(0, 1000),
     page_url: pageState.url,
     page_title: pageState.title,
   })}`);
@@ -398,44 +446,139 @@ async function waitForRecognizableDetail(page, eventId) {
 }
 
 async function locateListingRowClickTargets(page, row) {
-  const targets = [];
+  const tokenPrefix = `bidbox-cale-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const descriptors = await page.evaluate(({ eventId, title, eventCellId, tokenPrefix: prefix }) => {
+    const clean = (value) => (value || '').replace(/\s+/g, ' ').trim();
+    const visible = (el) => {
+      if (!el) return false;
+      const style = window.getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return style.display !== 'none'
+        && style.visibility !== 'hidden'
+        && Number(style.opacity || '1') !== 0
+        && rect.width > 0
+        && rect.height > 0;
+    };
+    const box = (el) => {
+      const rect = el.getBoundingClientRect();
+      return rect.width || rect.height ? {
+        x: Math.round(rect.x),
+        y: Math.round(rect.y),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+      } : null;
+    };
+    const clickableish = (el) => {
+      if (!el) return false;
+      const tag = el.tagName.toLowerCase();
+      return tag === 'a'
+        || tag === 'button'
+        || el.getAttribute('role') === 'button'
+        || el.hasAttribute('onclick')
+        || el.getAttribute('data-if-ps-clickable') === 'true'
+        || window.getComputedStyle(el).cursor === 'pointer';
+    };
+    const rows = Array.from(document.querySelectorAll(
+      '#datatable-ready [data-if-label="tblBodyTr"], [data-if-label="tblBodyTr"], tr, [role="row"]'
+    )).filter((el) => clean(el.innerText || el.textContent).includes(eventId));
+    const rowWithTitle = rows.find((el) => visible(el) && title && clean(el.innerText || el.textContent).includes(title))
+      || rows.find((el) => visible(el))
+      || rows.find((el) => title && clean(el.innerText || el.textContent).includes(title))
+      || rows[0]
+      || document;
+    const raw = [];
+    const add = (el, label, score) => {
+      if (!el || raw.includes(el)) return;
+      const text = clean(el.innerText || el.textContent);
+      if (!text.includes(eventId) && !(title && text.includes(title))) return;
+      raw.push(el);
+      el.setAttribute('data-bidbox-cale-target', `${prefix}-${raw.length}`);
+      const rect = box(el);
+      candidates.push({
+        label,
+        token: el.getAttribute('data-bidbox-cale-target'),
+        visible: visible(el),
+        score,
+        tag: el.tagName.toLowerCase(),
+        id: el.id || null,
+        role: el.getAttribute('role'),
+        href: el.getAttribute('href'),
+        onclick: el.getAttribute('onclick'),
+        data_if_label: el.getAttribute('data-if-label'),
+        data_if_ps_clickable: el.getAttribute('data-if-ps-clickable'),
+        text: text.slice(0, 200),
+        box: rect,
+        html: el.outerHTML.slice(0, 500),
+      });
+    };
+    const candidates = [];
 
-  if (row.eventCellId) {
-    const eventCell = page.locator(`[id="${attrSelector(row.eventCellId)}"]`).first();
-    if (await eventCell.count().catch(() => 0)) {
-      targets.push({ label: `eventCellId:${row.eventCellId}`, locator: eventCell });
+    if (eventCellId) {
+      const byId = document.getElementById(eventCellId);
+      if (byId) add(byId, `eventCellId:${eventCellId}`, 10);
     }
-  }
 
-  const rowLocator = page
-    .locator('#datatable-ready [data-if-label="tblBodyTr"], [data-if-label="tblBodyTr"], tr[id^="trRESP_INQA_HD_VW_GR$0_row"], tr[id^="trRESP_INQA_HD_VW$0_row"]')
-    .filter({ hasText: row.eventId ?? '' })
-    .first();
-
-  if (await rowLocator.count().catch(() => 0)) {
-    const eventCell = rowLocator.locator('[data-if-label="tdEventId"], a[id^="AUC_ID_COL$"], a[id^="AUC_ID_BUS_UNIT$"], td').first();
-    if (await eventCell.count().catch(() => 0)) {
-      targets.push({ label: 'row:event-id-cell', locator: eventCell });
+    const exactTextNodes = Array.from(rowWithTitle.querySelectorAll('a, button, [role="button"], [onclick], [data-if-ps-clickable="true"], td, span, div'))
+      .filter((el) => clean(el.innerText || el.textContent) === eventId);
+    for (const el of exactTextNodes) {
+      add(el, 'exact-event-id-text', 100);
+      let parent = el.parentElement;
+      for (let depth = 0; parent && depth < 4; depth += 1, parent = parent.parentElement) {
+        if (clickableish(parent)) add(parent, `exact-event-id-clickable-ancestor:${depth + 1}`, 95 - depth);
+      }
     }
 
-    const titleCell = rowLocator.locator('[data-if-label="tdEventName"], [id^="RESP_INQA1_WK_ZZ_AUC_NAME$"], [id^="RESP_INQA_HD_VW_ZZ_AUC_NAME$"], td').nth(1);
-    if (await titleCell.count().catch(() => 0)) {
-      targets.push({ label: 'row:title-cell', locator: titleCell });
+    for (const el of Array.from(rowWithTitle.querySelectorAll('a, button, [role="button"], [onclick], [data-if-ps-clickable="true"]'))) {
+      const text = clean(el.innerText || el.textContent);
+      if (text.includes(eventId)) add(el, 'visible-clickable-event-id', 90);
+      if (title && text.includes(title)) add(el, 'visible-clickable-title', 80);
     }
-  }
 
-  return targets;
+    for (const el of Array.from(rowWithTitle.querySelectorAll('td, span, div')).filter(visible)) {
+      const text = clean(el.innerText || el.textContent);
+      if (text === eventId) add(el, 'visible-event-id-cell', 70);
+      if (title && text === title) add(el, 'visible-title-cell', 60);
+    }
+
+    return candidates
+      .sort((a, b) => Number(b.visible) - Number(a.visible) || b.score - a.score)
+      .slice(0, 12);
+  }, {
+    eventId: row.eventId ?? '',
+    title: row.title ?? '',
+    eventCellId: row.eventCellId ?? '',
+    tokenPrefix,
+  }).catch(() => []);
+
+  return descriptors.map((descriptor) => ({
+    descriptor,
+    locator: page.locator(`[data-bidbox-cale-target="${attrSelector(descriptor.token)}"]`).first(),
+  }));
 }
 
 async function clickRowAndCaptureDetail(page, row, log) {
   const clickTargets = await locateListingRowClickTargets(page, row);
   let lastError = null;
+  const attempted = [];
 
   for (const target of clickTargets) {
     try {
-      log(`Cal eProcure clicking ${target.label} for event ${row.eventId}`);
-      const popupPromise = page.waitForEvent('popup', { timeout: 15000 }).catch(() => null);
-      await target.locator.click({ timeout: 15000 });
+      attempted.push({
+        label: target.descriptor.label,
+        visible: target.descriptor.visible,
+        id: target.descriptor.id,
+        tag: target.descriptor.tag,
+      });
+      const popupPromise = page.waitForEvent('popup', { timeout: 1500 }).catch(() => null);
+      if (target.descriptor.visible) {
+        await target.locator.click({ timeout: 15000 });
+      } else {
+        await target.locator.evaluate((el) => {
+          el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+          el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
+          el.click();
+        }, undefined, { timeout: 15000 });
+      }
       const popup = await popupPromise;
       const detailPage = popup || page;
       await waitForRecognizableDetail(detailPage, row.eventId);
@@ -454,15 +597,14 @@ async function clickRowAndCaptureDetail(page, row, log) {
           sourceUrl: finalUrl,
         },
         detail,
-        method: `click:${target.label}`,
+        method: `click:${target.descriptor.label}`,
       };
     } catch (e) {
       lastError = e;
-      log(`Cal eProcure click target failed for ${row.eventId} (${target.label}): ${e.message}`);
     }
   }
 
-  throw new Error(`No click target navigated to detail for ${row.eventId ?? 'unknown event'}${lastError ? `: ${lastError.message}` : ''}`);
+  throw new Error(`No click target navigated to detail for ${row.eventId ?? 'unknown event'}; attempted=${JSON.stringify(attempted).slice(0, 800)}${lastError ? `; last=${lastError.message}` : ''}`);
 }
 
 async function restoreListingPage(page, listingUrl, log) {
@@ -739,9 +881,18 @@ async function scrapeCalEprocure(source, log = console.log) {
   const sourceName = sourceLabel(source);
   const candidates = [];
   const errorMessages = [];
+  let nonNavigationErrors = 0;
+  const telemetry = {
+    listing_rows_observed: 0,
+    detail_navigation_attempted: 0,
+    detail_navigation_static_success: 0,
+    detail_navigation_click_success: 0,
+    detail_navigation_failed: 0,
+  };
   let session;
 
   const recordError = (message) => {
+    nonNavigationErrors++;
     errorMessages.push(message);
     log(`[${sourceName}] ${message}`);
   };
@@ -772,34 +923,30 @@ async function scrapeCalEprocure(source, log = console.log) {
       rows = await collectListingRows(page, log);
     }
 
-    let staticTargetsResolved = 0;
-    let clickNavigationsResolved = 0;
+    telemetry.listing_rows_observed = rows.length;
     let firstFailedRowLogged = false;
     let packageDiagnosticsCaptured = false;
     for (const row of rows.slice(0, detailLimit)) {
       let shouldRestoreListing = false;
+      telemetry.detail_navigation_attempted++;
       try {
         let target = resolveRowDetailTarget(row);
         let detail = null;
         let navigationMethod = 'static';
 
         if (target?.sourceUrl) {
-          staticTargetsResolved++;
           shouldRestoreListing = true;
           await page.goto(target.sourceUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
           await waitForDetail(page);
           detail = await extractDetailMetadata(page);
+          telemetry.detail_navigation_static_success++;
         } else {
-          if (!firstFailedRowLogged) {
-            await logFailedRowDiagnostics(page, row, 'static_detail_target_missing', log);
-            firstFailedRowLogged = true;
-          }
           shouldRestoreListing = true;
           const clicked = await clickRowAndCaptureDetail(page, row, log);
           target = clicked.target;
           detail = clicked.detail;
           navigationMethod = clicked.method;
-          clickNavigationsResolved++;
+          telemetry.detail_navigation_click_success++;
         }
 
         let packageDiagnostics = null;
@@ -818,11 +965,11 @@ async function scrapeCalEprocure(source, log = console.log) {
         candidates.push(candidate);
         log(`[${sourceName}] Parsed Cal eProcure event ${candidate.portal_bid_id}: ${candidate.raw_title}`);
       } catch (e) {
+        telemetry.detail_navigation_failed++;
         if (!firstFailedRowLogged) {
           await logFailedRowDiagnostics(page, row, `detail_navigation_failed:${e.message}`, log).catch(() => {});
           firstFailedRowLogged = true;
         }
-        recordError(`Cal eProcure detail extraction failed for ${row.eventId || '(unknown)'}: ${e.message}`);
       } finally {
         if (shouldRestoreListing) {
           await restoreListingPage(page, listingUrl, log).catch((e) => {
@@ -832,7 +979,10 @@ async function scrapeCalEprocure(source, log = console.log) {
       }
     }
 
-    log(`[${sourceName}] Cal eProcure detail navigation resolved: static=${staticTargetsResolved} click=${clickNavigationsResolved} rows=${rows.length}`);
+    log(`[${sourceName}] Cal eProcure detail navigation summary: ${JSON.stringify(telemetry)}`);
+    if (telemetry.detail_navigation_failed > 0) {
+      errorMessages.push(`Cal eProcure detail navigation failed for ${telemetry.detail_navigation_failed}/${telemetry.detail_navigation_attempted} attempted row(s)`);
+    }
 
     if (rows.length > detailLimit) {
       log(`[${sourceName}] Detail limit ${detailLimit} reached; ${rows.length - detailLimit} row(s) left for next controlled scan`);
@@ -850,8 +1000,9 @@ async function scrapeCalEprocure(source, log = console.log) {
 
   return {
     candidates,
-    errors: errorMessages.length,
+    errors: nonNavigationErrors + telemetry.detail_navigation_failed,
     errorMessages,
+    telemetry,
   };
 }
 
