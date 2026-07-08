@@ -133,4 +133,75 @@ Both were single, controlled `opengov_scan` runs (priority 5, source-only), `fou
 - **Q&A thread extraction** — served by a separate (unidentified) endpoint, not in the detail payload.
 - **Followers / planholders extraction** — separate gated endpoint **and** a privacy decision (vendor contact info); do not ingest without product/privacy sign-off.
 
-*OpenGov work is paused here. No further OpenGov scans or changes without a new explicit scope.*
+---
+
+# OpenGov Phase 3 — Document Acquisition (IMPLEMENTED, pending controlled validation, 2026-07-08)
+
+**Status:** ✅ Code complete, local checks green, committed & pushed to `phase1-opportunity-intelligence`. **Not yet production-validated** — the one-candidate controlled validation plan below is *proposed*, not run. This is the first OpenGov phase to touch document bytes.
+
+## Scope (as built)
+Download the **actual OpenGov project documents** from official OpenGov sources, upload them to the existing private Supabase bucket **`opportunity-documents`**, and create/update **`opportunity_documents`** rows so the existing F3 document-processing pipeline consumes them. **The existing acquisition architecture is reused** (same bucket, same storage-path convention, same `opportunity_documents` schema, same `archive_extraction.js`) — no second pipeline.
+
+Documents acquired = top-level `attachments[]` **plus** each **released** `addendums[].attachments[]`. (Force Main `275299`: 9 base + 5 addendum = **14 attachment objects**; the "9-document manifest" from Phase 2 is the base set only.)
+
+## Why a fresh detail re-fetch is mandatory
+OpenGov `attachments[].url` are **pre-signed S3 URLs that expire** (they were deliberately stripped from the Phase 2 candidate manifest). Phase 3 therefore re-fetches a fresh `GET /api/v1/project/:id` **at acquisition time**, through the authenticated Browserbase session that clears Cloudflare, to obtain currently-valid URLs — then downloads the bytes in Node (the S3 pre-signed URL is self-authorizing) and uploads them.
+
+## Files
+- **New:** `bidbox-worker/drivers/opengov_documents.js` — `acquireOpenGovDocuments({supabase, task, candidate, log})`.
+- **Changed:** `bidbox-worker/drivers/opengov.js` — exports `openBrowser`, `openGovLogin`, `API_BASE`, `PORTAL_BASE` for reuse.
+- **Changed:** `bidbox-worker/index.js` — wired into `runProjectAnalysisAcquisition` (Analyze flow) and `runDocumentPrefetchTask` (doc-only flow); added the require import.
+
+## Field mapping (attachment → `opportunity_documents`)
+| opportunity_documents | source |
+|---|---|
+| `source_url` (idempotency key) | **stable synthesized** `opengov://project/{projectId}/attachment/{sharedId ?? id}` — never the expiring S3 URL |
+| `file_name` | `attachment.filename` (ext ensured from `fileExtension` if missing), sanitized |
+| `file_type` | inferred from filename extension |
+| `storage_bucket` / `storage_path` | `opportunity-documents` / `opportunity-candidates/{candidateId}/{recordId}/{fileName}` |
+| `file_size` | actual downloaded byte length |
+| `acquisition_status` | `queued`→`acquiring`→`acquired` (or `failed` + `acquisition_error`) |
+| `document_family` / `document_class` | filename+kind heuristics (`addenda`/`plans`/`specifications`/`bid_forms`/`source_documents`) |
+| `document_source_order` | manifest order (base attachments first, then addenda) |
+| `manifest_data` | `{opengov_project_id, attachment_id, shared_id, appendix_id, attachment_type, attachment_kind, addendum_number, file_extension, detail_api, acquisition_method}` — **the transient signed URL is intentionally NOT persisted** |
+
+ZIP attachments are expanded via `archive_extraction.js` into child `opportunity_documents` rows (parent gets `processing_status`/archive summary), identical to Caltrans.
+
+## Idempotency
+Dedup is on `(opportunity_candidate_id, source_url)` where `source_url` is the **stable** synthesized key. On rerun, already-`acquired` rows with a `storage_path` are skipped (no duplicate rows, no re-upload; storage `upsert:true` is also inherently overwrite-safe).
+
+## Operational guardrails (env-driven; safe defaults)
+| Env var | Default | Purpose |
+|---|---|---|
+| `OPENGOV_MAX_DOCUMENTS_PER_CANDIDATE` | 60 | cap manifest size per candidate |
+| `OPENGOV_MAX_SINGLE_DOCUMENT_BYTES` | 100 MB | reject oversize single file (checks `content-length` + actual) |
+| `OPENGOV_MAX_DOCUMENT_BYTES_PER_CANDIDATE` | 750 MB | best-effort total-byte budget; remaining docs skipped once hit |
+| `OPENGOV_ALLOWED_DOCUMENT_EXTENSIONS` | pdf,doc,docx,xls,xlsx,csv,txt,rtf,ppt,pptx,zip,dwg | supported-file filter |
+| `OPENGOV_DOCUMENT_DOWNLOAD_TIMEOUT_MS` | 120000 | per-file download timeout (AbortController) |
+| `OPENGOV_DOCUMENT_ACQUISITION_CONCURRENCY` | 3 (clamped 1–8) | parallel downloads |
+
+- **Per-file failure isolation:** one bad document is marked `failed` and never fails the candidate.
+- **Expired-URL recovery:** a `403/401/410` on download triggers **one** fresh detail re-fetch to refresh all URLs, then a single retry.
+- **No broad auto-acquisition:** `supportsDocumentPrefetch('opengov')` still returns `false`, so the global scan does **not** auto-queue prefetch. Acquisition fires only on an explicit `project_analysis` (user Analyze) or a **manually-queued** `document_prefetch` task.
+
+## Telemetry (returned in the task result)
+`opengov_project_id`, `documents_discovered`, `documents_attempted`, `documents_downloaded`, `documents_uploaded`, `documents_existing`, `documents_skipped`, `documents_failed`, `unsupported_file_count`, `total_bytes_uploaded`, `budget_exhausted`, `failed_documents_sample`, `storage_paths_sample`, `opportunity_document_ids_sample` — plus the standard `found/acquired/skipped/failed/errorSummary/warningSummary` consumed by the dispatchers.
+
+## Migrations
+**None.** Phase 3 reuses the existing `opportunity_documents` table, the `opportunity-documents` bucket, and the already-applied storage SELECT policy (`20260701140000_opportunity_documents_storage_policy.sql`).
+
+## Local validation (this change)
+`node --check` on all three files ✓ · module resolution incl. cross-require ✓ · `git diff --check` clean ✓ · 16/16 helper unit tests (stable-key idempotency, ext-ensure, classification, content-types) ✓. Zero frontend files changed (worker-only).
+
+## Proposed controlled validation (NOT yet run — awaiting approval)
+1. **Single candidate:** Force Main Assessment Civil Work — OpenGov project `275299`, candidate `237d521a…` (West County Wastewater). Queue **exactly one** `document_prefetch` task (priority 5) for that candidate id (doc-only path; does **not** cascade F3/F4).
+   - **Expected:** ~14 attachment objects discovered; 9 base + 5 released-addendum PDFs downloaded & uploaded; `opportunity_documents` rows all `acquisition_status='acquired'` with `storage_path` under `opportunity-candidates/237d521a…/…`; telemetry `documents_uploaded≈14`, `documents_failed=0`, `unsupported_file_count=0`.
+2. **Idempotency rerun:** queue the same `document_prefetch` again → expect `documents_existing≈14`, `documents_uploaded=0`, **no new rows/objects**.
+3. Only after both pass, discuss (separately) whether to broaden beyond one candidate. **Do not** enable broad acquisition across all ~125 candidates without explicit approval.
+
+## Still deferred (unchanged)
+- **Q&A thread extraction** — separate endpoint, not in detail payload.
+- **Followers / planholders** — separate gated endpoint + privacy decision.
+- **Broad OpenGov acquisition across all candidates** — requires explicit approval; guardrails above make it gated, not automatic.
+
+*OpenGov Phase 3 code is landed but paused at "implemented, awaiting controlled validation." No production acquisition runs without a new explicit go-ahead.*

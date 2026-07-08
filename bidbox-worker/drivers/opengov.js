@@ -701,6 +701,8 @@ async function scrapeOpenGov(source, log = console.log) {
 
 module.exports = {
   DEFAULT_LISTING_URL,
+  API_BASE,
+  PORTAL_BASE,
   SET,
   DICTIONARY_RULE,
   SEED_TERMS,
@@ -708,6 +710,9 @@ module.exports = {
   cleanBidId,
   detailUrl,
   scrapeOpenGov,
+  // Phase 3 document acquisition reuses the authenticated browser transport.
+  openBrowser,
+  openGovLogin,
   // Phase 2.5 parsers (exported for fixture tests)
   stripHtml,
   parseEngineerEstimate,

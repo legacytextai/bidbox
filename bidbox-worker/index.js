@@ -10,6 +10,7 @@ const { replaceBidItemsForCandidate } = require('./drivers/bid_items');
 const { acquirePlanetBidsDocuments, runPlanetBidsBidItemScan } = require('./drivers/planetbids_documents');
 const { runPortalIntelligence } = require('./drivers/portal_intelligence');
 const { acquireCaltransDocuments } = require('./drivers/caltrans_documents');
+const { acquireOpenGovDocuments } = require('./drivers/opengov_documents');
 const {
   queueDocumentProcessingForCandidate,
   runDocumentProcessing,
@@ -766,6 +767,8 @@ async function runProjectAnalysisAcquisition(task, supabase) {
       result = await acquirePlanetBidsDocuments({ supabase, task, candidate, log });
     } else if (candidate.portal_type === 'caltrans') {
       result = await acquireCaltransDocuments({ supabase, task, candidate, log });
+    } else if (candidate.portal_type === 'opengov') {
+      result = await acquireOpenGovDocuments({ supabase, task, candidate, log });
     } else {
       throw new Error(`Document acquisition is not implemented for ${candidate.portal_type ?? 'unknown'} candidates`);
     }
@@ -1150,11 +1153,12 @@ async function runDocumentPrefetchTask(task, supabase) {
     log('Cal eProcure document acquisition not implemented (Phase 2) — skipping');
     result = { found: 0, acquired: 0, skipped: 0, failed: 0 };
   } else if (candidate.portal_type === 'opengov') {
-    // Phase 1 is discovery-only. OpenGov document acquisition (pre-signed S3
-    // URLs embedded in project detail) is Phase 3. Return an empty result so
-    // the auto-queued prefetch completes cleanly instead of throwing.
-    log('OpenGov document acquisition not implemented (Phase 3) — skipping');
-    result = { found: 0, acquired: 0, skipped: 0, failed: 0 };
+    // Phase 3: acquire OpenGov project documents (pre-signed S3 URLs embedded
+    // in project detail). supportsDocumentPrefetch() still gates opengov out of
+    // the AUTO-queued prefetch path, so this branch runs only for an explicitly
+    // queued document_prefetch task (controlled acquisition), not the global
+    // scan flow.
+    result = await acquireOpenGovDocuments({ supabase, task, candidate, log });
   } else {
     throw new Error(`document_prefetch not implemented for portal_type=${candidate.portal_type}`);
   }
