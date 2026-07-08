@@ -56,5 +56,34 @@ Every sample has: title, agency, bid due date, source URL, OpenGov project id, c
 
 ## Remaining future work (unchanged)
 
-- **Phase 2 — Project Detail Enrichment:** `GET /api/v1/project/:id` per candidate for county (`serviceAreas`), contacts, pre-bid/job-walk, timeline, and document manifest.
-- **Phase 3 — Document Acquisition:** pre-signed S3 URLs in the detail payload (`attachments[].url`) → `opportunity-documents`; swap the `document_prefetch` no-op for the real acquirer.
+- **Phase 3 — Document Acquisition:** pre-signed S3 URLs in the detail payload (`attachments[].url`) → `opportunity-documents`; swap the `document_prefetch` no-op for the real acquirer. The Phase 2 document manifest (below) already tells it exactly what to fetch.
+
+---
+
+# OpenGov Phase 2 — Project Detail Enrichment (PASSED, 2026-07-08)
+
+**Driver commit:** `57bc4fb` (auto-deployed to Railway; `SUCCESS`).
+**Approach:** inline enrichment — after discovery, `GET /api/v1/project/:id` for every candidate in the same authenticated session (bounded concurrency `OPENGOV_DETAIL_CONCURRENCY=6`, per-project error isolation → degrade to list-only, never drop a candidate). Metadata only; **no document bytes** (Phase 3).
+
+**Validation scan:** one controlled `opengov_scan` (`7bf9b2dd`) → `found:125, refreshed:125, new:0, errors:0` (all existing candidates updated in place with enriched `crawl_data`; dedup by project id held — no new/dupe rows).
+
+**Enrichment coverage (all 125 candidates):**
+
+| Field | Coverage |
+|---|---|
+| `detail_enriched` / `extraction_method=opengov_v2_api_detail` | 125 / 125 |
+| primary contact (name, title, email, phone, locality) | 125 / 125 |
+| procurement contact | 125 / 125 |
+| timeline (milestone names + dates) | 125 / 125 |
+| pre-bid / job-walk date | 54 / 125 (only projects that hold one) |
+| document manifest (≥1 doc) | 113 / 125 — **730 documents catalogued** |
+
+**Enriched sample highlights:**
+- *Anaheim — Athletic Field Maintenance:* contact Steve Ballard (Parks Superintendent, phone/email), procurement Ariana Hernandez, **pre-bid 2026-07-17 with full job-walk site addresses** (La Palma Park / Delphi / Yorba), 4 documents.
+- *Orange County Sanitation District — 3-60 Construction:* contact + procurement, pre-bid outreach event 2026-03-31 with registration details, document manifest.
+- *County of Sacramento — Airport FCA:* contact William Wallace, Pre-Proposal Conference 2026-07-28, 5-document manifest.
+
+**Data-quality notes / corrections:**
+- **OpenGov detail has NO county/serviceArea field** (that was a Cal eProcure pattern; the Phase 1 note was wrong). `county` stays null; locality is carried via `agency` + contact/org city/state. This is a portal limitation, not a driver defect.
+- Document manifest stores metadata only (`id`, `shared_id`, `filename`, `file_extension`, `type`) — the expiring pre-signed `url` is intentionally omitted (re-derived fresh in Phase 3).
+- No regressions: other drivers' `document_prefetch` tasks kept completing throughout (01:16–01:18 UTC).
