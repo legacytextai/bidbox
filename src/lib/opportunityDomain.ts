@@ -17,6 +17,7 @@ export const PORTAL_STYLES = {
   lacounty_dpw: "bg-emerald-500/10 text-emerald-700",
   lacmta: "bg-rose-500/10 text-rose-700",
   caleprocure: "bg-cyan-500/10 text-cyan-700",
+  opengov: "bg-amber-500/10 text-amber-700",
 } satisfies Record<SupportedPortalType, string>;
 
 function isSupportedPortalType(portalType: string | null | undefined): portalType is SupportedPortalType {
