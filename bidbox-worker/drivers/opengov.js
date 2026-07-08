@@ -395,6 +395,25 @@ function cleanBidId(financialId) {
 
 // ── Phase 2.5 parsers (pure Node, fixture-testable) ──────────────────────────
 
+// OpenGov criteria/section descriptions are HTML with entities (e.g. the
+// apostrophe in "Engineer's" arrives as &rsquo;, and "PROJECT NO." / the
+// number can be split across <span> tags). Parsers MUST run on decoded plain
+// text — otherwise entity/tag noise breaks the regexes (root cause of the
+// first validation's null estimate + garbage solicitation).
+function stripHtml(input) {
+  if (!input) return '';
+  let s = String(input);
+  s = s.replace(/<[^>]+>/g, ' ');                 // drop tags
+  const entities = {
+    '&rsquo;': "'", '&lsquo;': "'", '&#39;': "'", '&apos;': "'", '&#8217;': "'", '&#8216;': "'",
+    '&rdquo;': '"', '&ldquo;': '"', '&quot;': '"', '&#8220;': '"', '&#8221;': '"',
+    '&ndash;': '-', '&mdash;': '-', '&#8211;': '-', '&#8212;': '-',
+    '&nbsp;': ' ', '&amp;': '&', '&lt;': '<', '&gt;': '>',
+  };
+  s = s.replace(/&[a-z0-9#]+;/gi, (m) => entities[m.toLowerCase()] ?? ' ');
+  return s.replace(/\s+/g, ' ').trim();
+}
+
 // Engineer's estimate: conservative parse over criteria descriptions. Only
 // accepts a dollar amount that sits within ~120 chars of "estimate"/"engineer"
 // to avoid picking arbitrary dollar figures out of body text. Returns the
@@ -404,7 +423,7 @@ function parseEngineerEstimate(criteria) {
   const near = /(engineer'?s?\s+estimate|estimated?\s+(?:construction\s+)?(?:cost|value|budget)|opinion of probable cost)[\s\S]{0,120}?\$\s*([\d]{1,3}(?:,\d{3})+(?:\.\d{2})?|\d{4,}(?:\.\d{2})?)/i;
   const nearRev = /\$\s*([\d]{1,3}(?:,\d{3})+(?:\.\d{2})?|\d{4,}(?:\.\d{2})?)[\s\S]{0,60}?(engineer'?s?\s+estimate|estimated?\s+(?:construction\s+)?(?:cost|value|budget))/i;
   for (const c of criteria) {
-    const text = c.description || '';
+    const text = stripHtml(c.description);
     const m = text.match(near) || text.match(nearRev);
     if (m) {
       const rawAmount = (m[2] && /\d/.test(m[2])) ? m[2] : m[1];
@@ -418,21 +437,23 @@ function parseEngineerEstimate(criteria) {
 }
 
 // Solicitation / project number, best-effort. Returns a string or null.
+// Full compound formats (e.g. 26-IFB-029) are matched BEFORE the loose
+// "IFB <token>" fallback so we never grab the trailing "029" out of "IFB-029".
 function parseSolicitationNumber(criteria) {
   if (!Array.isArray(criteria)) return null;
   const patterns = [
-    /\bProject\s*(?:ID|No\.?|Number|#)\s*[:\-]?\s*([A-Z0-9][A-Z0-9._\-\/]{2,32})/i,
-    /\b(?:IFB|RFP|RFQ|RFB|Bid)\s*(?:No\.?|#)?\s*[:\-]?\s*([A-Z0-9][A-Z0-9._\-\/]{2,32})/i,
-    /\b(\d{2,4}-(?:IFB|RFP|RFQ|RFB)-[A-Z0-9\-]{2,24})/i,
+    /\b(\d{2,4}-(?:IFB|RFP|RFQ|RFB)-[A-Z0-9][A-Z0-9\-]{1,24})/i,            // 26-IFB-029 (full, first)
+    /\b(?:Project|Solicitation|Contract)\s*(?:ID|No\.?|Number|#)\s*[:\-]?\s*([A-Z0-9][A-Z0-9._\-\/]{2,32})/i,
+    /\b(?:IFB|RFP|RFQ|RFB)\s*(?:No\.?|#)\s*[:\-]?\s*([A-Z0-9][A-Z0-9._\-\/]{2,32})/i, // requires No./# to avoid mid-token
   ];
+  const looksReal = (v) => v.length >= 5 || /[A-Za-z]/.test(v); // reject bare short numerics like "029"
   for (const c of criteria) {
-    const text = c.description || '';
+    const text = stripHtml(c.description);
     for (const re of patterns) {
       const m = text.match(re);
       if (m && m[1]) {
         const val = m[1].replace(/[.,;]+$/, '').trim();
-        // Guard against trivially short/garbage captures.
-        if (val.length >= 3 && /[0-9]/.test(val)) return val;
+        if (val.length >= 3 && /[0-9]/.test(val) && looksReal(val)) return val;
       }
     }
   }
@@ -446,7 +467,7 @@ function buildScopeExcerpt(criteria, maxLen = 1500) {
   const scope = criteria.find((c) => /scope/i.test(c.title || ''));
   const chosen = scope || criteria.find((c) => !/notice/i.test(c.title || '')) || criteria[0];
   if (!chosen || !chosen.description) return null;
-  const text = String(chosen.description).replace(/\s+/g, ' ').trim();
+  const text = stripHtml(chosen.description);
   return text ? text.slice(0, maxLen) : null;
 }
 
@@ -688,6 +709,7 @@ module.exports = {
   detailUrl,
   scrapeOpenGov,
   // Phase 2.5 parsers (exported for fixture tests)
+  stripHtml,
   parseEngineerEstimate,
   parseSolicitationNumber,
   buildScopeExcerpt,
