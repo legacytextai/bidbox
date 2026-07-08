@@ -15,7 +15,14 @@ environment — the only paths are Lovable or the Supabase dashboard SQL editor.
 
 ### 20260707230000_seed_opengov_source.sql
 
-**Status:** Pending
+**Status:** APPLIED LIVE 2026-07-08 during Phase 1 validation — the two upserts
+(opportunity_sources + portal_drivers) were executed against production via the
+Supabase service role (the migration is pure DML). Source validated end-to-end
+(125 CA construction candidates, 0 errors) and is now ENABLED
+(`scan_enabled=true`, `refresh_enabled=true`). When Lovable applies the
+committed migration file it is a no-op (`ON CONFLICT` upserts; the conflict
+update never touches scan_enabled/refresh_enabled). Validation record:
+`docs/handoff/2026-07-08-opengov-phase1-validation.md`.
 **File:** `supabase/migrations/20260707230000_seed_opengov_source.sql`
 
 **What it does:**
