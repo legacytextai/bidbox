@@ -85,6 +85,13 @@ function parseBool(name) {
   return String(process.env[name] ?? '').toLowerCase() === 'true';
 }
 
+// Boolean env with an explicit default when the var is unset/empty.
+function parseBool2(name, dflt) {
+  const v = process.env[name];
+  if (v === undefined || v === '') return dflt;
+  return String(v).toLowerCase() === 'true';
+}
+
 function parseNumberEnv(name, fallback) {
   const value = Number(process.env[name]);
   return Number.isFinite(value) && value > 0 ? value : fallback;
@@ -237,14 +244,102 @@ async function discoverProjects(page, categoryIds, states, log) {
   return projects;
 }
 
+// Phase 2: per-project detail enrichment. GET /api/v1/project/:id for each
+// discovered id, in bounded-concurrency batches inside the authenticated page
+// context. Returns a map id -> slim detail (only the enrichment fields, to keep
+// the cross-context payload small). Per-project failures are isolated: a missing
+// detail degrades that candidate to list-only (Phase 1) rather than dropping it.
+// Documents are captured as METADATA ONLY (no pre-signed url — that is Phase 3).
+async function fetchProjectDetails(page, ids, log) {
+  const concurrency = parseNumberEnv('OPENGOV_DETAIL_CONCURRENCY', 6);
+
+  const out = await page.evaluate(async ({ apiBase, ids, concurrency }) => {
+    const slim = (p) => {
+      const docManifest = (arr) => (Array.isArray(arr) ? arr : []).map((a) => ({
+        id: a.id ?? null,
+        shared_id: a.sharedId ?? null,
+        name: a.name ?? null,
+        title: a.title ?? null,
+        filename: a.filename ?? null,
+        file_extension: a.fileExtension ?? null,
+        type: a.type ?? null,
+      }));
+      return {
+        contact: {
+          name: p.contactDisplayName ?? p.contactFullName ?? null,
+          first_name: p.contactFirstName ?? null,
+          last_name: p.contactLastName ?? null,
+          title: p.contactTitle ?? null,
+          email: p.contactEmail ?? null,
+          phone: p.contactPhoneComplete ?? p.contactPhone ?? null,
+          city: p.contactCity ?? null,
+          state: p.contactState ?? null,
+          zip: p.contactZipCode ?? null,
+        },
+        procurement_contact: {
+          name: p.procurementDisplayName ?? p.procurementFullName ?? null,
+          title: p.procurementTitle ?? null,
+          email: p.procurementEmail ?? null,
+          phone: p.procurementPhoneComplete ?? p.procurementPhone ?? null,
+        },
+        pre_bid: {
+          text: p.preProposalText ?? null,
+          location: p.preProposalLocation ?? null,
+          date: p.preProposalDate ?? null,
+        },
+        timeline: p.timelineConfig ?? null,
+        documents: docManifest(p.attachments),
+        addenda: docManifest(p.addendums),
+        flags: {
+          show_bids: p.showBids ?? null,
+          sealed_bid: p.showBidsWithPricing ?? null,
+          is_doc_builder: p.isDocBuilder ?? null,
+          uses_external_document: p.useExternalDocument ?? null,
+        },
+      };
+    };
+
+    const result = {};
+    const errors = [];
+    for (let i = 0; i < ids.length; i += concurrency) {
+      const batch = ids.slice(i, i + concurrency);
+      await Promise.all(batch.map(async (id) => {
+        try {
+          const res = await fetch(`${apiBase}/project/${id}`, { credentials: 'include' });
+          if (!res.ok) { errors.push(`project/${id} HTTP ${res.status}`); return; }
+          const json = await res.json();
+          const proj = json.project || json;
+          result[id] = slim(proj);
+        } catch (e) {
+          errors.push(`project/${id}: ${String(e)}`);
+        }
+      }));
+    }
+    return { result, errors };
+  }, { apiBase: API_BASE, ids, concurrency });
+
+  if (out.errors.length) {
+    log(`OpenGov detail enrichment: ${Object.keys(out.result).length}/${ids.length} enriched, ${out.errors.length} detail error(s) (isolated): ${out.errors.slice(0, 3).join(' | ')}`);
+  } else {
+    log(`OpenGov detail enrichment: ${Object.keys(out.result).length}/${ids.length} enriched`);
+  }
+  return out.result;
+}
+
 function cleanBidId(financialId) {
   if (!financialId) return null;
   return String(financialId).replace(/[;\s]+$/g, '').trim() || null;
 }
 
-// Normalize an OpenGov project list object into a BidBox candidate. Everything
-// comes from the list payload — no per-project detail fetch (that is Phase 2).
-function buildCandidate(project) {
+// Normalize an OpenGov project list object into a BidBox candidate. When a
+// Phase 2 `detail` slice is supplied (from fetchProjectDetails) it is merged in:
+// contacts, procurement contact, pre-bid/job-walk, timeline, and the document
+// manifest (metadata only — no bytes, no expiring urls). Passing no detail
+// yields the Phase 1 list-only candidate (graceful degradation).
+//
+// Note: OpenGov project detail exposes NO county/serviceArea field, so `county`
+// stays null; locality is carried via agency + contact city/state instead.
+function buildCandidate(project, detail = null) {
   const gov = project.government || {};
   const org = gov.organization || {};
   const dept = project.department || {};
@@ -255,6 +350,61 @@ function buildCandidate(project) {
     ? project.categories.map((c) => ({ id: c.id, code: c.code, set_id: c.setId, title: c.title }))
     : [];
 
+  const enriched = Boolean(detail);
+  const documents = enriched && Array.isArray(detail.documents) ? detail.documents : [];
+  const addenda = enriched && Array.isArray(detail.addenda) ? detail.addenda : [];
+
+  const crawl_data = {
+    source: 'opengov_network',
+    opengov_project_id: project.id,           // canonical stable dedup key
+    financial_id: project.financialId || null,
+    title: project.title || null,
+    description: project.summary || null,
+    status: project.status || null,
+    release_date: project.releaseProjectDate || null,
+    bid_due_at: project.proposalDeadline || null,
+    source_url,
+    detail_api: `${API_BASE}/project/${project.id}`,
+    government_code: gov.code || null,
+    agency,
+    agency_website: org.website || null,
+    agency_city: org.city || null,
+    agency_state: org.state || null,
+    agency_timezone: org.timezone || null,
+    department: dept.name || null,
+    department_id: dept.id ?? null,
+    categories: matchedCategories,
+    is_private: project.isPrivate ?? null,
+    is_paused: project.isPaused ?? null,
+    extracted_at: new Date().toISOString(),
+    extraction_method: enriched ? 'opengov_v2_api_detail' : 'opengov_v1_api_discovery',
+    detail_enriched: enriched,
+    document_acquisition_supported: false,
+    document_acquisition_note: 'Detail metadata via Phase 2. Document bytes (pre-signed S3 urls in project detail) are acquired in Phase 3.',
+  };
+
+  if (enriched) {
+    crawl_data.contact = detail.contact ?? null;
+    crawl_data.procurement_contact = detail.procurement_contact ?? null;
+    crawl_data.pre_bid = detail.pre_bid ?? null;
+    crawl_data.timeline = detail.timeline ?? null;
+    crawl_data.flags = detail.flags ?? null;
+    // Document/addenda manifest: metadata only (id, sharedId, filename, type) so
+    // Phase 3 knows what to fetch and the UI can show availability now.
+    crawl_data.documents = documents;
+    crawl_data.document_count = documents.length;
+    crawl_data.addenda = addenda;
+    crawl_data.addenda_count = addenda.length;
+  }
+
+  // Prefer org address for locality; fall back to contact city/state from detail.
+  const localityParts = [org.address1, org.city, org.state, org.zipCode].filter(Boolean);
+  const project_address = localityParts.length > 0
+    ? localityParts.join(', ')
+    : (enriched && detail.contact
+        ? [detail.contact.city, detail.contact.state, detail.contact.zip].filter(Boolean).join(', ') || null
+        : null);
+
   return {
     source_url,
     raw_title: project.title || bidId || String(project.id),
@@ -263,39 +413,13 @@ function buildCandidate(project) {
     estimated_value: null,
     estimated_value_low: null,
     estimated_value_high: null,
-    county: null,            // not in list payload; Phase 2 detail enrichment adds it
-    project_address: [org.address1, org.city, org.state, org.zipCode].filter(Boolean).join(', ') || null,
+    county: null,            // OpenGov detail exposes no county field
+    project_address: project_address || null,
     required_licenses: null,
     required_naics: null,
     portal_bid_id: bidId || String(project.id),
     portal_department: dept.name || null,
-    crawl_data: {
-      source: 'opengov_network',
-      opengov_project_id: project.id,           // canonical stable dedup key
-      financial_id: project.financialId || null,
-      title: project.title || null,
-      description: project.summary || null,
-      status: project.status || null,
-      release_date: project.releaseProjectDate || null,
-      bid_due_at: project.proposalDeadline || null,
-      source_url,
-      detail_api: `${API_BASE}/project/${project.id}`,
-      government_code: gov.code || null,
-      agency,
-      agency_website: org.website || null,
-      agency_city: org.city || null,
-      agency_state: org.state || null,
-      agency_timezone: org.timezone || null,
-      department: dept.name || null,
-      department_id: dept.id ?? null,
-      categories: matchedCategories,
-      is_private: project.isPrivate ?? null,
-      is_paused: project.isPaused ?? null,
-      extracted_at: new Date().toISOString(),
-      extraction_method: 'opengov_v1_api_discovery',
-      document_acquisition_supported: false,
-      document_acquisition_note: 'Phase 1 discovery-only. Detail enrichment (Phase 2) and pre-signed S3 document acquisition (Phase 3) are separate milestones.',
-    },
+    crawl_data,
   };
 }
 
@@ -326,6 +450,23 @@ async function scrapeOpenGov(source, log = console.log) {
 
     const projects = await discoverProjects(page, categoryIds, states, log);
 
+    // Phase 2: enrich each discovered project with detail (contacts, pre-bid,
+    // timeline, document manifest). Enabled by default; failures are isolated
+    // per project and degrade that candidate to list-only.
+    let detailById = {};
+    if (parseBool2('OPENGOV_ENRICH_DETAIL', true)) {
+      const ids = projects.map((p) => p.id).filter((id) => id != null);
+      try {
+        detailById = await fetchProjectDetails(page, ids, log);
+      } catch (e) {
+        recordError(`OpenGov detail enrichment failed (falling back to list-only): ${e.message}`);
+        detailById = {};
+      }
+    } else {
+      log(`[${sourceName}] OpenGov detail enrichment disabled (OPENGOV_ENRICH_DETAIL=false)`);
+    }
+
+    let enrichedCount = 0;
     for (const project of projects) {
       try {
         const gov = project.government || {};
@@ -333,7 +474,9 @@ async function scrapeOpenGov(source, log = console.log) {
           recordError(`Skipping project ${project.id ?? '(no id)'}: missing government.code`);
           continue;
         }
-        const candidate = buildCandidate(project);
+        const detail = detailById[project.id] ?? null;
+        if (detail) enrichedCount++;
+        const candidate = buildCandidate(project, detail);
         if (!candidate.raw_title || !candidate.source_url) {
           recordError(`Metadata incomplete for project ${project.id}: title/source_url missing`);
           continue;
@@ -344,7 +487,7 @@ async function scrapeOpenGov(source, log = console.log) {
       }
     }
 
-    log(`[${sourceName}] OpenGov discovery complete: ${candidates.length} candidate(s) normalized`);
+    log(`[${sourceName}] OpenGov complete: ${candidates.length} candidate(s) normalized (${enrichedCount} detail-enriched)`);
   } catch (e) {
     recordError(`OpenGov scrape failed: ${e.message}`);
   } finally {
