@@ -3,6 +3,9 @@ const { connectBrowserbaseSession, fetchBrowserbaseDownloadZip } = require('../l
 
 const DEFAULT_LISTING_URL = 'https://caleprocure.ca.gov/pages/Events-BS3/event-search.aspx';
 const DEFAULT_DETAIL_LIMIT = 300;
+const DEFAULT_DETAIL_BATCH_SIZE = 40;
+const DEFAULT_MAX_DETAIL_SESSIONS = 10;
+const DEFAULT_MAX_CONSECUTIVE_DETAIL_FAILURES = 10;
 
 function sourceLabel(source) {
   return source?.name ?? source?.source_name ?? 'Cal eProcure';
@@ -949,9 +952,41 @@ async function capturePackageDownloadDiagnostics(page, sessionId, log) {
   return diagnostics;
 }
 
+async function openListingSession({ listingUrl, sourceName, log, captureDiagnostics = false }) {
+  const session = await openBrowser(log);
+  const { page, transport } = session;
+  log(`[${sourceName}] Opening Cal eProcure via ${transport}: ${listingUrl}`);
+
+  await page.goto(listingUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await waitForSearchShell(page);
+  if (captureDiagnostics) await captureSearchDiagnostics(page, 'after_load', log);
+
+  await waitForSearchRows(page, 10000).catch((e) => {
+    if (captureDiagnostics) log(`Cal eProcure initial row wait did not observe rendered rows: ${e.message}`);
+  });
+
+  let rows = await collectListingRows(page, log);
+  if (rows.length === 0) {
+    await clickSearch(page, log).catch((e) => {
+      log(`Cal eProcure Search click failed: ${e.message}`);
+      return false;
+    });
+    await waitForSearchRows(page, 60000).catch((e) => {
+      log(`Cal eProcure post-search row wait did not observe rendered rows: ${e.message}`);
+    });
+    if (captureDiagnostics) await captureSearchDiagnostics(page, 'after_search', log);
+    rows = await collectListingRows(page, log);
+  }
+
+  return { session, rows };
+}
+
 async function scrapeCalEprocure(source, log = console.log) {
   const listingUrl = source.listing_url || DEFAULT_LISTING_URL;
   const detailLimit = parseNumberEnv('CALEPROCURE_MAX_DETAILS', DEFAULT_DETAIL_LIMIT);
+  const detailBatchSize = parseNumberEnv('CALEPROCURE_DETAIL_BATCH_SIZE', DEFAULT_DETAIL_BATCH_SIZE);
+  const maxDetailSessions = parseNumberEnv('CALEPROCURE_MAX_DETAIL_SESSIONS', DEFAULT_MAX_DETAIL_SESSIONS);
+  const maxConsecutiveFailures = parseNumberEnv('CALEPROCURE_MAX_CONSECUTIVE_DETAIL_FAILURES', DEFAULT_MAX_CONSECUTIVE_DETAIL_FAILURES);
   const sourceName = sourceLabel(source);
   const candidates = [];
   const errorMessages = [];
@@ -966,8 +1001,18 @@ async function scrapeCalEprocure(source, log = console.log) {
     detail_navigation_aborted_after_row: null,
     detail_navigation_remaining_skipped: 0,
     candidates_inserted: 0,
+    detail_batches_attempted: 0,
+    detail_sessions_started: 0,
+    detail_sessions_restarted: 0,
+    detail_context_deaths: 0,
+    detail_rows_skipped_due_to_safety_limit: 0,
+    detail_worklist_size: 0,
+    detail_processed_event_ids: [],
+    detail_failed_event_ids_sample: [],
   };
   let session;
+  let page;
+  let sessionId;
 
   const recordError = (message) => {
     nonNavigationErrors++;
@@ -975,45 +1020,64 @@ async function scrapeCalEprocure(source, log = console.log) {
     log(`[${sourceName}] ${message}`);
   };
 
-  try {
-    session = await openBrowser(log);
-    const { browser, page, sessionId, transport } = session;
-    log(`[${sourceName}] Opening Cal eProcure via ${transport}: ${listingUrl}`);
-
-    await page.goto(listingUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    await waitForSearchShell(page);
-    await captureSearchDiagnostics(page, 'after_load', log);
-
-    await waitForSearchRows(page, 10000).catch((e) => {
-      log(`Cal eProcure initial row wait did not observe rendered rows: ${e.message}`);
-    });
-
-    let rows = await collectListingRows(page, log);
-    if (rows.length === 0) {
-      await clickSearch(page, log).catch((e) => {
-        log(`Cal eProcure Search click failed: ${e.message}`);
-        return false;
-      });
-      await waitForSearchRows(page, 60000).catch((e) => {
-        log(`Cal eProcure post-search row wait did not observe rendered rows: ${e.message}`);
-      });
-      await captureSearchDiagnostics(page, 'after_search', log);
-      rows = await collectListingRows(page, log);
+  const closeCurrentSession = async () => {
+    if (session?.browser) {
+      await session.browser.close().catch(() => {});
     }
+    session = null;
+    page = null;
+    sessionId = null;
+  };
+
+  const startListingSession = async ({ captureDiagnostics = false, restart = false } = {}) => {
+    await closeCurrentSession();
+    if (telemetry.detail_sessions_started >= maxDetailSessions) {
+      throw new Error(`Cal eProcure max detail sessions reached (${maxDetailSessions})`);
+    }
+    const opened = await openListingSession({ listingUrl, sourceName, log, captureDiagnostics });
+    session = opened.session;
+    page = session.page;
+    sessionId = session.sessionId;
+    telemetry.detail_sessions_started++;
+    if (restart) telemetry.detail_sessions_restarted++;
+    return opened.rows;
+  };
+
+  try {
+    let rows = await startListingSession({ captureDiagnostics: true });
 
     telemetry.listing_rows_observed = rows.length;
+    const rowsToProcess = rows.slice(0, detailLimit).map((row, index) => ({
+      ...row,
+      rowIndex: index,
+    }));
+    telemetry.detail_worklist_size = rowsToProcess.length;
     let firstFailedRowLogged = false;
     let packageDiagnosticsCaptured = false;
-    const rowsToProcess = rows.slice(0, detailLimit);
-    let abortDetailLoop = false;
-    for (let rowIndex = 0; rowIndex < rowsToProcess.length; rowIndex += 1) {
+    let consecutiveFailures = 0;
+    let rowIndex = 0;
+
+    while (rowIndex < rowsToProcess.length) {
+      if (!page || !(await pageIsUsable(page))) {
+        telemetry.detail_context_deaths++;
+        telemetry.detail_navigation_aborted_context_closed = true;
+        telemetry.detail_navigation_aborted_after_row = rowsToProcess[rowIndex]?.eventId ?? null;
+        rows = await startListingSession({ restart: true });
+        if (rows.length > 0) telemetry.listing_rows_observed = Math.max(telemetry.listing_rows_observed, rows.length);
+      }
+
+      telemetry.detail_batches_attempted++;
+      const batchStartIndex = rowIndex;
+      const batchEndIndex = Math.min(batchStartIndex + detailBatchSize, rowsToProcess.length);
+      log(`[${sourceName}] Cal eProcure detail batch ${telemetry.detail_batches_attempted}: rows ${batchStartIndex + 1}-${batchEndIndex} of ${rowsToProcess.length}`);
+
+      while (rowIndex < batchEndIndex) {
       const row = rowsToProcess[rowIndex];
       let shouldRestoreListing = false;
       if (!(await pageIsUsable(page))) {
         telemetry.detail_navigation_aborted_context_closed = true;
         telemetry.detail_navigation_aborted_after_row = row.eventId ?? null;
-        telemetry.detail_navigation_remaining_skipped = rowsToProcess.length - rowIndex;
-        errorMessages.push(`Cal eProcure detail navigation aborted: listing page closed before ${row.eventId || 'unknown event'}; skipped ${telemetry.detail_navigation_remaining_skipped} remaining row(s)`);
+        telemetry.detail_context_deaths++;
         break;
       }
       telemetry.detail_navigation_attempted++;
@@ -1047,14 +1111,19 @@ async function scrapeCalEprocure(source, log = console.log) {
         const candidate = buildCandidateFromDetail({ listingUrl, row, target, detail, packageDiagnostics });
         candidate.crawl_data.detail_navigation_method = navigationMethod;
         if (!candidate.raw_title || !candidate.portal_bid_id) {
-          recordError(`Metadata extraction incomplete for ${target.sourceUrl}: title=${candidate.raw_title || 'missing'} event_id=${candidate.portal_bid_id || 'missing'}`);
-          continue;
+          throw new Error(`Metadata extraction incomplete for ${target.sourceUrl}: title=${candidate.raw_title || 'missing'} event_id=${candidate.portal_bid_id || 'missing'}`);
         }
         candidates.push(candidate);
         telemetry.candidates_inserted = candidates.length;
+        telemetry.detail_processed_event_ids.push(candidate.portal_bid_id || row.eventId);
+        consecutiveFailures = 0;
         log(`[${sourceName}] Parsed Cal eProcure event ${candidate.portal_bid_id}: ${candidate.raw_title}`);
       } catch (e) {
         telemetry.detail_navigation_failed++;
+        consecutiveFailures++;
+        if (row.eventId && telemetry.detail_failed_event_ids_sample.length < 25) {
+          telemetry.detail_failed_event_ids_sample.push(row.eventId);
+        }
         if (!firstFailedRowLogged) {
           await logFailedRowDiagnostics(page, row, `detail_navigation_failed:${e.message}`, log).catch(() => {});
           firstFailedRowLogged = true;
@@ -1062,26 +1131,52 @@ async function scrapeCalEprocure(source, log = console.log) {
         if (isClosedContextAbort(e)) {
           telemetry.detail_navigation_aborted_context_closed = true;
           telemetry.detail_navigation_aborted_after_row = row.eventId ?? null;
-          telemetry.detail_navigation_remaining_skipped = rowsToProcess.length - rowIndex - 1;
-          errorMessages.push(`Cal eProcure detail navigation aborted after ${row.eventId || 'unknown event'}: context/page closed; skipped ${telemetry.detail_navigation_remaining_skipped} remaining row(s)`);
-          abortDetailLoop = true;
+          telemetry.detail_context_deaths++;
         }
       } finally {
-        if (shouldRestoreListing && !abortDetailLoop) {
+        if (shouldRestoreListing && page && !page.isClosed()) {
           await restoreListingPage(page, listingUrl, log).catch((e) => {
             if (isClosedContextAbort(e)) {
               telemetry.detail_navigation_aborted_context_closed = true;
               telemetry.detail_navigation_aborted_after_row = row.eventId ?? null;
-              telemetry.detail_navigation_remaining_skipped = rowsToProcess.length - rowIndex - 1;
-              errorMessages.push(`Cal eProcure detail navigation aborted during restore after ${row.eventId || 'unknown event'}: context/page closed; skipped ${telemetry.detail_navigation_remaining_skipped} remaining row(s)`);
-              abortDetailLoop = true;
+              telemetry.detail_context_deaths++;
               return;
             }
             recordError(`Cal eProcure listing restore failed after ${row.eventId || '(unknown)'}: ${e.message}`);
           });
         }
       }
-      if (abortDetailLoop) break;
+
+        rowIndex++;
+
+        if (consecutiveFailures >= maxConsecutiveFailures) {
+          telemetry.detail_rows_skipped_due_to_safety_limit = rowsToProcess.length - rowIndex;
+          telemetry.detail_navigation_remaining_skipped = telemetry.detail_rows_skipped_due_to_safety_limit;
+          errorMessages.push(`Cal eProcure detail navigation aborted: ${consecutiveFailures} consecutive failures; skipped ${telemetry.detail_rows_skipped_due_to_safety_limit} remaining row(s)`);
+          rowIndex = rowsToProcess.length;
+          break;
+        }
+
+        if (!page || !(await pageIsUsable(page))) {
+          if (rowIndex < rowsToProcess.length) {
+            await closeCurrentSession();
+            break;
+          }
+        }
+      }
+
+      if (rowIndex < rowsToProcess.length) {
+        await closeCurrentSession();
+        try {
+          rows = await startListingSession({ restart: true });
+          if (rows.length > 0) telemetry.listing_rows_observed = Math.max(telemetry.listing_rows_observed, rows.length);
+        } catch (e) {
+          telemetry.detail_navigation_remaining_skipped = rowsToProcess.length - rowIndex;
+          telemetry.detail_rows_skipped_due_to_safety_limit = telemetry.detail_navigation_remaining_skipped;
+          errorMessages.push(`Cal eProcure detail navigation aborted: ${e.message}; skipped ${telemetry.detail_navigation_remaining_skipped} remaining row(s)`);
+          break;
+        }
+      }
     }
 
     log(`[${sourceName}] Cal eProcure detail navigation summary: ${JSON.stringify(telemetry)}`);
@@ -1093,14 +1188,11 @@ async function scrapeCalEprocure(source, log = console.log) {
       log(`[${sourceName}] Detail limit ${detailLimit} reached; ${rows.length - detailLimit} row(s) left for next controlled scan`);
     }
 
-    await browser.close().catch(() => {});
-    session = null;
+    await closeCurrentSession();
   } catch (e) {
     recordError(`Cal eProcure scrape failed: ${e.message}`);
   } finally {
-    if (session?.browser) {
-      await session.browser.close().catch(() => {});
-    }
+    await closeCurrentSession();
   }
 
   return {
