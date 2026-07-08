@@ -357,17 +357,40 @@ const Opportunities = () => {
   const loadCandidates = useCallback(async (opts?: { silent?: boolean }) => {
     const silent = opts?.silent === true;
     const { data: { session } } = await supabase.auth.getSession();
-    const { data, error } = await supabase
-      .from("opportunity_candidates")
-      .select("*, opportunity_sources(name, last_scanned_at)")
-      .order("created_at", { ascending: false });
+    // Paginated fetch — REQUIRED. A single unranged `.select()` is silently
+    // capped at Supabase/PostgREST's default 1000-row limit. Once
+    // opportunity_candidates crossed 1000 rows (nightly multi-portal scans), an
+    // unpaginated fetch ordered by created_at DESC returned only the 1000 NEWEST
+    // rows and silently dropped the oldest — including saved and project-backing
+    // candidates — so the Saved tab (which filters this client-side array)
+    // rendered empty and old opportunities vanished from "All". We loop with an
+    // explicit page size until a short page is returned, with a hard safety
+    // ceiling so a runaway table can never paginate forever.
+    const PAGE_SIZE = 1000;
+    const MAX_CANDIDATE_ROWS = 50000; // safety ceiling, far above realistic volume
+    const data: any[] = [];
+    for (let from = 0; ; from += PAGE_SIZE) {
+      const { data: page, error } = await supabase
+        .from("opportunity_candidates")
+        .select("*, opportunity_sources(name, last_scanned_at)")
+        .order("created_at", { ascending: false })
+        .range(from, from + PAGE_SIZE - 1);
 
-    if (error) {
-      if (!silent) {
-        toast({ title: "Error", description: "Failed to load opportunities", variant: "destructive" });
-        setLoading(false);
+      if (error) {
+        if (!silent) {
+          toast({ title: "Error", description: "Failed to load opportunities", variant: "destructive" });
+          setLoading(false);
+        }
+        return;
       }
-      return;
+
+      const batch = page ?? [];
+      data.push(...batch);
+      if (batch.length < PAGE_SIZE) break; // last (short) page reached — all rows loaded
+      if (data.length >= MAX_CANDIDATE_ROWS) {
+        console.warn(`[opps] candidate pagination hit the ${MAX_CANDIDATE_ROWS}-row safety ceiling; some rows may be omitted`);
+        break;
+      }
     }
 
     const rows: Candidate[] = (data || []).map(mapRow);
