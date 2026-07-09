@@ -135,9 +135,9 @@ Both were single, controlled `opengov_scan` runs (priority 5, source-only), `fou
 
 ---
 
-# OpenGov Phase 3 — Document Acquisition (IMPLEMENTED, pending controlled validation, 2026-07-08)
+# OpenGov Phase 3 — Document Acquisition (VALIDATED & ACCEPTED, 2026-07-09)
 
-**Status:** ✅ Code complete, local checks green, committed & pushed to `phase1-opportunity-intelligence`. **Not yet production-validated** — the one-candidate controlled validation plan below is *proposed*, not run. This is the first OpenGov phase to touch document bytes.
+**Status:** ✅ Complete, deployed, and **production-validated** on the single-candidate MVP path (Step 1 acquisition + Step 2 idempotency both passed on Force Main `275299`, 2026-07-08/09 — full results in the "Production validation" section below). Broad acquisition remains **off by default** — see the product decision at the end of this section.
 
 ## Scope (as built)
 Download the **actual OpenGov project documents** from official OpenGov sources, upload them to the existing private Supabase bucket **`opportunity-documents`**, and create/update **`opportunity_documents`** rows so the existing F3 document-processing pipeline consumes them. **The existing acquisition architecture is reused** (same bucket, same storage-path convention, same `opportunity_documents` schema, same `archive_extraction.js`) — no second pipeline.
@@ -193,15 +193,32 @@ Dedup is on `(opportunity_candidate_id, source_url)` where `source_url` is the *
 ## Local validation (this change)
 `node --check` on all three files ✓ · module resolution incl. cross-require ✓ · `git diff --check` clean ✓ · 16/16 helper unit tests (stable-key idempotency, ext-ensure, classification, content-types) ✓. Zero frontend files changed (worker-only).
 
-## Proposed controlled validation (NOT yet run — awaiting approval)
-1. **Single candidate:** Force Main Assessment Civil Work — OpenGov project `275299`, candidate `237d521a…` (West County Wastewater). Queue **exactly one** `document_prefetch` task (priority 5) for that candidate id (doc-only path; does **not** cascade F3/F4).
-   - **Expected:** ~14 attachment objects discovered; 9 base + 5 released-addendum PDFs downloaded & uploaded; `opportunity_documents` rows all `acquisition_status='acquired'` with `storage_path` under `opportunity-candidates/237d521a…/…`; telemetry `documents_uploaded≈14`, `documents_failed=0`, `unsupported_file_count=0`.
-2. **Idempotency rerun:** queue the same `document_prefetch` again → expect `documents_existing≈14`, `documents_uploaded=0`, **no new rows/objects**.
-3. Only after both pass, discuss (separately) whether to broaden beyond one candidate. **Do not** enable broad acquisition across all ~125 candidates without explicit approval.
+## Production validation (PASSED — Step 1 acquisition 2026-07-08, Step 2 idempotency 2026-07-09)
+
+Both controlled validations ran against **Force Main Assessment Civil Work** — OpenGov project `275299`, candidate `237d521a-3231-4d3e-a757-32959f2c1d3e` (West County Wastewater) — as single priority-5 `document_prefetch` tasks on an otherwise-empty queue, 1 Railway replica.
+
+**Step 1 — acquisition (task `af4168c7-6f69-4cdf-92cb-a726bf53bd57`, complete in ~22s):**
+- `documents_found=14 / prefetched=14 / failed=0 / skipped=0` — 9 base attachments + 5 released-addendum attachments, 34.7 MB total.
+- All 14 `opportunity_documents` rows `acquired` with storage paths under `opportunity-candidates/237d521a…/{recordId}/…`; 14 objects confirmed in the `opportunity-documents` bucket.
+- Every `source_url` is the stable `opengov://project/275299/attachment/{sharedId}` key; **no expiring signed URL persisted anywhere**.
+- No downstream `document_processing`/`project_analysis`/`project_intelligence` auto-created (doc-only path, as designed); 0 Browserbase 429s; 0 PlanetBids activity; queue clean after.
+
+**Step 2 — idempotency rerun (task `9dfbe652-d88a-4411-8d28-01b3cd0d1d07`, complete in ~9s):**
+- `documents_found=14 / skipped=14 (existing) / prefetched=0 / failed=0`.
+- Row count unchanged (14, all `acquired`, 0 created); storage unchanged (14 dirs / 14 files); queue clean; no downstream tasks; no 429s; no PlanetBids.
+
+**User-facing validation (Force Main, after the `1b57146` display fix):** Solicitation No. `26-IFB-029` · Estimated Value `$1.4M` (raw `1361000`) · Location `2910 Hilltop Drive, Richmond, CA, 94806` · Job Walk / Pre-Bid mandatory, June 23 2026, 2250 Tara Hills Dr. San Pablo CA 94806 · bid items ordered `1, 2, 3, 4, 5a, 5b, 5c, 5d` · Documents tab shows the 14 rows with working Download (signed-URL) buttons · source links work after OpenGov/Cloudflare verification. Visually verified by the user.
+
+**Final commits:** `43d463a` (Phase 3 acquisition) · `1b57146` (metadata display + bid-item ordering fix). Related recovery commits: `0cf76f1` (Opportunities pagination), `3559014` (worker guardrails).
+
+## Product decision — broad acquisition stays OFF
+OpenGov document acquisition is **validated but intentionally narrow**: `supportsDocumentPrefetch('opengov')` remains `false`, so discovery/scans never auto-queue document bytes. Acquisition happens only on explicit intent (user-triggered `project_analysis`, or a manually queued single-candidate `document_prefetch`). Broadening beyond that is a **separate, explicit future approval** — see `docs/initiatives/uniform-document-policy.md` for the cross-portal policy (F2-lite / F2-full) this decision anchors.
 
 ## Still deferred (unchanged)
 - **Q&A thread extraction** — separate endpoint, not in detail payload.
 - **Followers / planholders** — separate gated endpoint + privacy decision.
-- **Broad OpenGov acquisition across all candidates** — requires explicit approval; guardrails above make it gated, not automatic.
+- **On-demand per-document download for unacquired documents** — see the uniform document policy doc; requires a small backend path (edge function or RLS change), not yet built.
 
-*OpenGov Phase 3 code is landed but paused at "implemented, awaiting controlled validation." No production acquisition runs without a new explicit go-ahead.*
+---
+
+**OpenGov is wrapped for the MVP path: Phase 1 discovery ✓ · Phase 2 enrichment ✓ · Phase 2.5 portal-visible metadata & display ✓ · Phase 3 document acquisition + idempotency ✓ — all production-validated on Force Main `275299`.**

@@ -111,6 +111,32 @@ export function resolveDepartment(crawlData: any): string | null {
   return typeof v === "string" && v.trim() ? v.trim() : null;
 }
 
+// Known source documents from discovery metadata (crawl_data.documents),
+// normalized across portal shapes so the Documents tab can show document
+// titles before any bytes exist in BidBox:
+//   OpenGov:       { name, title, filename, file_extension, type }
+//   PlanetBids:    { file_title, filename, file_size }
+//   LA County DPW: { title, notes, pages, size }
+// Uniform document policy: discovery shows titles; bytes arrive only on
+// explicit user intent (docs/initiatives/uniform-document-policy.md).
+export interface KnownSourceDocument {
+  title: string;
+  fileType: string | null;
+}
+
+export function extractKnownSourceDocuments(crawlData: any): KnownSourceDocument[] {
+  const docs = Array.isArray(crawlData?.documents) ? crawlData.documents : [];
+  return docs
+    .map((d: any): KnownSourceDocument => {
+      const title = String(d?.title ?? d?.file_title ?? d?.name ?? d?.filename ?? "").trim();
+      const fromExtField = String(d?.file_extension ?? "").trim().replace(/^\./, "");
+      const fromFilename = String(d?.filename ?? "").match(/\.([a-z0-9]{1,6})$/i)?.[1] ?? "";
+      const fileType = (fromExtField || fromFilename).toLowerCase() || null;
+      return { title, fileType };
+    })
+    .filter((d: KnownSourceDocument) => d.title);
+}
+
 // OI status: maps the Phase 1 opportunity_intelligence_status field (or legacy fields) to display values.
 
 export const OI_STATUS_LABELS: Record<string, string> = {

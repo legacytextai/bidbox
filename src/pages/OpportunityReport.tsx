@@ -42,7 +42,7 @@ import {
 import { useOpportunityDossier } from "@/hooks/useOpportunityDossier";
 import { OpportunityOverviewTab } from "@/components/OpportunityOverviewTab";
 import { OpportunityDocumentsTab } from "@/components/OpportunityDocumentsTab";
-import { resolveOIStyle, resolveOILabel } from "@/lib/opportunityDomain";
+import { resolveOIStyle, resolveOILabel, extractKnownSourceDocuments } from "@/lib/opportunityDomain";
 import { resolveProjectCounty } from "@/lib/projectCountyResolver";
 import { upsertPursuit } from "@/lib/tenant";
 import type { DossierFinding, DossierCitation } from "@/hooks/useOpportunityDossier";
@@ -916,7 +916,11 @@ const OpportunityReport = () => {
         )}
 
         {activeTab === "documents" && (
-          <OpportunityDocumentsTab documents={documents} />
+          <OpportunityDocumentsTab
+            documents={documents}
+            knownSourceDocuments={candidate ? extractKnownSourceDocuments(candidate.crawl_data) : []}
+            sourceUrl={candidate?.source_url ?? null}
+          />
         )}
 
         {activeTab === "intelligence" && (
