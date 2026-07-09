@@ -241,6 +241,13 @@ export interface AdapterInput {
     opportunity_intelligence_status?: string | null;
     opportunity_intelligence_ready_at?: string | null;
     opportunity_lifecycle_status?: string | null;
+    // Promoted typed columns (worker-owned). OpenGov persists estimate/address
+    // here rather than in portal-shaped crawl_data keys; the snapshot must read
+    // them or portal-visible facts render as N/A.
+    estimated_value?: number | null;
+    portal_bid_id?: string | null;
+    project_address?: string | null;
+    county?: string | null;
   };
   report: {
     executive_summary?: { bullets?: Array<{ text: string }> };
@@ -319,17 +326,27 @@ export function buildOpportunityOverviewData(input: AdapterInput): OpportunityOv
   };
 
   // Job walk resolution
+  // OpenGov Phase 2 persists the pre-bid/site-visit block as a structured
+  // object: crawl_data.pre_bid = { date, text, location }. PlanetBids/Caltrans
+  // use flat portal-shaped keys. Support both.
+  const ogPreBid =
+    crawl?.pre_bid && typeof crawl.pre_bid === "object" && !Array.isArray(crawl.pre_bid)
+      ? crawl.pre_bid
+      : null;
   const preBidDateTime =
     crawl?.pre_bid_meeting_at ||
     crawl?.meeting_datetime ||
     crawl?.job_walk_at ||
-    crawl?.prebid_meeting_at;
+    crawl?.prebid_meeting_at ||
+    ogPreBid?.date;
   const portalJobWalkDate =
     formatSnapshotDateTime(preBidDateTime);
   const portalJobWalkDateParts = splitSnapshotDateTime(portalJobWalkDate);
   const preBidMeetingLink = crawl?.pre_bid_meeting_link ?? crawl?.meeting_link;
-  const preBidLocation = crawl?.pre_bid_location ?? crawl?.meeting_location ?? crawl?.job_walk_location;
+  const preBidLocation =
+    crawl?.pre_bid_location ?? crawl?.meeting_location ?? crawl?.job_walk_location ?? ogPreBid?.location;
   const preBidNotes = crawl?.pre_bid_notes ?? crawl?.additional_details;
+  const ogPreBidMandatory = /mandatory/i.test(String(ogPreBid?.text ?? ""));
   const portalJobWalkExists =
     isAffirmative(crawl?.pre_bid_exists) ||
     isAffirmative(crawl?.pre_bid_meeting) ||
@@ -344,7 +361,7 @@ export function buildOpportunityOverviewData(input: AdapterInput): OpportunityOv
         ? "Unknown"
         : null;
   const attendanceRequired =
-    isAffirmative(crawl?.attendance_required) || isAffirmative(crawl?.job_walk_mandatory)
+    isAffirmative(crawl?.attendance_required) || isAffirmative(crawl?.job_walk_mandatory) || ogPreBidMandatory
       ? "Yes"
       : isNegative(crawl?.attendance_required) || isNegative(crawl?.job_walk_mandatory)
         ? "No"
@@ -427,11 +444,32 @@ export function buildOpportunityOverviewData(input: AdapterInput): OpportunityOv
     isCritical: f.is_critical,
   }));
 
-  const { projectAddress, county } = resolveLocation(crawl);
-  const normalizedBidItems: OpportunityBidItemView[] = bidItems
+  const { projectAddress, county } = resolveLocation(crawl, {
+    projectAddress: candidate.project_address ?? null,
+    county: candidate.county ?? null,
+  });
+
+  // Bid item ordering: source_order can collide across price tables (OpenGov
+  // persists per-table indexes, so two tables both start at 1 and the rows
+  // interleave as 1, 5a, 2, 5b, …). When every row carries an item number,
+  // natural-sort on it (1, 2, …, 5a, 5b — numeric-aware) so the schedule reads
+  // like the portal; otherwise fall back to source_order.
+  const filteredBidItems = bidItems
     .filter((item) => String(item.description ?? "").trim())
-    .filter((item) => item.extraction_method === "portal_tab")
-    .sort((a, b) => (a.source_order ?? 0) - (b.source_order ?? 0))
+    .filter((item) => item.extraction_method === "portal_tab");
+  const allHaveItemNumbers =
+    filteredBidItems.length > 0 &&
+    filteredBidItems.every((item) => String(item.item_number ?? "").trim());
+  const bidItemComparator = allHaveItemNumbers
+    ? (a: (typeof filteredBidItems)[number], b: (typeof filteredBidItems)[number]) =>
+        String(a.item_number).localeCompare(String(b.item_number), undefined, {
+          numeric: true,
+          sensitivity: "base",
+        }) || (a.source_order ?? 0) - (b.source_order ?? 0)
+    : (a: (typeof filteredBidItems)[number], b: (typeof filteredBidItems)[number]) =>
+        (a.source_order ?? 0) - (b.source_order ?? 0);
+  const normalizedBidItems: OpportunityBidItemView[] = filteredBidItems
+    .sort(bidItemComparator)
     .map((item) => ({
       id: item.id,
       itemNumber: item.item_number,
@@ -456,8 +494,8 @@ export function buildOpportunityOverviewData(input: AdapterInput): OpportunityOv
     solicitationId: resolveSolicitationId(crawl),
     portalType: resolvePortalLabel(candidate.portal_type),
     sourceUrl: candidate.source_url,
-    estimatedValue: resolveEstimatedValue(crawl),
-    estimatedValueRaw: resolveEstimatedValueRaw(crawl),
+    estimatedValue: resolveEstimatedValue(crawl, candidate.estimated_value ?? null),
+    estimatedValueRaw: resolveEstimatedValueRaw(crawl, candidate.estimated_value ?? null),
     projectAddress,
     county,
     bidDue,

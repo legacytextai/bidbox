@@ -298,7 +298,11 @@ async function fetchProjectDetails(page, ids, log) {
             unit_price: it.unitPrice ?? null,
             section_name: tableTitle,
             price_table_id: table.id ?? null,
-            source_order: it.orderById ?? null,
+            // Globally sequential across ALL price tables. orderById is
+            // per-table (each table restarts at 1), so persisting it made
+            // source_order collide across tables and the UI interleaved rows
+            // (1, 5a, 2, 5b, …). bidItems.length is the running global index.
+            source_order: bidItems.length + 1,
           });
         }
         if (bidItemsTruncated) break;

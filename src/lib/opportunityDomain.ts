@@ -40,9 +40,22 @@ export function resolvePortalStyle(portalType: string | null | undefined): strin
   return isSupportedPortalType(portalType) ? PORTAL_STYLES[portalType] : "bg-gray-500/10 text-gray-600";
 }
 
-export function resolveEstimatedValue(crawlData: any): string | null {
-  const value = crawlData?.estimated_value;
-  if (typeof value !== "number" || value <= 0) return null;
+// Portals persist deterministic metadata in two places: legacy portal-shaped
+// keys inside crawl_data (PlanetBids/Caltrans) and, for OpenGov Phase 2.5,
+// promoted typed candidate columns plus the crawl_data.opengov_visible_metadata
+// namespace. Resolvers must consult all of them or portal-visible facts render
+// as N/A (July 8 Force Main regression).
+
+function numericEstimate(value: unknown): number | null {
+  return typeof value === "number" && value > 0 ? value : null;
+}
+
+export function resolveEstimatedValue(crawlData: any, typedValue?: number | null): string | null {
+  const value =
+    numericEstimate(crawlData?.estimated_value) ??
+    numericEstimate(crawlData?.opengov_visible_metadata?.estimated_value) ??
+    numericEstimate(typedValue);
+  if (value === null) return null;
   if (value >= 1_000_000) {
     return `$${(value / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
   }
@@ -52,17 +65,32 @@ export function resolveEstimatedValue(crawlData: any): string | null {
   return `$${value.toLocaleString("en-US")}`;
 }
 
-export function resolveEstimatedValueRaw(crawlData: any): number | null {
-  const value = crawlData?.estimated_value;
-  return typeof value === "number" && value > 0 ? value : null;
+export function resolveEstimatedValueRaw(crawlData: any, typedValue?: number | null): number | null {
+  return (
+    numericEstimate(crawlData?.estimated_value) ??
+    numericEstimate(crawlData?.opengov_visible_metadata?.estimated_value) ??
+    numericEstimate(typedValue)
+  );
 }
 
-export function resolveLocation(crawlData: any): { projectAddress: string | null; county: string | null } {
-  const projectAddress =
+export function resolveLocation(
+  crawlData: any,
+  typed?: { projectAddress?: string | null; county?: string | null },
+): { projectAddress: string | null; county: string | null } {
+  const crawlAddress =
     typeof crawlData?.project_address === "string" && crawlData.project_address.trim()
       ? crawlData.project_address.trim()
       : null;
-  const county = resolveProjectCounty({ crawlData, projectAddress });
+  // Typed candidate column fallback: OpenGov persists the address only in the
+  // promoted project_address column, not in crawl_data.
+  const typedAddress =
+    typeof typed?.projectAddress === "string" && typed.projectAddress.trim()
+      ? typed.projectAddress.trim()
+      : null;
+  const projectAddress = crawlAddress ?? typedAddress;
+  const county =
+    resolveProjectCounty({ crawlData, projectAddress }) ??
+    (typeof typed?.county === "string" && typed.county.trim() ? typed.county.trim() : null);
   return { projectAddress, county };
 }
 
@@ -71,7 +99,10 @@ export function resolveSolicitationId(crawlData: any): string | null {
     crawlData?.solicitation_number ??
     crawlData?.project_number ??
     crawlData?.bid_number ??
-    crawlData?.contract_number;
+    crawlData?.contract_number ??
+    // OpenGov Phase 2.5: confidently parsed solicitation number lives in the
+    // opengov_visible_metadata namespace (e.g. "26-IFB-029").
+    crawlData?.opengov_visible_metadata?.solicitation_number;
   return typeof v === "string" && v.trim() ? v.trim() : null;
 }
 
