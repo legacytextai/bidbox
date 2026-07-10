@@ -919,7 +919,9 @@ const OpportunityReport = () => {
           <OpportunityDocumentsTab
             documents={documents}
             knownSourceDocuments={candidate ? extractKnownSourceDocuments(candidate.crawl_data) : []}
+            candidateId={candidate?.id ?? null}
             sourceUrl={candidate?.source_url ?? null}
+            onDownloaded={reload}
           />
         )}
 

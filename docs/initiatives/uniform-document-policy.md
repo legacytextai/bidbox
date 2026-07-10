@@ -1,7 +1,7 @@
 # Uniform Document Policy — All Portals (F1–F5 Aligned)
 
 **Date:** 2026-07-09
-**Status:** Policy adopted. Manifest-title display implemented (commit referenced below); on-demand per-document download is the documented next step.
+**Status:** Policy adopted. Title display implemented; **F2-lite on-demand download implemented for OpenGov** via the `download-opportunity-document` edge function (other portals pending — their title rows render without a Download action).
 **Applies to:** OpenGov, PlanetBids, Caltrans, LACMTA, LA County DPW, Cal eProcure (when documents are supported), and all future portals.
 
 ---
@@ -37,7 +37,7 @@ The user identifies an opportunity worth pursuing: opens it, saves/shortlists it
 **F2-lite — single-document download.** Triggered when the user clicks **Download** on one document in the Documents tab.
 - Acquire that one file if needed, then download/open it for the user.
 - Does **not** automatically trigger F3/F4. No project-wide processing, no intelligence generation.
-- *Current implementation status:* works instantly for already-acquired documents (signed URL from BidBox storage). For not-yet-acquired documents there is **no per-document backend path yet** (no edge function; frontend RLS only permits `project_analysis` inserts) — this is the documented next step. Until then, unacquired documents show their titles plus the source-portal link.
+- *Current implementation status:* **implemented for OpenGov** via the `download-opportunity-document` edge function. Already-acquired documents return a signed URL instantly; unacquired ones start a **single-candidate** acquisition (the validated, per-document-idempotent Phase 3 `document_prefetch` path — candidate-level v1, so one click acquires that candidate's supported documents and serves the requested one; subsequent clicks are instant). The frontend polls the same function until `ready`. Trigger reason `f2_lite_on_demand_download` marks these tasks. No F3/F4 cascade — the doc-only prefetch path never queues downstream work. Other portals: title rows render without a Download action until their on-demand path is validated.
 
 **F2-full — project/intelligence acquisition.** Triggered when the user clicks **Analyze Project** / **Prepare Intelligence**, or adds to calendar / creates a project workspace.
 - Acquires **all** required project documents (existing `project_analysis` → `runProjectAnalysisAcquisition` path), then continues into F3/F4.
@@ -101,8 +101,14 @@ The shared extractor (`extractKnownSourceDocuments` in `src/lib/opportunityDomai
 
 ---
 
-## 6. Next steps (explicitly deferred, in order)
+## 6. F2-lite implementation notes (OpenGov, shipped)
 
-1. **Per-document on-demand acquisition path** (F2-lite for unacquired docs): a small backend route (edge function, or a narrowly scoped RLS policy for a `document_download` task type) that acquires exactly one document and returns it — then wire the Case B rows to live `Download` buttons with `Download / Downloading… / Retry Download / Unavailable` states.
+- **Backend:** `supabase/functions/download-opportunity-document` — authenticates the user, then with the service role: (1) acquired row matching the stable source key → signed URL (`status:"ready"`); (2) non-OpenGov portal → `"unsupported"`; (3) file type outside the acquisition allow-list (mirrors `OPENGOV_ALLOWED_DOCUMENT_EXTENSIONS` defaults, e.g. PNG) → `"unavailable"` without burning a browser session; (4) in-flight prefetch for the candidate → reuse (`"pending"`); (5) a completed on-demand run in the last 10 min that still didn't produce the row → `"unavailable"`; (6) otherwise enqueue ONE candidate-scoped `document_prefetch` (priority 4, trigger `f2_lite_on_demand_download`) → `"pending"`.
+- **Frontend:** Case B rows with a `sourceKey` get a Download button that invokes the function and polls it (4s interval, 3 min cap). States: `Download` / `Downloading…` / `Retry Download` / `Unavailable`. After success the dossier reloads, flipping the tab to Case A.
+- **Acquisition granularity:** candidate-level fallback (v1) — the validated Phase 3 path acquires the candidate's supported documents in one pass; per-document idempotency makes every later click instant. True single-document acquisition is a possible later optimization, not a correctness need.
+
+## 7. Next steps (explicitly deferred, in order)
+
+1. **F2-lite for other portals** — PlanetBids/DPW title rows currently have no Download action; each needs a validated on-demand acquisition path (and PlanetBids must respect the login lock + guardrails).
 2. Consider surfacing addendum attachments in the OpenGov discovery-time list (currently base attachments only).
 3. Extend Case B rows to the project-workspace Documents tab if a workspace ever exists before F2-full has run (today F2-full precedes workspace creation, so acquired rows are always present there).

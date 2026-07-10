@@ -38,3 +38,6 @@ verify_jwt = true
 
 [functions.qualify-candidates]
 verify_jwt = false
+
+[functions.download-opportunity-document]
+verify_jwt = true

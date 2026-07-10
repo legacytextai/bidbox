@@ -217,7 +217,7 @@ OpenGov document acquisition is **validated but intentionally narrow**: `support
 ## Still deferred (unchanged)
 - **Q&A thread extraction** — separate endpoint, not in detail payload.
 - **Followers / planholders** — separate gated endpoint + privacy decision.
-- **On-demand per-document download for unacquired documents** — see the uniform document policy doc; requires a small backend path (edge function or RLS change), not yet built.
+- ~~On-demand per-document download for unacquired documents~~ — **shipped for OpenGov** (F2-lite via the `download-opportunity-document` edge function; see `docs/initiatives/uniform-document-policy.md` §6). Other portals still pending.
 
 ---
 

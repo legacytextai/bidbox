@@ -122,17 +122,28 @@ export function resolveDepartment(crawlData: any): string | null {
 export interface KnownSourceDocument {
   title: string;
   fileType: string | null;
+  // Stable per-document key matching the acquisition driver's idempotency key
+  // (opportunity_documents.source_url). Present only for portals with a
+  // validated on-demand download path (currently OpenGov); rows without a key
+  // render title-only.
+  sourceKey: string | null;
 }
 
 export function extractKnownSourceDocuments(crawlData: any): KnownSourceDocument[] {
   const docs = Array.isArray(crawlData?.documents) ? crawlData.documents : [];
+  const openGovProjectId = crawlData?.opengov_project_id != null ? String(crawlData.opengov_project_id) : null;
   return docs
     .map((d: any): KnownSourceDocument => {
       const title = String(d?.title ?? d?.file_title ?? d?.name ?? d?.filename ?? "").trim();
       const fromExtField = String(d?.file_extension ?? "").trim().replace(/^\./, "");
       const fromFilename = String(d?.filename ?? "").match(/\.([a-z0-9]{1,6})$/i)?.[1] ?? "";
       const fileType = (fromExtField || fromFilename).toLowerCase() || null;
-      return { title, fileType };
+      const attachmentId = d?.shared_id ?? d?.id;
+      const sourceKey =
+        openGovProjectId && attachmentId != null
+          ? `opengov://project/${openGovProjectId}/attachment/${attachmentId}`
+          : null;
+      return { title, fileType, sourceKey };
     })
     .filter((d: KnownSourceDocument) => d.title);
 }
