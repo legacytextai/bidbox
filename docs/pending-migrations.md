@@ -53,6 +53,53 @@ to true. Full runbook in the Phase 1 deliverables / handoff.
 
 ---
 
+## PENDING — Edge function deployment: download-opportunity-document (2026-07-10)
+
+**Status:** Committed (`41e69da`) but **NOT deployed** to Supabase. Confirmed live
+2026-07-10: `POST /functions/v1/download-opportunity-document` returns 404
+`NOT_FOUND` while deployed functions (e.g. `analyze-project`) return 401 without
+auth. Lovable deployed the frontend from the push but did not deploy the new
+edge function.
+
+**File:** `supabase/functions/download-opportunity-document/index.ts`
+(+ `verify_jwt = true` entry in `supabase/config.toml`)
+
+**What it does:**
+F2-lite on-demand document download (uniform document policy). Returns a signed
+URL for acquired documents; for unacquired OpenGov documents enqueues one
+candidate-scoped `document_prefetch` (trigger `f2_lite_on_demand_download`) and
+the frontend polls until ready. No F3/F4 cascade.
+
+**Who is blocked:**
+Every Download button on title-only (Case B) OpenGov document rows fails with
+"Download failed — Please try again." (`Retry Download`). Acquired-row
+downloads (Case A, e.g. Force Main) are unaffected — they use storage signed
+URLs directly, not the function.
+
+**How to deploy (any one):**
+1. Supabase CLI (installed locally, needs login):
+   ```bash
+   supabase login
+   supabase functions deploy download-opportunity-document --project-ref ztuyjlyuzasbceepezua
+   ```
+2. Lovable: ask it to deploy the repo's Supabase edge functions.
+3. Supabase dashboard → Edge Functions → new function
+   `download-opportunity-document`, paste `index.ts`, enforce JWT verification.
+
+**What to do after deploying (verification):**
+```bash
+curl -s -X POST "https://ztuyjlyuzasbceepezua.supabase.co/functions/v1/download-opportunity-document" -H "Content-Type: application/json" -d '{}'
+# expect 401 Missing authorization header (NOT 404)
+```
+Then the controlled UI retest (needs explicit approval): click Download on
+"Model Contract-IFB-012-294504-01-ME-1" (candidate `b8ca5c59…`, Asphalt and
+Concrete Maintenance Services / County of Orange) — expect one
+`document_prefetch` task (trigger `f2_lite_on_demand_download`), ~20-60s
+Downloading…, then the PDF downloads; queue clean after; zero downstream
+document_processing/project_analysis/project_intelligence tasks.
+
+---
+
 ## PENDING — Admin role seed (2026-07-07)
 
 ### 20260707120000_seed_admin_role.sql
