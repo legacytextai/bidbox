@@ -462,7 +462,7 @@ async function acquireCalEprocureDocuments({ supabase, task, candidate, log }) {
     await session.page.goto(candidate.source_url, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await waitForDetail(session.page);
     const detail = await extractDetailMetadata(session.page);
-    await openEventPackage(session.page, log);
+    await openEventPackage(session.page, log, { sourceUrl: candidate.source_url });
     const eventPackage = await extractEventPackage(session.page, candidate.portal_bid_id ?? candidate.crawl_data?.event_id ?? null);
     await updateCandidateManifest({ supabase, candidate, detail, eventPackage, listingUrl: candidate.crawl_data?.listing_url });
 

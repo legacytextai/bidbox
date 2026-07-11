@@ -969,6 +969,10 @@ async function waitForDetail(page) {
   await page.waitForTimeout(1000);
 }
 
+function isCommentsAttachmentsText(text) {
+  return /Comments\s+and\s+Attachments|View Attachments|Attached File|Download/i.test(text ?? '');
+}
+
 function caleprocureCredentials() {
   return {
     username: process.env.CALEPROCURE_USERNAME
@@ -979,16 +983,190 @@ function caleprocureCredentials() {
   };
 }
 
-async function isCalEprocureLoginPage(page) {
-  return page.evaluate(() => {
-    const text = document.body?.innerText ?? '';
-    return Boolean(document.querySelector('input[type="password"]'))
-      || /sign\s*in|login|user\s*id|password/i.test(text);
-  }).catch(() => false);
+async function frameDiagnostics(frame) {
+  return frame.evaluate(() => {
+    const clean = (value) => (value || '').replace(/\s+/g, ' ').trim();
+    const labels = Array.from(document.querySelectorAll('h1,h2,h3,legend,label'))
+      .map((el) => clean(el.innerText || el.textContent))
+      .filter(Boolean)
+      .slice(0, 12);
+    const buttons = Array.from(document.querySelectorAll('button,input[type="button"],input[type="submit"],a'))
+      .map((el) => clean(el.innerText || el.textContent || el.value || el.getAttribute('aria-label') || ''))
+      .filter(Boolean)
+      .slice(0, 20);
+    const inputs = Array.from(document.querySelectorAll('input,textarea,select'))
+      .map((el) => ({
+        tag: el.tagName.toLowerCase(),
+        type: el.getAttribute('type') || null,
+        name: el.getAttribute('name') || null,
+        id: el.getAttribute('id') || null,
+        autocomplete: el.getAttribute('autocomplete') || null,
+        placeholder: el.getAttribute('placeholder') || null,
+        aria_label: el.getAttribute('aria-label') || null,
+        visible: (() => {
+          const style = window.getComputedStyle(el);
+          const rect = el.getBoundingClientRect();
+          return style.display !== 'none'
+            && style.visibility !== 'hidden'
+            && Number(style.opacity || '1') !== 0
+            && rect.width > 0
+            && rect.height > 0;
+        })(),
+      }))
+      .slice(0, 30);
+    return {
+      url: window.location.href,
+      title: document.title || null,
+      body_preview: clean(document.body?.innerText ?? '').slice(0, 800),
+      headings: labels,
+      buttons,
+      inputs,
+      iframe_count: document.querySelectorAll('iframe').length,
+    };
+  }).catch(() => ({
+    url: frame.url(),
+    title: null,
+    body_preview: '',
+    headings: [],
+    buttons: [],
+    inputs: [],
+    iframe_count: 0,
+  }));
 }
 
-async function caleprocureLogin(page, log = console.log) {
-  if (!(await isCalEprocureLoginPage(page))) return false;
+async function collectLoginDiagnostics(page) {
+  const frames = page.frames();
+  const frameSummaries = [];
+  for (const frame of frames.slice(0, 8)) {
+    const info = await frameDiagnostics(frame);
+    frameSummaries.push({
+      url: info.url,
+      title: info.title,
+      headings: info.headings,
+      buttons: info.buttons,
+      input_types: info.inputs.map((input) => ({
+        type: input.type,
+        name: input.name,
+        id: input.id,
+        autocomplete: input.autocomplete,
+        placeholder: input.placeholder,
+        aria_label: input.aria_label,
+        visible: input.visible,
+      })),
+      iframe_count: info.iframe_count,
+      body_preview: info.body_preview,
+    });
+  }
+
+  return {
+    url: page.url(),
+    title: await page.title().catch(() => null),
+    frame_count: frames.length,
+    frames: frameSummaries,
+  };
+}
+
+function summarizeLoginDiagnostics(diagnostics) {
+  return JSON.stringify({
+    url: diagnostics.url,
+    title: diagnostics.title,
+    frame_count: diagnostics.frame_count,
+    frames: diagnostics.frames.map((frame) => ({
+      url: frame.url,
+      title: frame.title,
+      headings: frame.headings,
+      buttons: frame.buttons,
+      input_types: frame.input_types,
+      iframe_count: frame.iframe_count,
+      body_preview: frame.body_preview,
+    })),
+  }).slice(0, 4000);
+}
+
+function classifyFrameState(info) {
+  const text = `${info.body_preview ?? ''} ${(info.headings ?? []).join(' ')} ${(info.buttons ?? []).join(' ')}`;
+  const inputs = info.inputs ?? [];
+  const hasPassword = inputs.some((input) => String(input.type ?? '').toLowerCase() === 'password' && input.visible !== false);
+  const hasUsername = inputs.some((input) => {
+    const haystack = [input.type, input.name, input.id, input.autocomplete, input.placeholder, input.aria_label].join(' ');
+    return input.visible !== false && /email|user|login|userid|username|operator/i.test(haystack);
+  });
+  if (isCommentsAttachmentsText(text)) return 'already_on_comments_attachments';
+  if (hasPassword && hasUsername) return 'login_form_visible';
+  if (hasPassword) return 'password_form_visible';
+  if (hasUsername || /user\s*id|username|email|continue|next/i.test(text)) return 'username_first_form_visible';
+  if (/sign\s*in|log\s*in|login|single\s+sign|sso|authentication|access/i.test(text)) return 'sso_or_intermediate_page';
+  if (/WorkCenter|My WorkCenter|Event Package|Supplier Portal/i.test(text)) return 'sso_or_intermediate_page';
+  return 'unexpected_page';
+}
+
+async function classifyCalEprocurePageState(page) {
+  const diagnostics = await collectLoginDiagnostics(page);
+  const states = diagnostics.frames.map((frame) => classifyFrameState({
+    body_preview: frame.body_preview,
+    headings: frame.headings,
+    buttons: frame.buttons,
+    inputs: frame.input_types,
+  }));
+  const priority = [
+    'already_on_comments_attachments',
+    'login_form_visible',
+    'password_form_visible',
+    'username_first_form_visible',
+    'sso_or_intermediate_page',
+    'unexpected_page',
+  ];
+  const state = priority.find((item) => states.includes(item)) || 'unexpected_page';
+  return { state, diagnostics };
+}
+
+async function findVisibleLocatorInFrames(page, selectors) {
+  for (const frame of page.frames()) {
+    for (const selector of selectors) {
+      const locator = frame.locator(selector).first();
+      const count = await locator.count().catch(() => 0);
+      if (!count) continue;
+      const visible = await locator.isVisible({ timeout: 1000 }).catch(() => false);
+      if (visible) return { frame, locator, selector };
+    }
+  }
+  return null;
+}
+
+async function clickFirstVisibleButton(page, patterns) {
+  const selector = 'button,input[type="button"],input[type="submit"],a,[role="button"]';
+  for (const frame of page.frames()) {
+    const candidates = await frame.locator(selector).evaluateAll((els) => els.map((el, index) => ({
+      index,
+      text: (el.innerText || el.textContent || el.value || el.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim(),
+    }))).catch(() => []);
+    for (const candidate of candidates) {
+      if (!patterns.some((pattern) => pattern.test(candidate.text))) continue;
+      const locator = frame.locator(selector).nth(candidate.index);
+      if (await locator.isVisible({ timeout: 1000 }).catch(() => false)) {
+        await locator.click({ timeout: 10000 });
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+async function waitForAnyPageProgress(page) {
+  await page.waitForLoadState('domcontentloaded', { timeout: 30000 }).catch(() => {});
+  await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+  await page.waitForTimeout(1500);
+}
+
+async function isCalEprocureLoginPage(page) {
+  const { state } = await classifyCalEprocurePageState(page);
+  return ['login_form_visible', 'username_first_form_visible', 'password_form_visible', 'sso_or_intermediate_page'].includes(state);
+}
+
+async function caleprocureLogin(page, log = console.log, options = {}) {
+  const initial = await classifyCalEprocurePageState(page);
+  if (initial.state === 'already_on_comments_attachments') return true;
+  if (initial.state === 'unexpected_page') return false;
 
   const { username, password } = caleprocureCredentials();
   if (!username || !password) {
@@ -997,67 +1175,111 @@ async function caleprocureLogin(page, log = console.log) {
     throw error;
   }
 
-  log('Cal eProcure login required; signing in with configured credentials');
+  log(`Cal eProcure login required; state=${initial.state}; signing in with configured credentials`);
   const usernameSelectors = [
+    'input[autocomplete="username"]',
     'input[type="email"]',
     'input[name*="USER" i]',
     'input[id*="USER" i]',
+    'input[name*="EMAIL" i]',
+    'input[id*="EMAIL" i]',
     'input[name*="LOGIN" i]',
     'input[id*="LOGIN" i]',
+    'input[name*="OPRID" i]',
+    'input[id*="OPRID" i]',
     'input[type="text"]',
   ];
-  let filledUsername = false;
-  for (const selector of usernameSelectors) {
-    const locator = page.locator(selector).first();
-    if (await locator.count().catch(() => 0)) {
-      await locator.fill(username, { timeout: 10000 }).catch(() => {});
-      filledUsername = true;
-      break;
+  const passwordSelectors = [
+    'input[autocomplete="current-password"]',
+    'input[type="password"]',
+    'input[name*="PASS" i]',
+    'input[id*="PASS" i]',
+    'input[name*="PWD" i]',
+    'input[id*="PWD" i]',
+  ];
+
+  let state = initial.state;
+  for (let attempt = 1; attempt <= 4; attempt++) {
+    if (state === 'already_on_comments_attachments') return true;
+
+    if (state === 'username_first_form_visible' || state === 'login_form_visible') {
+      const usernameTarget = await findVisibleLocatorInFrames(page, usernameSelectors);
+      if (usernameTarget) {
+        await usernameTarget.locator.fill(username, { timeout: 10000 });
+        await clickFirstVisibleButton(page, [/^next$/i, /^continue$/i, /sign\s*in/i, /log\s*in/i, /^submit$/i])
+          .catch(() => false);
+        await waitForAnyPageProgress(page);
+      }
+    }
+
+    const passwordTarget = await findVisibleLocatorInFrames(page, passwordSelectors);
+    if (passwordTarget) {
+      await passwordTarget.locator.fill(password, { timeout: 10000 });
+      const clicked = await clickFirstVisibleButton(page, [/sign\s*in/i, /log\s*in/i, /^login$/i, /^submit$/i, /^continue$/i])
+        .catch(() => false);
+      if (!clicked) await passwordTarget.locator.press('Enter').catch(() => {});
+      await waitForAnyPageProgress(page);
+
+      const afterPassword = await classifyCalEprocurePageState(page);
+      if (afterPassword.state === 'already_on_comments_attachments') return true;
+
+      // Some SSO/PeopleSoft flows land on a WorkCenter or generic portal page
+      // after authentication. Return to the original event page and re-enter
+      // the Event Package flow so the package URL is reached deterministically.
+      if (options.sourceUrl && afterPassword.state !== 'password_form_visible') {
+        await page.goto(options.sourceUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+        await waitForDetail(page).catch(() => {});
+        const packageButton = page.getByText(/View Event Package/i).first();
+        if (await packageButton.count().catch(() => 0)) {
+          await packageButton.click({ timeout: 15000 });
+          await waitForAnyPageProgress(page);
+          const afterPackage = await classifyCalEprocurePageState(page);
+          if (afterPackage.state === 'already_on_comments_attachments') return true;
+          state = afterPackage.state;
+          continue;
+        }
+      }
+    }
+
+    const next = await classifyCalEprocurePageState(page);
+    if (next.state === 'already_on_comments_attachments') return true;
+    state = next.state;
+
+    if (state === 'sso_or_intermediate_page') {
+      const progressed = await clickFirstVisibleButton(page, [/continue/i, /sign\s*in/i, /log\s*in/i, /^next$/i])
+        .catch(() => false);
+      if (progressed) {
+        await waitForAnyPageProgress(page);
+        state = (await classifyCalEprocurePageState(page)).state;
+      }
     }
   }
 
-  const passwordLocator = page.locator('input[type="password"]').first();
-  if (!(await passwordLocator.count().catch(() => 0))) {
-    throw new Error('Cal eProcure login page did not expose a password input');
-  }
-  await passwordLocator.fill(password, { timeout: 10000 });
-
-  if (!filledUsername) {
-    throw new Error('Cal eProcure login page did not expose a username input');
-  }
-
-  const submit = page.getByRole('button', { name: /sign\s*in|log\s*in|login|submit/i }).first();
-  if (await submit.count().catch(() => 0)) {
-    await submit.click({ timeout: 10000 });
-  } else {
-    await passwordLocator.press('Enter');
-  }
-
-  await page.waitForLoadState('domcontentloaded', { timeout: 60000 }).catch(() => {});
-  await page.waitForFunction(() => {
-    const text = document.body?.innerText ?? '';
-    return !document.querySelector('input[type="password"]')
-      || /Event Details|Comments|View Attachments|Attached File|Event Package/i.test(text);
-  }, { timeout: 60000 }).catch(() => {});
-
-  if (await isCalEprocureLoginPage(page)) {
-    throw new Error('Cal eProcure login did not complete');
-  }
-
-  return true;
+  const diagnostics = await collectLoginDiagnostics(page);
+  throw new Error(`caleprocure_login_form_not_found: ${summarizeLoginDiagnostics(diagnostics)}`);
 }
 
-async function openEventPackage(page, log = console.log) {
+async function openEventPackage(page, log = console.log, options = {}) {
+  const sourceUrl = options.sourceUrl || page.url();
   const packageButton = page.getByText(/View Event Package/i).first();
   if (!(await packageButton.count().catch(() => 0))) {
     throw new Error('Cal eProcure Event Package button not found on detail page');
   }
 
   await packageButton.click({ timeout: 15000 });
-  await page.waitForLoadState('domcontentloaded', { timeout: 60000 }).catch(() => {});
-  if (await isCalEprocureLoginPage(page)) {
-    await caleprocureLogin(page, log);
+  await waitForAnyPageProgress(page);
+  let classified = await classifyCalEprocurePageState(page);
+  log(`Cal eProcure Event Package page state: ${classified.state}`);
+  if (classified.state !== 'already_on_comments_attachments' && await isCalEprocureLoginPage(page)) {
+    await caleprocureLogin(page, log, { sourceUrl });
+    classified = await classifyCalEprocurePageState(page);
   }
+
+  if (classified.state !== 'already_on_comments_attachments') {
+    const diagnostics = await collectLoginDiagnostics(page);
+    throw new Error(`caleprocure_event_package_not_reached: state=${classified.state}; ${summarizeLoginDiagnostics(diagnostics)}`);
+  }
+
   await page.waitForFunction(() => {
     const text = document.body?.innerText ?? '';
     return /Comments|View Attachments|Attached File|Download/i.test(text);
