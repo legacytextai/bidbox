@@ -1160,6 +1160,191 @@ async function clickFirstVisibleButton(page, patterns) {
   return false;
 }
 
+const EVENT_PACKAGE_CONTROL_SELECTOR = [
+  'button',
+  'a',
+  'input[type="button"]',
+  'input[type="submit"]',
+  '[role="button"]',
+  '[data-if-label="viewPackage"]',
+  '[data-if-source*="AUC_DOWNLOAD_PB"]',
+  '[data-if-ps-clickable="true"]',
+].join(',');
+
+function packageCandidateMatches(candidate) {
+  const value = [
+    candidate.text,
+    candidate.value,
+    candidate.aria_label,
+    candidate.title,
+    candidate.data_if_label,
+    candidate.data_if_source,
+    candidate.id,
+    candidate.name,
+  ].filter(Boolean).join(' ');
+  return /view\s+event\s+package|viewpackage|auc_download_pb/i.test(value);
+}
+
+async function collectEventPackageButtonDiagnostics(page) {
+  const frames = [];
+  for (const frame of page.frames().slice(0, 8)) {
+    const info = await frame.evaluate((selector) => {
+      const clean = (value) => (value || '').replace(/\s+/g, ' ').trim();
+      const isVisible = (el) => {
+        const style = window.getComputedStyle(el);
+        const rect = el.getBoundingClientRect();
+        return style.display !== 'none'
+          && style.visibility !== 'hidden'
+          && Number(style.opacity || '1') !== 0
+          && rect.width > 0
+          && rect.height > 0;
+      };
+      const controls = Array.from(document.querySelectorAll(selector)).map((el, index) => {
+        const rect = el.getBoundingClientRect();
+        return {
+          index,
+          tag: el.tagName.toLowerCase(),
+          text: clean(el.innerText || el.textContent || ''),
+          value: clean(el.value || ''),
+          id: el.id || null,
+          name: el.getAttribute('name') || null,
+          aria_label: el.getAttribute('aria-label') || null,
+          title: el.getAttribute('title') || null,
+          data_if_label: el.getAttribute('data-if-label') || null,
+          data_if_source: el.getAttribute('data-if-source') || null,
+          visible: isVisible(el),
+          rect: { width: Math.round(rect.width), height: Math.round(rect.height) },
+          outer_html: clean(el.outerHTML).slice(0, 500),
+        };
+      });
+      const visibleButtons = Array.from(document.querySelectorAll('button,a,input[type="button"],input[type="submit"],[role="button"]'))
+        .filter((el) => isVisible(el))
+        .map((el) => clean(el.innerText || el.textContent || el.value || el.getAttribute('aria-label') || el.getAttribute('title') || ''))
+        .filter(Boolean)
+        .slice(0, 40);
+      const packageControls = controls.filter((control) => /view\s+event\s+package|viewpackage|auc_download_pb/i.test([
+        control.text,
+        control.value,
+        control.aria_label,
+        control.title,
+        control.data_if_label,
+        control.data_if_source,
+        control.id,
+        control.name,
+      ].filter(Boolean).join(' ')));
+      return {
+        url: window.location.href,
+        title: document.title || null,
+        visible_button_texts: visibleButtons,
+        hidden_view_package_count: packageControls.filter((control) => !control.visible).length,
+        visible_candidate_count: packageControls.filter((control) => control.visible).length,
+        candidates: packageControls.slice(0, 20),
+      };
+    }, EVENT_PACKAGE_CONTROL_SELECTOR).catch((error) => ({
+      url: frame.url(),
+      title: null,
+      visible_button_texts: [],
+      hidden_view_package_count: 0,
+      visible_candidate_count: 0,
+      candidates: [],
+      error: error.message,
+    }));
+    frames.push({ frame_url: frame.url(), ...info });
+  }
+  return {
+    url: page.url(),
+    title: await page.title().catch(() => null),
+    frame_count: page.frames().length,
+    frames,
+  };
+}
+
+function summarizeEventPackageButtonDiagnostics(diagnostics) {
+  return JSON.stringify({
+    url: diagnostics.url,
+    title: diagnostics.title,
+    frame_count: diagnostics.frame_count,
+    frames: diagnostics.frames.map((frame) => ({
+      frame_url: frame.frame_url,
+      title: frame.title,
+      visible_button_texts: frame.visible_button_texts,
+      hidden_view_package_count: frame.hidden_view_package_count,
+      visible_candidate_count: frame.visible_candidate_count,
+      candidates: frame.candidates,
+      error: frame.error,
+    })),
+  }).slice(0, 4000);
+}
+
+async function clickVisibleEventPackageButton(page) {
+  const matches = [];
+  for (const frame of page.frames()) {
+    const candidates = await frame.locator(EVENT_PACKAGE_CONTROL_SELECTOR).evaluateAll((els) => {
+      const clean = (value) => (value || '').replace(/\s+/g, ' ').trim();
+      const isVisible = (el) => {
+        const style = window.getComputedStyle(el);
+        const rect = el.getBoundingClientRect();
+        return style.display !== 'none'
+          && style.visibility !== 'hidden'
+          && Number(style.opacity || '1') !== 0
+          && rect.width > 0
+          && rect.height > 0;
+      };
+      return els.map((el, index) => {
+        const rect = el.getBoundingClientRect();
+        return {
+          index,
+          tag: el.tagName.toLowerCase(),
+          text: clean(el.innerText || el.textContent || ''),
+          value: clean(el.value || ''),
+          id: el.id || null,
+          name: el.getAttribute('name') || null,
+          aria_label: el.getAttribute('aria-label') || null,
+          title: el.getAttribute('title') || null,
+          data_if_label: el.getAttribute('data-if-label') || null,
+          data_if_source: el.getAttribute('data-if-source') || null,
+          visible: isVisible(el),
+          width: rect.width,
+          height: rect.height,
+        };
+      });
+    }).catch(() => []);
+
+    for (const candidate of candidates) {
+      if (!candidate.visible || candidate.width <= 0 || candidate.height <= 0) continue;
+      if (!packageCandidateMatches(candidate)) continue;
+      const labelText = `${candidate.text} ${candidate.value} ${candidate.aria_label} ${candidate.title}`.trim();
+      const rank = /view\s+event\s+package/i.test(labelText)
+        ? (candidate.tag === 'button' ? 0 : candidate.tag === 'a' ? 1 : 2)
+        : /viewpackage|auc_download_pb/i.test(`${candidate.data_if_label} ${candidate.data_if_source}`) ? 3 : 4;
+      matches.push({ frame, candidate, rank });
+    }
+  }
+
+  matches.sort((a, b) => a.rank - b.rank || a.candidate.index - b.candidate.index);
+  for (const match of matches) {
+    const locator = match.frame.locator(EVENT_PACKAGE_CONTROL_SELECTOR).nth(match.candidate.index);
+    await locator.scrollIntoViewIfNeeded({ timeout: 5000 }).catch(() => {});
+    const box = await locator.boundingBox().catch(() => null);
+    if (!box || box.width <= 0 || box.height <= 0) continue;
+    try {
+      await locator.click({ timeout: 15000 });
+      return true;
+    } catch (e) {
+      try {
+        await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+        await page.waitForTimeout(500);
+        return true;
+      } catch {
+        // Try the next visible candidate before falling back to diagnostics.
+      }
+    }
+  }
+
+  const diagnostics = await collectEventPackageButtonDiagnostics(page);
+  throw new Error(`caleprocure_view_event_package_visible_control_not_found: ${summarizeEventPackageButtonDiagnostics(diagnostics)}`);
+}
+
 async function waitForAnyPageProgress(page) {
   await page.waitForLoadState('domcontentloaded', { timeout: 30000 }).catch(() => {});
   await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
@@ -1237,15 +1422,12 @@ async function caleprocureLogin(page, log = console.log, options = {}) {
       if (options.sourceUrl && afterPassword.state !== 'password_form_visible') {
         await page.goto(options.sourceUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
         await waitForDetail(page).catch(() => {});
-        const packageButton = page.getByText(/View Event Package/i).first();
-        if (await packageButton.count().catch(() => 0)) {
-          await packageButton.click({ timeout: 15000 });
-          await waitForAnyPageProgress(page);
-          const afterPackage = await classifyCalEprocurePageState(page);
-          if (afterPackage.state === 'already_on_comments_attachments') return true;
-          state = afterPackage.state;
-          continue;
-        }
+        await clickVisibleEventPackageButton(page);
+        await waitForAnyPageProgress(page);
+        const afterPackage = await classifyCalEprocurePageState(page);
+        if (afterPackage.state === 'already_on_comments_attachments') return true;
+        state = afterPackage.state;
+        continue;
       }
     }
 
@@ -1269,12 +1451,7 @@ async function caleprocureLogin(page, log = console.log, options = {}) {
 
 async function openEventPackage(page, log = console.log, options = {}) {
   const sourceUrl = options.sourceUrl || page.url();
-  const packageButton = page.getByText(/View Event Package/i).first();
-  if (!(await packageButton.count().catch(() => 0))) {
-    throw new Error('Cal eProcure Event Package button not found on detail page');
-  }
-
-  await packageButton.click({ timeout: 15000 });
+  await clickVisibleEventPackageButton(page);
   await waitForAnyPageProgress(page);
   let classified = await classifyCalEprocurePageState(page);
   log(`Cal eProcure Event Package page state: ${classified.state}`);
@@ -1513,8 +1690,7 @@ async function capturePackageDownloadDiagnostics(page, sessionId, log) {
   };
 
   try {
-    const packageButton = page.getByText(/View Event Package/i).first();
-    await packageButton.click({ timeout: 10000 });
+    await clickVisibleEventPackageButton(page);
     await page.waitForLoadState('domcontentloaded', { timeout: 30000 }).catch(() => {});
     await page.waitForFunction(() => /View Attachments|Attached File|Download/i.test(document.body?.innerText ?? ''), { timeout: 30000 });
     await page.waitForTimeout(1000);
