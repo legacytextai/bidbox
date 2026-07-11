@@ -652,18 +652,91 @@ async function downloadViaBrowser(page, session, doc, seenBrowserbaseEntries, lo
     throw new Error(`No Browserbase session id available for downloaded file ${doc.file_name}`);
   }
 
-  const expected = doc.file_name.toLowerCase();
-  const entries = await fetchBrowserbaseDownloadZipEntries(session.sessionId, log);
-  const fresh = entries.filter((entry) => !seenBrowserbaseEntries.has(entry.fileName));
-  const matched = fresh.find((entry) => entry.fileName.toLowerCase() === expected)
-    || fresh.find((entry) => entry.fileName.toLowerCase().includes(expected))
-    || fresh[0];
-  if (!matched?.bytes?.length) {
-    throw new Error(`Browserbase did not sync a fresh download for ${doc.file_name}`);
-  }
-  for (const entry of entries) seenBrowserbaseEntries.add(entry.fileName);
+  const matched = await awaitBrowserbaseSyncedDownload({
+    page,
+    sessionId: session.sessionId,
+    doc,
+    seenBrowserbaseEntries,
+    log,
+  });
   await closeDownloadModal(page, log);
   return matched.bytes;
+}
+
+function browserbaseSyncTimeoutMs() {
+  return parseNumberEnv('CALEPROCURE_BROWSERBASE_SYNC_TIMEOUT_MS', 90000);
+}
+
+// Match a synced zip entry to the expected filename only — never a blind
+// first-fresh-entry fallback, which could grab a late-arriving download from
+// the previous document. Browserbase may decorate names (e.g. dedupe
+// suffixes), so exact match, containment, and a stem-prefix match are allowed.
+function matchBrowserbaseEntry(freshEntries, expectedFileName) {
+  const normalize = (name) => String(name ?? '').toLowerCase().replace(/\s+/g, '_');
+  const stem = (name) => normalize(name).replace(/\.[a-z0-9]{1,8}$/, '');
+  const expected = normalize(expectedFileName);
+  const expectedStem = stem(expectedFileName);
+  return freshEntries.find((entry) => normalize(entry.fileName) === expected)
+    || freshEntries.find((entry) => normalize(entry.fileName).includes(expected))
+    || freshEntries.find((entry) => expectedStem && stem(entry.fileName).startsWith(expectedStem))
+    || null;
+}
+
+// Poll the Browserbase session download zip until an entry matching the
+// expected filename appears. fetchBrowserbaseDownloadZipEntries returns as
+// soon as ANY file exists in the zip, so once a previous document's file is
+// there every call returns immediately with stale entries — the freshness
+// wait has to live here, keyed on the expected filename.
+async function awaitBrowserbaseSyncedDownload({ page, sessionId, doc, seenBrowserbaseEntries, log }) {
+  const startedAt = Date.now();
+  const deadline = startedAt + browserbaseSyncTimeoutMs();
+  const pollDelayMs = 3000;
+  const attempts = [];
+  let lastEntries = [];
+
+  for (;;) {
+    const entries = await fetchBrowserbaseDownloadZipEntries(sessionId, log)
+      .catch((e) => {
+        attempts.push({ elapsed_ms: Date.now() - startedAt, error: e.message.slice(0, 160) });
+        return [];
+      });
+    if (entries.length) lastEntries = entries;
+    const fresh = entries.filter((entry) => !seenBrowserbaseEntries.has(entry.fileName));
+    const matched = matchBrowserbaseEntry(fresh, doc.file_name);
+    attempts.push({
+      elapsed_ms: Date.now() - startedAt,
+      entry_count: entries.length,
+      fresh_count: fresh.length,
+      matched: matched?.fileName ?? null,
+    });
+    if (matched?.bytes?.length) {
+      // Everything currently in the zip is now accounted for.
+      for (const entry of entries) seenBrowserbaseEntries.add(entry.fileName);
+      return matched;
+    }
+    if (Date.now() + pollDelayMs > deadline) break;
+    await new Promise((r) => setTimeout(r, pollDelayMs));
+  }
+
+  const freshAtEnd = lastEntries
+    .filter((entry) => !seenBrowserbaseEntries.has(entry.fileName))
+    .map((entry) => entry.fileName);
+  const seenBefore = Array.from(seenBrowserbaseEntries);
+  // Record what we saw even on failure so a late-arriving file for THIS
+  // document is not mistaken for a fresh download of the next one.
+  for (const entry of lastEntries) seenBrowserbaseEntries.add(entry.fileName);
+  const diagnostics = {
+    expected: doc.file_name,
+    entries_in_zip: lastEntries.map((entry) => entry.fileName).slice(0, 20),
+    already_seen: seenBefore.slice(0, 20),
+    fresh_at_last_attempt: freshAtEnd.slice(0, 20),
+    attempts,
+    timeout_ms: browserbaseSyncTimeoutMs(),
+    page_url: page.url(),
+    page_title: await page.title().catch(() => null),
+  };
+  log(`Cal eProcure Browserbase sync diagnostics: ${JSON.stringify(diagnostics)}`);
+  throw new Error(`browserbase_download_sync_failed: ${doc.file_name} ${JSON.stringify(diagnostics).slice(0, 2500)}`);
 }
 
 async function storeCalEprocureDocument({ supabase, taskId, candidateId, doc, bytes, log }) {
