@@ -328,9 +328,135 @@ function rankRowControls(controls) {
     .sort((a, b) => b.score - a.score);
 }
 
+// The "Your file is ready" modal's confirm control is not exposed as an
+// accessible button on Cal eProcure, so detection is text-based: any visible
+// element carrying the modal copy counts as the modal being open.
+function downloadModalMarker(page) {
+  return page.locator('text=/Your file is ready|Download Attachment/i >> visible=true').first();
+}
+
 async function downloadModalAppeared(page, timeout) {
-  const modal = page.getByRole('button', { name: /Download Attachment/i }).first();
-  return modal.waitFor({ state: 'visible', timeout }).then(() => true).catch(() => false);
+  return downloadModalMarker(page).waitFor({ state: 'visible', timeout }).then(() => true).catch(() => false);
+}
+
+async function downloadModalGone(page, timeout = 2500) {
+  return downloadModalMarker(page).waitFor({ state: 'hidden', timeout }).then(() => true).catch(() => false);
+}
+
+// Locate the modal's confirm control across roles: button, link, input value,
+// aria-label/title, or bare text inside a span/div (clicking the text node
+// bubbles to the clickable ancestor; clickDownloadConfirm also climbs
+// explicitly as a fallback).
+async function findDownloadConfirmControl(page) {
+  const candidates = [
+    page.getByRole('button', { name: /Download Attachment/i }).first(),
+    page.getByRole('link', { name: /Download Attachment/i }).first(),
+    page.locator('input[value*="Download Attachment" i] >> visible=true').first(),
+    page.locator('[aria-label*="Download Attachment" i] >> visible=true').first(),
+    page.locator('[title*="Download Attachment" i] >> visible=true').first(),
+    page.locator('text=/Download Attachment/i >> visible=true').first(),
+  ];
+  for (const locator of candidates) {
+    if (await locator.isVisible().catch(() => false)) return locator;
+  }
+  return null;
+}
+
+async function clickDownloadConfirm(page, locator, doc, log) {
+  try {
+    await locator.click({ timeout: 15000 });
+    return;
+  } catch (e) {
+    log(`Cal eProcure download confirm click retrying via DOM for ${doc.file_name}: ${e.message.split('\n')[0]}`);
+  }
+  await locator.evaluate((el) => {
+    const target = el.closest('button, a, [role="button"], [onclick], input') || el;
+    target.click();
+  });
+}
+
+// Close the download modal so its overlay cannot block later row clicks.
+// Returns true once no modal text is visible.
+async function closeDownloadModal(page, log = () => {}) {
+  if (!(await downloadModalMarker(page).isVisible().catch(() => false))) return true;
+  const closers = [
+    page.getByRole('button', { name: /^Close$/i }).first(),
+    page.getByRole('link', { name: /^Close$/i }).first(),
+    page.locator('[aria-label*="Close" i] >> visible=true').first(),
+    page.locator('[title*="Close" i] >> visible=true').first(),
+    page.locator('input[value="Close" i] >> visible=true').first(),
+    page.locator('text=/^Close$/i >> visible=true').first(),
+  ];
+  for (const locator of closers) {
+    if (!(await locator.isVisible().catch(() => false))) continue;
+    await locator.click({ timeout: 3000 }).catch(() => {});
+    if (await downloadModalGone(page)) return true;
+  }
+  await page.keyboard.press('Escape').catch(() => {});
+  if (await downloadModalGone(page)) return true;
+  const domClosed = await page.evaluate(() => {
+    const clean = (value) => (value || '').replace(/\s+/g, ' ').trim();
+    const candidates = Array.from(document.querySelectorAll('button, a, [role="button"], input[type="button"], [onclick]'));
+    const target = candidates.find((el) => {
+      const label = `${clean(el.innerText || el.value || '')} ${el.getAttribute('aria-label') || ''} ${el.getAttribute('title') || ''}`;
+      return /(^|\s)close(\s|$)/i.test(label);
+    });
+    if (!target) return false;
+    target.click();
+    return true;
+  }).catch(() => false);
+  if (domClosed && (await downloadModalGone(page))) return true;
+  log('Cal eProcure download modal could not be closed');
+  return false;
+}
+
+// Safe snapshot of whatever overlay/dialog is on screen when a click landed
+// but the modal was not recognized. No credentials or cookies captured.
+async function snapshotVisibleOverlays(page) {
+  return page.evaluate(() => {
+    const clean = (value) => (value || '').replace(/\s+/g, ' ').trim();
+    const isVisible = (el) => {
+      const rect = el.getBoundingClientRect();
+      const style = window.getComputedStyle(el);
+      return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+    };
+    const overlays = [];
+    for (const el of document.querySelectorAll('[role="dialog"], [role="alertdialog"], dialog, .modal, .ui-dialog')) {
+      if (isVisible(el)) {
+        overlays.push({ kind: 'dialog', text: clean(el.innerText).slice(0, 400), html: (el.outerHTML || '').slice(0, 1200) });
+      }
+    }
+    for (const el of Array.from(document.body?.children ?? [])) {
+      const style = window.getComputedStyle(el);
+      if ((style.position === 'fixed' || style.position === 'absolute') && isVisible(el)) {
+        overlays.push({
+          kind: 'overlay',
+          tag: el.tagName.toLowerCase(),
+          class_name: el.getAttribute('class') || null,
+          text: clean(el.innerText).slice(0, 400),
+          html: (el.outerHTML || '').slice(0, 1200),
+        });
+      }
+    }
+    const keyword = /download|attachment|close|file|ready/i;
+    const controls = [];
+    for (const el of document.querySelectorAll('button, a, input[type="button"], input[type="submit"], [role="button"], [onclick]')) {
+      if (!isVisible(el)) continue;
+      const label = clean(`${el.innerText || el.value || ''} ${el.getAttribute('aria-label') || ''} ${el.getAttribute('title') || ''}`);
+      if (keyword.test(label)) {
+        controls.push({ tag: el.tagName.toLowerCase(), id: el.id || null, label: label.slice(0, 120) });
+      }
+    }
+    const body = clean(document.body?.innerText ?? '');
+    const around = body.match(/.{0,150}(?:Your file is ready|Download Attachment).{0,150}/i);
+    return {
+      url: window.location.href,
+      title: document.title || null,
+      overlays: overlays.slice(0, 5),
+      keyword_controls: controls.slice(0, 15),
+      body_text_around_modal: around ? clean(around[0]) : null,
+    };
+  });
 }
 
 // Click one candidate control and confirm the "Your file is ready" modal
@@ -356,17 +482,16 @@ async function attemptDownloadClick(page, locator, mode, label, diagnostics, log
     return true;
   }
   diagnostics.attempts[diagnostics.attempts.length - 1].error = 'clicked_but_no_download_modal';
+  if (!diagnostics.post_click_overlay) {
+    diagnostics.post_click_overlay = await snapshotVisibleOverlays(page).catch(() => null);
+  }
   return false;
 }
 
 async function clickDownloadControl(page, doc, log = () => {}) {
   // A leftover "Your file is ready" modal from the previous document would
-  // make any click look successful (and re-download the wrong file). Close it.
-  const staleModal = page.getByRole('button', { name: /Download Attachment/i }).first();
-  if (await staleModal.isVisible().catch(() => false)) {
-    await page.getByRole('button', { name: /^Close$/i }).first().click({ timeout: 3000 }).catch(() => {});
-    await staleModal.waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {});
-  }
+  // make any click look successful (and its overlay blocks row clicks). Close it.
+  await closeDownloadModal(page, log);
 
   const sourceOrder = documentSourceOrder(doc);
   const diagnostics = {
@@ -462,12 +587,12 @@ async function clickDownloadControl(page, doc, log = () => {}) {
 
 async function downloadViaBrowser(page, session, doc, seenBrowserbaseEntries, log) {
   // clickDownloadControl only returns once the "Your file is ready" modal is
-  // visible, so the confirmation button lookup below is a formality.
+  // visible, so the confirm control lookup below is a formality.
   await clickDownloadControl(page, doc, log);
 
-  const ready = page.getByRole('button', { name: /Download Attachment/i }).first();
-  if (!(await ready.count().catch(() => 0))) {
-    throw new Error(`Download confirmation button not found for ${doc.file_name}`);
+  const ready = await findDownloadConfirmControl(page);
+  if (!ready) {
+    throw new Error(`Download confirmation control not found for ${doc.file_name}`);
   }
 
   const context = page.context();
@@ -481,7 +606,7 @@ async function downloadViaBrowser(page, session, doc, seenBrowserbaseEntries, lo
   const newPagePromise = context.waitForEvent('page', { timeout: 25000 })
     .then((openedPage) => (openedPage && !pagesBefore.has(openedPage) ? { openedPage } : null))
     .catch(() => null);
-  await ready.click({ timeout: 15000 });
+  await clickDownloadConfirm(page, ready, doc, log);
   const downloadResult = await Promise.race([
     downloadPromise,
     popupPromise,
@@ -496,7 +621,7 @@ async function downloadViaBrowser(page, session, doc, seenBrowserbaseEntries, lo
     if (!stream) throw new Error(`Local Playwright download stream unavailable for ${doc.file_name}`);
     const chunks = [];
     for await (const chunk of stream) chunks.push(chunk);
-    await page.getByRole('button', { name: /^Close$/i }).first().click({ timeout: 3000 }).catch(() => {});
+    await closeDownloadModal(page, log);
     return Buffer.concat(chunks);
   }
 
@@ -510,7 +635,7 @@ async function downloadViaBrowser(page, session, doc, seenBrowserbaseEntries, lo
           const bytes = Buffer.from(await res.body());
           if (bytes.length > 0) {
             await openedPage.close().catch(() => {});
-            await page.getByRole('button', { name: /^Close$/i }).first().click({ timeout: 3000 }).catch(() => {});
+            await closeDownloadModal(page, log);
             return bytes;
           }
         }
@@ -537,7 +662,7 @@ async function downloadViaBrowser(page, session, doc, seenBrowserbaseEntries, lo
     throw new Error(`Browserbase did not sync a fresh download for ${doc.file_name}`);
   }
   for (const entry of entries) seenBrowserbaseEntries.add(entry.fileName);
-  await page.getByRole('button', { name: /^Close$/i }).first().click({ timeout: 3000 }).catch(() => {});
+  await closeDownloadModal(page, log);
   return matched.bytes;
 }
 
