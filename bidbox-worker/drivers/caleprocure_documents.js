@@ -256,46 +256,214 @@ async function updateCandidateManifest({ supabase, candidate, detail, eventPacka
     .eq('id', candidate.id);
 }
 
-async function clickDownloadControl(page, doc) {
-  const candidates = [];
-  if (doc.download_control_selector) {
-    candidates.push(page.locator(doc.download_control_selector).first());
+// Table-scoped download control selector: only controls inside cloned
+// attachment rows, never the hidden framework template row or unrelated
+// page-level buttons.
+const CALEPROCURE_TABLE_DOWNLOAD_CONTROL_SELECTOR = [
+  '[id^="trAUC_ATTCH_HD_VW"] [id^="PV_ATTACH_WRK_SCM_DOWNLOAD$"]',
+  '[id^="trAUC_ATTCH_HD_VW"] [data-if-label="ViewAttachmentsUpload"]',
+  '[id^="trAUC_ATTCH_HD_VW"] [data-if-label*="Download"]',
+].join(',');
+
+function documentSourceOrder(doc) {
+  const order = Number(doc.document_source_order ?? doc.source_order);
+  return Number.isFinite(order) && order > 0 ? order : null;
+}
+
+// Enumerate every clickable control inside an attachment row with visibility
+// and identifying attributes. Runs in page context; the returned indexes match
+// Playwright's `row.locator(selector).nth(i)` ordering (both are DOM order).
+async function surveyRowControls(rowLocator) {
+  return rowLocator.evaluate((row, selector) => {
+    const clean = (value) => (value || '').replace(/\s+/g, ' ').trim();
+    const controls = Array.from(row.querySelectorAll(selector)).map((el) => {
+      const rect = el.getBoundingClientRect();
+      const style = window.getComputedStyle(el);
+      return {
+        tag: el.tagName.toLowerCase(),
+        type: el.getAttribute('type') || null,
+        id: el.id || null,
+        name: el.getAttribute('name') || null,
+        class_name: el.getAttribute('class') || null,
+        text: clean(el.innerText || el.textContent || el.value || '').slice(0, 120),
+        aria_label: el.getAttribute('aria-label') || null,
+        title: el.getAttribute('title') || null,
+        alt: el.getAttribute('alt') || null,
+        data_if_label: el.getAttribute('data-if-label') || null,
+        data_if_source: el.getAttribute('data-if-source') || null,
+        onclick: (el.getAttribute('onclick') || '').slice(0, 160) || null,
+        visible: rect.width > 0 && rect.height > 0
+          && style.visibility !== 'hidden' && style.display !== 'none',
+      };
+    });
+    return {
+      row_id: row.id || null,
+      row_text: clean(row.innerText || row.textContent || '').slice(0, 300),
+      row_html_snippet: (row.outerHTML || '').slice(0, 1200),
+      controls,
+    };
+  }, CALEPROCURE_DOWNLOAD_CONTROL_SELECTOR);
+}
+
+// Rank row controls: real download controls first, decorated with a DOM-order
+// index so callers can resolve `row.locator(selector).nth(index)`.
+function rankRowControls(controls) {
+  return controls
+    .map((control, index) => {
+      const hint = [
+        control.id, control.name, control.data_if_label, control.data_if_source,
+        control.aria_label, control.title, control.alt, control.class_name,
+        control.onclick, control.text,
+      ].filter(Boolean).join(' ');
+      let score = 0;
+      if (/^PV_ATTACH_WRK_SCM_DOWNLOAD/i.test(control.id || '')) score += 100;
+      if (/download/i.test(hint)) score += 60;
+      if (/ViewAttachmentsUpload/i.test(hint)) score += 50;
+      if (/attach|scm/i.test(hint)) score += 20;
+      if (control.tag === 'button' || (control.tag === 'input' && ['button', 'image', 'submit'].includes(control.type || ''))) score += 10;
+      if (control.tag === 'a') score += 5;
+      if (control.tag === 'input' && (control.type || 'text') === 'text') score -= 100;
+      return { ...control, index, score };
+    })
+    .sort((a, b) => b.score - a.score);
+}
+
+async function downloadModalAppeared(page, timeout) {
+  const modal = page.getByRole('button', { name: /Download Attachment/i }).first();
+  return modal.waitFor({ state: 'visible', timeout }).then(() => true).catch(() => false);
+}
+
+// Click one candidate control and confirm the "Your file is ready" modal
+// opened. mode: 'normal' (visibility-checked), 'force' (skip actionability),
+// 'dom' (el.click() in page context, works on if-hide/hidden controls).
+async function attemptDownloadClick(page, locator, mode, label, diagnostics, log) {
+  diagnostics.attempts.push({ label, mode });
+  if (!(await locator.count().catch(() => 0))) return false;
+  await locator.scrollIntoViewIfNeeded({ timeout: 3000 }).catch(() => {});
+  try {
+    if (mode === 'dom') {
+      await locator.evaluate((el) => el.click());
+    } else {
+      await locator.click({ timeout: mode === 'force' ? 5000 : 8000, force: mode === 'force' });
+    }
+  } catch (e) {
+    diagnostics.attempts[diagnostics.attempts.length - 1].error = e.message.split('\n')[0].slice(0, 200);
+    return false;
   }
-  if (doc.download_control_id) {
-    candidates.push(page.locator(`[id="${cssAttr(doc.download_control_id)}"]`).first());
+  const confirmed = await downloadModalAppeared(page, 6000);
+  if (confirmed) {
+    log(`Cal eProcure download control clicked (${label}, ${mode})`);
+    return true;
   }
-  if (doc.row_id) {
-    candidates.push(page.locator(`[id="${cssAttr(doc.row_id)}"]`).locator(CALEPROCURE_DOWNLOAD_CONTROL_SELECTOR).first());
-  }
-  const rowByFile = page.locator('[id^="trAUC_ATTCH_HD_VW"]', { hasText: doc.file_name }).first();
-  candidates.push(rowByFile.locator(CALEPROCURE_DOWNLOAD_CONTROL_SELECTOR).first());
-  const rowByOrder = Number.isFinite(Number(doc.document_source_order))
-    ? page.locator('[id^="trAUC_ATTCH_HD_VW"]').nth(Math.max(0, Number(doc.document_source_order) - 1))
-    : null;
-  if (rowByOrder) {
-    candidates.push(rowByOrder.locator(CALEPROCURE_DOWNLOAD_CONTROL_SELECTOR).first());
+  diagnostics.attempts[diagnostics.attempts.length - 1].error = 'clicked_but_no_download_modal';
+  return false;
+}
+
+async function clickDownloadControl(page, doc, log = () => {}) {
+  // A leftover "Your file is ready" modal from the previous document would
+  // make any click look successful (and re-download the wrong file). Close it.
+  const staleModal = page.getByRole('button', { name: /Download Attachment/i }).first();
+  if (await staleModal.isVisible().catch(() => false)) {
+    await page.getByRole('button', { name: /^Close$/i }).first().click({ timeout: 3000 }).catch(() => {});
+    await staleModal.waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {});
   }
 
-  for (const locator of candidates) {
-    if (!(await locator.count().catch(() => 0))) continue;
-    await locator.scrollIntoViewIfNeeded({ timeout: 5000 }).catch(() => {});
-    try {
-      await locator.click({ timeout: 15000 });
-      return;
-    } catch (e) {
-      const box = await locator.boundingBox().catch(() => null);
-      if (box) {
-        await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-        return;
-      }
+  const sourceOrder = documentSourceOrder(doc);
+  const diagnostics = {
+    filename: doc.file_name,
+    source_order: sourceOrder,
+    attempts: [],
+    rows: [],
+  };
+
+  // 1. Locate the attachment row (manifest row_id, then filename, then order).
+  const rowCandidates = [];
+  if (doc.row_id) {
+    rowCandidates.push({ strategy: 'row_id', locator: page.locator(`[id="${cssAttr(doc.row_id)}"]`).first() });
+  }
+  if (doc.file_name) {
+    rowCandidates.push({ strategy: 'row_by_filename', locator: page.locator('[id^="trAUC_ATTCH_HD_VW"]', { hasText: doc.file_name }).first() });
+  }
+  if (sourceOrder) {
+    rowCandidates.push({ strategy: 'row_by_source_order', locator: page.locator('[id^="trAUC_ATTCH_HD_VW"]').nth(sourceOrder - 1) });
+  }
+
+  const seenRowIds = new Set();
+  const hiddenFallbacks = [];
+  for (const { strategy, locator: rowLocator } of rowCandidates) {
+    if (!(await rowLocator.count().catch(() => 0))) continue;
+    const survey = await surveyRowControls(rowLocator).catch(() => null);
+    if (!survey) continue;
+    if (survey.row_id && seenRowIds.has(survey.row_id)) continue;
+    if (survey.row_id) seenRowIds.add(survey.row_id);
+    diagnostics.rows.push({
+      strategy,
+      row_id: survey.row_id,
+      row_text: survey.row_text,
+      row_html_snippet: survey.row_html_snippet,
+      control_count: survey.controls.length,
+      controls: survey.controls.map(({ visible, tag, type, id, name, text, aria_label, title, class_name, data_if_label, data_if_source }) => ({
+        visible, tag, type, id, name, text, aria_label, title, class_name, data_if_label, data_if_source,
+      })),
+    });
+
+    const ranked = rankRowControls(survey.controls).filter((control) => control.score > 0);
+    // Visible controls first, best-ranked ahead of generic clickables.
+    for (const control of ranked.filter((c) => c.visible).slice(0, 4)) {
+      const controlLocator = control.id
+        ? page.locator(`[id="${cssAttr(control.id)}"]`).first()
+        : rowLocator.locator(CALEPROCURE_DOWNLOAD_CONTROL_SELECTOR).nth(control.index);
+      if (await attemptDownloadClick(page, controlLocator, 'normal', `${strategy}:visible:${control.id || control.data_if_label || control.tag}`, diagnostics, log)) return;
+    }
+    // Remember clearly-download-shaped hidden controls (e.g. `if-hide` framework
+    // buttons) for the row-scoped force/DOM last resort.
+    for (const control of ranked.filter((c) => !c.visible && c.score >= 50).slice(0, 2)) {
+      const controlLocator = control.id
+        ? page.locator(`[id="${cssAttr(control.id)}"]`).first()
+        : rowLocator.locator(CALEPROCURE_DOWNLOAD_CONTROL_SELECTOR).nth(control.index);
+      hiddenFallbacks.push({ label: `${strategy}:hidden:${control.id || control.data_if_label || control.tag}`, locator: controlLocator });
     }
   }
-  throw new Error(`Download control not found for ${doc.file_name}`);
+
+  // 2/3. Source-order fallback over the table's download controls (skips the
+  // hidden template row because the selector requires a cloned-row ancestor).
+  const tableControls = page.locator(CALEPROCURE_TABLE_DOWNLOAD_CONTROL_SELECTOR);
+  const tableControlCount = await tableControls.count().catch(() => 0);
+  diagnostics.table_download_control_count = tableControlCount;
+  const tableIndexes = [];
+  if (sourceOrder && sourceOrder <= tableControlCount) tableIndexes.push(sourceOrder - 1);
+  if (Number.isFinite(Number(doc.download_control_index))
+    && Number(doc.download_control_index) < tableControlCount
+    && !tableIndexes.includes(Number(doc.download_control_index))) {
+    tableIndexes.push(Number(doc.download_control_index));
+  }
+  for (const index of tableIndexes) {
+    const control = tableControls.nth(index);
+    if (await attemptDownloadClick(page, control, 'normal', `table_index_${index}`, diagnostics, log)) return;
+    hiddenFallbacks.push({ label: `table_index_${index}`, locator: control });
+  }
+
+  // 4. Last resort: force-click, then DOM-click, the row-scoped download
+  // controls only. Never force-clicks arbitrary hidden controls elsewhere.
+  for (const { label, locator } of hiddenFallbacks) {
+    if (await attemptDownloadClick(page, locator, 'force', label, diagnostics, log)) return;
+    if (await attemptDownloadClick(page, locator, 'dom', label, diagnostics, log)) return;
+  }
+
+  diagnostics.page_url = page.url();
+  diagnostics.page_title = await page.title().catch(() => null);
+  log(`Cal eProcure download control diagnostics: ${JSON.stringify(diagnostics)}`);
+  const compact = JSON.stringify({
+    ...diagnostics,
+    rows: diagnostics.rows.map((row) => ({ ...row, row_html_snippet: row.row_html_snippet?.slice(0, 400) })),
+  });
+  throw new Error(`caleprocure_attachment_download_control_not_found: ${doc.file_name} ${compact.slice(0, 3500)}`);
 }
 
 async function downloadViaBrowser(page, session, doc, seenBrowserbaseEntries, log) {
-  await clickDownloadControl(page, doc);
-  await page.waitForTimeout(700);
+  // clickDownloadControl only returns once the "Your file is ready" modal is
+  // visible, so the confirmation button lookup below is a formality.
+  await clickDownloadControl(page, doc, log);
 
   const ready = page.getByRole('button', { name: /Download Attachment/i }).first();
   if (!(await ready.count().catch(() => 0))) {
