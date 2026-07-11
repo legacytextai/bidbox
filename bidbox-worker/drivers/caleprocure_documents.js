@@ -54,6 +54,18 @@ function cssAttr(value) {
   return String(value ?? '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
+const CALEPROCURE_DOWNLOAD_CONTROL_SELECTOR = [
+  '[id^="PV_ATTACH_WRK_SCM_DOWNLOAD$"]',
+  '[data-if-label*="Download"]',
+  '[name*="Download"]',
+  'button',
+  'a',
+  'input[type="button"]',
+  'input[type="image"]',
+  '[role="button"]',
+  '[onclick]',
+].join(',');
+
 function archiveParentProcessingStatus(extraction) {
   if (!extraction) return null;
   if (extraction.stats.rejected) return 'partial';
@@ -246,17 +258,37 @@ async function updateCandidateManifest({ supabase, candidate, detail, eventPacka
 
 async function clickDownloadControl(page, doc) {
   const candidates = [];
+  if (doc.download_control_selector) {
+    candidates.push(page.locator(doc.download_control_selector).first());
+  }
   if (doc.download_control_id) {
     candidates.push(page.locator(`[id="${cssAttr(doc.download_control_id)}"]`).first());
   }
+  if (doc.row_id) {
+    candidates.push(page.locator(`[id="${cssAttr(doc.row_id)}"]`).locator(CALEPROCURE_DOWNLOAD_CONTROL_SELECTOR).first());
+  }
   const rowByFile = page.locator('[id^="trAUC_ATTCH_HD_VW"]', { hasText: doc.file_name }).first();
-  candidates.push(rowByFile.locator('[id^="PV_ATTACH_WRK_SCM_DOWNLOAD$"], button, [role="button"], [onclick]').first());
+  candidates.push(rowByFile.locator(CALEPROCURE_DOWNLOAD_CONTROL_SELECTOR).first());
+  const rowByOrder = Number.isFinite(Number(doc.document_source_order))
+    ? page.locator('[id^="trAUC_ATTCH_HD_VW"]').nth(Math.max(0, Number(doc.document_source_order) - 1))
+    : null;
+  if (rowByOrder) {
+    candidates.push(rowByOrder.locator(CALEPROCURE_DOWNLOAD_CONTROL_SELECTOR).first());
+  }
 
   for (const locator of candidates) {
     if (!(await locator.count().catch(() => 0))) continue;
     await locator.scrollIntoViewIfNeeded({ timeout: 5000 }).catch(() => {});
-    await locator.click({ timeout: 15000 });
-    return;
+    try {
+      await locator.click({ timeout: 15000 });
+      return;
+    } catch (e) {
+      const box = await locator.boundingBox().catch(() => null);
+      if (box) {
+        await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+        return;
+      }
+    }
   }
   throw new Error(`Download control not found for ${doc.file_name}`);
 }
@@ -482,6 +514,9 @@ async function acquireCalEprocureDocuments({ supabase, task, candidate, log }) {
           source_key: doc.source_key,
           file_extension: doc.file_extension,
           download_control_id: doc.download_control_id,
+          download_control_selector: doc.download_control_selector,
+          download_control_index: doc.download_control_index,
+          row_id: doc.row_id,
           acquisition_method: 'caleprocure_browser_event_package_download',
         },
       }));
@@ -573,13 +608,14 @@ async function acquireCalEprocureDocuments({ supabase, task, candidate, log }) {
     }
 
     log(`Cal eProcure acquisition complete: discovered=${documentsDiscovered} attempted=${attempted} acquired=${acquired} skipped=${skipped} failed=${failed} unsupported=${unsupported} bytes=${totalBytesUploaded}`);
+    const totalSkipped = skipped + unsupported;
     return {
-      found: attempted,
+      found: documentsDiscovered,
       acquired,
-      skipped,
+      skipped: totalSkipped,
       failed,
       acquiredDocuments,
-      stats: { acquired, skipped, failed },
+      stats: { discovered: documentsDiscovered, attempted, acquired, skipped, unsupported, failed },
       warningSummary: failed > 0 && (acquired + skipped) > 0
         ? `Some source documents could not be acquired. BidBox successfully acquired ${acquired + skipped} of ${attempted} available documents.`
         : null,
@@ -589,8 +625,10 @@ async function acquireCalEprocureDocuments({ supabase, task, candidate, log }) {
       documents_attempted: attempted,
       documents_uploaded: acquired,
       documents_existing: skipped,
+      documents_skipped: totalSkipped,
       documents_failed: failed,
       unsupported_file_count: unsupported,
+      documents_unsupported: unsupported,
       total_bytes_uploaded: totalBytesUploaded,
       failed_documents_sample: failedSample.slice(0, 10),
       storage_paths_sample: storagePathsSample.slice(0, 10),

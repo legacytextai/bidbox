@@ -150,6 +150,11 @@ function stableAttachmentSourceKey(eventId, index, fileName) {
   return `caleprocure://event/${encodeURIComponent(eventId || 'unknown')}/attachment/${index}/${normalizeKeyPart(fileName)}`;
 }
 
+function inferExtensionFromName(fileName) {
+  const match = String(fileName ?? '').match(/\.([a-z0-9]{1,8})(?:$|[?#])/i);
+  return match ? match[1].toLowerCase() : null;
+}
+
 function documentFamilyFor(fileName, description = '') {
   const value = `${fileName ?? ''} ${description ?? ''}`.toLowerCase();
   if (/addend/.test(value)) return 'addenda';
@@ -175,7 +180,7 @@ function normalizePackageDocuments({ eventId, attachments }) {
     const sourceOrder = attachment.source_order ?? idx + 1;
     const fileName = sanitizeFileName(attachment.file_name || attachment.filename || `document-${sourceOrder}`);
     const description = collapseWs(attachment.description || attachment.title || '');
-    const fileType = inferFileType(fileName);
+    const fileType = inferExtensionFromName(fileName) || inferFileType(fileName);
     const addendumNumberRaw = description.match(/addendum\s*#?\s*(\d+)/i)?.[1]
       ?? fileName.match(/addendum[_\s-]*(\d+)/i)?.[1]
       ?? null;
@@ -195,6 +200,9 @@ function normalizePackageDocuments({ eventId, attachments }) {
       addendum_number: addendumNumber,
       is_addendum: Boolean(addendumNumber) || /addend/i.test(`${fileName} ${description}`),
       download_control_id: attachment.download_control_id ?? null,
+      download_control_selector: attachment.download_control_selector ?? null,
+      download_control_index: attachment.download_control_index ?? null,
+      row_id: attachment.row_id ?? null,
       row_html_snippet: attachment.row_html_snippet ?? null,
     };
   });
@@ -1291,6 +1299,81 @@ async function extractEventPackage(page, eventIdHint = null) {
   const raw = await page.evaluate((eventIdFallback) => {
     const clean = (value) => (value || '').replace(/\s+/g, ' ').trim();
     const text = (el) => clean(el?.innerText || el?.textContent || el?.value || '');
+    const firstText = (root, selectors) => {
+      for (const selector of selectors) {
+        const found = Array.from(root.querySelectorAll(selector))
+          .map((el) => text(el))
+          .find(Boolean);
+        if (found) return found;
+      }
+      return '';
+    };
+    const extractFileName = (row) => {
+      const direct = firstText(row, [
+        '[data-if-label="ViewAttachFileName"]',
+        '[name="ViewAttachmentsFileName"]',
+        '[id^="PV_ATTACH_WRK_ATTACHUSERFILE$"]',
+        '[data-if-source*="PV_ATTACH_WRK_ATTACHUSERFILE"]',
+      ]);
+      if (direct) return direct;
+      const combined = `${row.innerText || ''}\n${row.textContent || ''}\n${row.outerHTML || ''}`;
+      const match = combined.match(/[A-Za-z0-9][A-Za-z0-9_.,()&%#@ +\\/-]*\.(?:pdf|docx?|xlsx?|csv|txt|zip)\b/i);
+      return clean(match?.[0] || '');
+    };
+    const extractDescription = (row, fileName) => {
+      const direct = firstText(row, [
+        '[data-if-label="ViewAttachDescriptSpan"]',
+        '[name="ViewAttachmentsDescriptionSpan"]',
+        'span[id^="PV_ATTACH_WRK_ATTACH_DESCR$"]',
+        'input[id^="PV_ATTACH_WRK_ATTACH_DESCR$"]',
+        '[data-if-source*="PV_ATTACH_WRK_ATTACH_DESCR"]',
+      ]);
+      if (direct && direct !== fileName) return direct;
+      const cells = Array.from(row.querySelectorAll('td')).map((cell) => text(cell)).filter(Boolean);
+      const candidate = cells.find((cell) => cell !== fileName && !/\.(pdf|docx?|xlsx?|csv|txt|zip)\b/i.test(cell));
+      return clean(candidate || '');
+    };
+    const downloadSelector = [
+      '[id^="PV_ATTACH_WRK_SCM_DOWNLOAD$"]',
+      '[data-if-label*="Download"]',
+      '[name*="Download"]',
+      'button',
+      'a',
+      'input[type="button"]',
+      'input[type="image"]',
+      '[role="button"]',
+      '[onclick]',
+    ].join(',');
+    const describeDownloadControl = (row) => {
+      const escapeAttr = (value) => String(value ?? '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+      const controls = Array.from(row.querySelectorAll(downloadSelector));
+      const control = controls.find((el) => {
+        const value = `${el.id || ''} ${el.getAttribute('name') || ''} ${el.getAttribute('data-if-label') || ''} ${el.getAttribute('aria-label') || ''} ${el.getAttribute('title') || ''} ${el.getAttribute('alt') || ''} ${el.getAttribute('onclick') || ''} ${text(el)}`;
+        return /download|attach|pv_attach|scm/i.test(value);
+      }) || controls[0] || null;
+      if (!control) return { control: null, selector: null };
+      const id = control.id || null;
+      const name = control.getAttribute('name') || null;
+      const label = control.getAttribute('data-if-label') || null;
+      let selector = null;
+      if (id) selector = `[id="${escapeAttr(id)}"]`;
+      else if (name) selector = `[name="${escapeAttr(name)}"]`;
+      else if (label) selector = `[data-if-label="${escapeAttr(label)}"]`;
+      return {
+        control,
+        selector,
+        summary: {
+          id,
+          name,
+          label,
+          role: control.getAttribute('role') || null,
+          aria_label: control.getAttribute('aria-label') || null,
+          title: control.getAttribute('title') || null,
+          onclick: control.getAttribute('onclick') || null,
+          outer_html_snippet: control.outerHTML?.slice(0, 600) ?? null,
+        },
+      };
+    };
     const bodyText = clean(document.body?.innerText ?? '');
     const eventId = bodyText.match(/\bEvent ID\s+([A-Z0-9-]+)/i)?.[1]
       || bodyText.match(/\bEvent\s*:\s*([A-Z0-9-]+)/i)?.[1]
@@ -1308,16 +1391,21 @@ async function extractEventPackage(page, eventIdHint = null) {
 
     const rows = Array.from(document.querySelectorAll('[id^="trAUC_ATTCH_HD_VW"]'));
     const attachments = rows.map((row, idx) => {
-      const filename = text(row.querySelector('[id^="PV_ATTACH_WRK_ATTACHUSERFILE$"]'));
-      const description = text(row.querySelector('span[id^="PV_ATTACH_WRK_ATTACH_DESCR$"], input[id^="PV_ATTACH_WRK_ATTACH_DESCR$"]'));
-      const download = row.querySelector('[id^="PV_ATTACH_WRK_SCM_DOWNLOAD$"], button, [role="button"], [onclick]');
+      const filename = extractFileName(row);
+      const description = extractDescription(row, filename);
+      const download = describeDownloadControl(row);
       return {
         source_order: idx + 1,
+        row_id: row.id || null,
         file_name: filename,
         description,
-        download_control_id: download?.id || null,
-        has_download_control: Boolean(download),
-        row_html_snippet: row.outerHTML?.slice(0, 1200) ?? null,
+        download_control_id: download.control?.id || null,
+        download_control_selector: download.selector || null,
+        download_control_index: idx,
+        download_control_summary: download.summary || null,
+        has_download_control: Boolean(download.control),
+        row_text: text(row),
+        row_html_snippet: row.outerHTML?.slice(0, 2000) ?? null,
       };
     }).filter((row) => row.file_name || row.description || row.has_download_control);
 
@@ -1434,12 +1522,19 @@ async function capturePackageDownloadDiagnostics(page, sessionId, log) {
     diagnostics.attachments = await page.evaluate(() => {
       const clean = (value) => (value || '').replace(/\s+/g, ' ').trim();
       return Array.from(document.querySelectorAll('[id^="trAUC_ATTCH_HD_VW"]')).map((row) => ({
-        filename: clean(row.querySelector('[id^="PV_ATTACH_WRK_ATTACHUSERFILE$"]')?.textContent),
+        filename: clean(
+          row.querySelector('[data-if-label="ViewAttachFileName"]')?.textContent
+          || row.querySelector('[name="ViewAttachmentsFileName"]')?.textContent
+          || row.querySelector('[id^="PV_ATTACH_WRK_ATTACHUSERFILE$"]')?.textContent
+          || row.innerText?.match(/[A-Za-z0-9][A-Za-z0-9_.,()&%#@ +\\/-]*\.(?:pdf|docx?|xlsx?|csv|txt|zip)\b/i)?.[0]
+        ),
         description: clean(
-          row.querySelector('span[id^="PV_ATTACH_WRK_ATTACH_DESCR$"]')?.textContent
+          row.querySelector('[data-if-label="ViewAttachDescriptSpan"]')?.textContent
+          || row.querySelector('[name="ViewAttachmentsDescriptionSpan"]')?.textContent
+          || row.querySelector('span[id^="PV_ATTACH_WRK_ATTACH_DESCR$"]')?.textContent
           || row.querySelector('input[id^="PV_ATTACH_WRK_ATTACH_DESCR$"]')?.value
         ),
-        has_download_control: Boolean(row.querySelector('[id^="PV_ATTACH_WRK_SCM_DOWNLOAD$"]')),
+        has_download_control: Boolean(row.querySelector('[id^="PV_ATTACH_WRK_SCM_DOWNLOAD$"], [data-if-label*="Download"], button, a, [role="button"], [onclick]')),
       })).filter((row) => row.filename || row.description || row.has_download_control);
     });
 

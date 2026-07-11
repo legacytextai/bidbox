@@ -1313,6 +1313,10 @@ async function processTask(task) {
           documents_prefetched: result.acquired ?? 0,
           documents_skipped: result.skipped ?? 0,
           documents_failed: result.failed ?? 0,
+          documents_discovered: result.documents_discovered ?? result.found ?? 0,
+          documents_attempted: result.documents_attempted ?? null,
+          documents_unsupported: result.documents_unsupported ?? result.unsupported_file_count ?? 0,
+          unsupported_file_count: result.unsupported_file_count ?? result.documents_unsupported ?? 0,
           phase: 'document_prefetch_v1',
         }
       : task.task_type === 'portal_intelligence'
