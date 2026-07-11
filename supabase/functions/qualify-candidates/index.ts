@@ -6,6 +6,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const CALEPROCURE_SOURCE_ID = "75d7fa42-2302-4fce-ba0f-ba33ef6e9a82";
+
 // Exact match on source names written by scan-opportunities.
 // When new sources are added, add their entries here.
 const AGENCY_COUNTY: Record<string, string> = {
@@ -29,6 +31,7 @@ interface QualificationProfile {
 
 interface Candidate {
   id:                  string;
+  source_id:           string | null;
   portal_type:         string | null;
   raw_title:           string | null;
   agency:              string | null;
@@ -131,11 +134,19 @@ const PUBLIC_WORKS_TITLE_PATTERNS: RegExp[] = [
 
 const NON_PUBLIC_WORKS_TITLE_PATTERNS: Array<{ reason: string; patterns: RegExp[] }> = [
   {
+    reason: "Incomplete Cal eProcure placeholder title",
+    patterns: [
+      /\[event title\]/,
+    ],
+  },
+  {
     reason: "Non-public-works software / IT procurement",
     patterns: [
       /\bcannabis\b.*\b(integration|system|software|platform)\b/,
       /\b(integration|system|software|platform)\b.*\bcannabis\b/,
       /\bsoftware\b/,
+      /\bcloud services?\b/,
+      /\bcloud\b.*\b(subscription|service|platform|hosting)\b/,
       /\bsaas\b/,
       /\bit services?\b/,
       /\binformation technology\b/,
@@ -147,6 +158,7 @@ const NON_PUBLIC_WORKS_TITLE_PATTERNS: Array<{ reason: string; patterns: RegExp[
       /\b(m&o|maintenance|operations?)\b.*\bportal\b/,
       /\bsaphire\b/,
       /\bdata system\b/,
+      /\bdata\b.*\b(services?|subscription|platform|system)\b/,
     ],
   },
   {
@@ -165,9 +177,26 @@ const NON_PUBLIC_WORKS_TITLE_PATTERNS: Array<{ reason: string; patterns: RegExp[
       /\bguard services?\b/,
       /\bsecurity services?\b/,
       /\btowing services?\b/,
+      /\bconsulting services?\b/,
+      /\bconsultant\b/,
+      /\bmedical consultant\b/,
+      /\bhealth program\b/,
+      /\bpharmaceutical consulting\b/,
+      /\bfood\b/,
+      /\bagriculture\b/,
+      /\blab supplies\b/,
+      /\blaboratory supplies\b/,
+      /\boffice moving\b/,
+      /\btitle\/escrow\b/,
+      /\btitle and escrow\b/,
+      /\bgeneral supplies\b/,
     ],
   },
 ];
+
+function isCalEprocureCandidate(candidate: Candidate): boolean {
+  return candidate.portal_type === "caleprocure" || candidate.source_id === CALEPROCURE_SOURCE_ID;
+}
 
 function classifyCalEprocurePublicWorks(title: string | null): { red: boolean; reason: string | null } {
   const normalized = normalizeTitle(title);
@@ -204,7 +233,7 @@ function qualifyCandidate(
 
   // ── Red rules (first match wins, return immediately) ─────────────────────
 
-  if (candidate.portal_type === "caleprocure") {
+  if (isCalEprocureCandidate(candidate)) {
     const domainClassification = classifyCalEprocurePublicWorks(candidate.raw_title);
     if (domainClassification.red) {
       return {
@@ -425,7 +454,7 @@ serve(async (req) => {
     // Load pending candidates (skip any that have been manually reviewed)
     let query = supabase
       .from("opportunity_candidates")
-      .select("id, portal_type, raw_title, agency, bid_due_at, scope_text, estimated_value, county, required_licenses, required_naics, crawl_data")
+      .select("id, source_id, portal_type, raw_title, agency, bid_due_at, scope_text, estimated_value, county, required_licenses, required_naics, crawl_data")
       .eq("status", "pending");
 
     if (candidateId) {

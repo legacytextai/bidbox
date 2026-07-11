@@ -45,7 +45,11 @@ function laWallClockToUtcISO(year, month, day, hour, minute, second = 0) {
 
 function parseCalEprocureDate(raw) {
   if (!raw) return { iso: null, hadTime: false, sentinel: null };
-  const text = collapseWs(String(raw).replace(/\bPST\b|\bPDT\b/gi, '')).trim();
+  const text = collapseWs(String(raw).replace(/\bPST\b|\bPDT\b/gi, ''))
+    // Some PeopleSoft cells concatenate date and time, e.g.
+    // "07/21/20265:00PM PDT". Repair only that exact safe shape.
+    .replace(/^(\d{1,2}\/\d{1,2}\/\d{4})(\d{1,2}:\d{2}(?::\d{2})?\s*[AP]M)$/i, '$1 $2')
+    .trim();
   const match = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AP]M)?)?$/i);
   if (!match) return { iso: null, hadTime: false, sentinel: raw };
 

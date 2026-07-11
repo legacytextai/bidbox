@@ -29,6 +29,7 @@ const IDLE_POLL_INTERVAL_MS = 30000;
 const QUALIFY_MIN_INTERVAL_MS = 2 * 60 * 1000;
 const CLAIM_RETRY = Symbol('claim-retry');
 let lastQualifyAt = 0;
+const CALEPROCURE_SOURCE_ID = '75d7fa42-2302-4fce-ba0f-ba33ef6e9a82';
 
 // ── PlanetBids distributed login lock ────────────────────────────────────────
 // Only one Railway worker may hold an active PlanetBids browser session at a
@@ -148,6 +149,12 @@ function supportsDocumentPrefetch(portalType) {
   return !['caleprocure', 'opengov'].includes(portalType);
 }
 
+function effectivePortalType(portalType, sourceId) {
+  if (portalType) return portalType;
+  if (sourceId === CALEPROCURE_SOURCE_ID) return 'caleprocure';
+  return portalType;
+}
+
 async function markCalEprocureDuplicateOfCaltrans({ supabase, source_id, candidate, caltransDuplicate, triggerReason, log }) {
   const now = new Date().toISOString();
   const duplicateCrawlData = {
@@ -163,7 +170,7 @@ async function markCalEprocureDuplicateOfCaltrans({ supabase, source_id, candida
   const { data: existing, error: lookupError } = await supabase
     .from('opportunity_candidates')
     .select('id, crawl_data')
-    .eq('portal_type', 'caleprocure')
+    .eq('source_id', source_id)
     .eq('portal_bid_id', candidate.portal_bid_id)
     .maybeSingle();
   if (lookupError) throw new Error(`Cal eProcure duplicate lookup failed: ${lookupError.message}`);
@@ -171,6 +178,7 @@ async function markCalEprocureDuplicateOfCaltrans({ supabase, source_id, candida
   const updatePayload = {
     source_id,
     source_url: candidate.source_url,
+    portal_type: 'caleprocure',
     raw_title: candidate.raw_title,
     agency: candidate.agency,
     bid_due_at: candidate.bid_due_at,
@@ -479,6 +487,7 @@ async function maybeQualifyCandidates() {
 // The driver is a `(source, log) => { candidates, errors, errorMessages }` fn.
 async function runScan(task, supabase, driver) {
   const { source_id, source_name, listing_url, portal_type, trigger_reason = task.trigger_reason ?? 'manual_refresh' } = task.payload;
+  const resolvedPortalType = effectivePortalType(portal_type, source_id);
   const logs = [];
   const log = (msg) => {
     const line = `[${ts()}] ${msg}`;
@@ -520,7 +529,7 @@ async function runScan(task, supabase, driver) {
     errors: driverErrors,
     errorMessages = [],
   } = await driver(
-    { source_id, source_name, listing_url, portal_type },
+    { source_id, source_name, listing_url, portal_type: resolvedPortalType },
     log
   );
 
@@ -534,7 +543,7 @@ async function runScan(task, supabase, driver) {
 
   for (const candidate of candidates) {
     try {
-      if (portal_type === 'caleprocure' && candidate.portal_bid_id) {
+      if (resolvedPortalType === 'caleprocure' && candidate.portal_bid_id) {
         const { data: caltransDuplicate, error: duplicateError } = await supabase
           .from('opportunity_candidates')
           .select('id, source_url, raw_title, portal_bid_id')
@@ -564,7 +573,7 @@ async function runScan(task, supabase, driver) {
         supabase,
         source_id,
         source_name,
-        portal_type,
+        portal_type: resolvedPortalType,
         candidate,
         triggerReason: trigger_reason,
         sourceTaskId: task.id,
