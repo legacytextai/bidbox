@@ -152,12 +152,6 @@ const PUBLIC_WORKS_TITLE_PATTERNS: RegExp[] = [
 
 const NON_PUBLIC_WORKS_TITLE_PATTERNS: Array<{ reason: string; patterns: RegExp[] }> = [
   {
-    reason: "Incomplete Cal eProcure placeholder title",
-    patterns: [
-      /\bevent title\b/,
-    ],
-  },
-  {
     reason: "Non-public-works software / IT procurement",
     patterns: [
       /\bcannabis\b.*\b(integration|system|software|platform)\b/,
@@ -249,10 +243,6 @@ function isCalEprocureCandidate(candidate: Candidate): boolean {
 function classifyCalEprocurePublicWorks(title: string | null): { red: boolean; reason: string | null } {
   const normalized = normalizeTitle(title);
   if (!normalized) return { red: false, reason: null };
-
-  if (/\bevent title\b/.test(normalized)) {
-    return { red: true, reason: "Incomplete Cal eProcure placeholder title" };
-  }
 
   const nonPublicWorks = NON_PUBLIC_WORKS_TITLE_PATTERNS.find(({ patterns }) => includesAny(normalized, patterns));
   if (!nonPublicWorks) return { red: false, reason: null };
