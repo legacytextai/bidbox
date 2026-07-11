@@ -8,7 +8,7 @@
 //   1. Authenticate the user (JWT), then act with the service role.
 //   2. If an acquired opportunity_documents row matches the stable source key,
 //      return a signed URL immediately.
-//   3. Otherwise (OpenGov only for now) enqueue ONE candidate-scoped
+//   3. Otherwise (supported explicit-download portals) enqueue ONE candidate-scoped
 //      document_prefetch task — the validated Phase 3 acquisition path, which
 //      is idempotent per document and does NOT cascade to document_processing /
 //      project_analysis / project_intelligence — and return {status:"pending"}.
@@ -123,8 +123,11 @@ serve(async (req) => {
       });
     }
 
-    // 2. Not acquired — only OpenGov has a validated on-demand path so far.
-    if (candidate.portal_type !== "opengov") {
+    // 2. Not acquired — only portals with a validated explicit on-demand path
+    //    may enqueue document acquisition. Scan-time auto-prefetch is still
+    //    gated in the worker.
+    const supportedOnDemand = candidate.portal_type === "opengov" || candidate.portal_type === "caleprocure";
+    if (!supportedOnDemand) {
       return jsonResponse({ status: "unsupported", portal_type: candidate.portal_type });
     }
 
@@ -133,12 +136,12 @@ serve(async (req) => {
       ? candidate.crawl_data.documents
       : [];
     const keyTail = sourceKey.split("/").pop() ?? "";
-    const manifestEntry = manifestDocs.find(
-      (d) => String(d?.shared_id ?? d?.id ?? "") === keyTail,
-    );
+    const manifestEntry = candidate.portal_type === "caleprocure"
+      ? manifestDocs.find((d) => String(d?.source_key ?? d?.sourceKey ?? d?.source_url ?? "") === sourceKey)
+      : manifestDocs.find((d) => String(d?.shared_id ?? d?.id ?? "") === keyTail);
     if (manifestEntry) {
       const extField = String(manifestEntry.file_extension ?? "").trim().replace(/^\./, "");
-      const extFromName = String(manifestEntry.filename ?? "").match(/\.([a-z0-9]{1,6})$/i)?.[1] ?? "";
+      const extFromName = String(manifestEntry.filename ?? manifestEntry.file_name ?? "").match(/\.([a-z0-9]{1,6})$/i)?.[1] ?? "";
       const ext = (extField || extFromName).toLowerCase();
       if (ext && !ACQUIRABLE_EXTENSIONS.has(ext)) {
         return jsonResponse({ status: "unavailable", reason: "unsupported_file_type" });
@@ -186,11 +189,13 @@ serve(async (req) => {
         trigger_reason: "f2_lite_on_demand_download",
         payload: {
           candidate_id: candidateId,
-          portal_type: "opengov",
-          opengov_project_id: candidate.crawl_data?.opengov_project_id ?? null,
+          portal_type: candidate.portal_type,
+          opengov_project_id: candidate.portal_type === "opengov" ? candidate.crawl_data?.opengov_project_id ?? null : null,
+          caleprocure_event_id: candidate.portal_type === "caleprocure" ? candidate.crawl_data?.event_id ?? null : null,
           source_url: candidate.source_url,
           trigger_reason: "f2_lite_on_demand_download",
           validation_scope: "single_candidate_only",
+          source_document_key: sourceKey,
           requested_document_key: sourceKey,
           requested_by: user.id,
         },

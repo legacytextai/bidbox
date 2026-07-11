@@ -15,6 +15,75 @@ function collapseWs(text) {
   return (text ?? '').replace(/\s+/g, ' ').trim();
 }
 
+function normalizeKeyPart(value) {
+  return String(value ?? 'document')
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 120) || 'document';
+}
+
+function sanitizeFileName(name) {
+  const cleaned = String(name ?? 'document')
+    .replace(/[\/\\:*?"<>|]+/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return cleaned || 'document';
+}
+
+function inferFileType(fileName) {
+  const match = String(fileName ?? '').toLowerCase().match(/\.([a-z0-9]{1,8})$/);
+  return match ? match[1] : null;
+}
+
+function extensionToContentType(fileName) {
+  const lower = String(fileName ?? '').toLowerCase();
+  if (lower.endsWith('.pdf')) return 'application/pdf';
+  if (lower.endsWith('.doc')) return 'application/msword';
+  if (lower.endsWith('.docx')) return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  if (lower.endsWith('.xls')) return 'application/vnd.ms-excel';
+  if (lower.endsWith('.xlsx')) return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  if (lower.endsWith('.csv')) return 'text/csv';
+  if (lower.endsWith('.txt')) return 'text/plain';
+  if (lower.endsWith('.zip')) return 'application/zip';
+  return 'application/octet-stream';
+}
+
+function parseMoneyAmount(raw) {
+  if (!raw) return null;
+  const numeric = String(raw).replace(/[$,\s]/g, '');
+  const value = Number(numeric);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function extractEstimatedValue(text) {
+  const source = String(text ?? '');
+  const patterns = [
+    /estimated\s+(?:cost|construction\s+cost|value|amount)(?:\s+of\s+(?:construction|this\s+contract))?\s+(?:is|will\s+be|:)?\s*(?:approximately|about)?\s*\$?\s*([0-9][0-9,]*(?:\.\d{2})?)/i,
+    /(?:engineer'?s\s+estimate|construction\s+estimate)\s*(?:is|:)?\s*(?:approximately|about)?\s*\$?\s*([0-9][0-9,]*(?:\.\d{2})?)/i,
+  ];
+  for (const pattern of patterns) {
+    const match = source.match(pattern);
+    const value = parseMoneyAmount(match?.[1]);
+    if (value) return { value, raw: collapseWs(match[0]) };
+  }
+  return { value: null, raw: null };
+}
+
+function extractContractDuration(text) {
+  const source = String(text ?? '');
+  const patterns = [
+    /estimated\s+duration\s+of\s+(?:this\s+)?(?:contract|project)\s+(?:will\s+be|is|:)?\s*([0-9][0-9,]*\s+(?:calendar|working)?\s*days?)/i,
+    /(?:contract|project)\s+duration\s*(?:is|:)?\s*([0-9][0-9,]*\s+(?:calendar|working)?\s*days?)/i,
+  ];
+  for (const pattern of patterns) {
+    const match = source.match(pattern);
+    if (match?.[1]) return { value: collapseWs(match[1]), raw: collapseWs(match[0]) };
+  }
+  return { value: null, raw: null };
+}
+
 function uniq(values) {
   return [...new Set((values ?? []).map((v) => collapseWs(v)).filter(Boolean))];
 }
@@ -75,6 +144,60 @@ function parseNumberEnv(name, fallback) {
 function canonicalDetailUrl(businessUnit, eventId) {
   if (!businessUnit || !eventId) return null;
   return `https://caleprocure.ca.gov/event/${encodeURIComponent(businessUnit)}/${encodeURIComponent(eventId)}`;
+}
+
+function stableAttachmentSourceKey(eventId, index, fileName) {
+  return `caleprocure://event/${encodeURIComponent(eventId || 'unknown')}/attachment/${index}/${normalizeKeyPart(fileName)}`;
+}
+
+function documentFamilyFor(fileName, description = '') {
+  const value = `${fileName ?? ''} ${description ?? ''}`.toLowerCase();
+  if (/addend/.test(value)) return 'addenda';
+  if (/plan|drawing/.test(value)) return 'plans';
+  if (/spec/.test(value)) return 'specifications';
+  if (/rate\s*sheet|wage/.test(value)) return 'wage_rates';
+  if (/bid\s*package|invitation\s*for\s*bid|ifb|solicitation/.test(value)) return 'source_documents';
+  return 'source_documents';
+}
+
+function documentClassFor(fileName, description = '') {
+  const value = `${fileName ?? ''} ${description ?? ''}`.toLowerCase();
+  if (/addend/.test(value)) return 'addendum';
+  if (/plan|drawing/.test(value)) return 'plans';
+  if (/spec/.test(value)) return 'specifications';
+  if (/rate\s*sheet|wage/.test(value)) return 'wage_rates';
+  if (/bid\s*package|invitation\s*for\s*bid|ifb|solicitation/.test(value)) return 'source_document';
+  return 'source_document';
+}
+
+function normalizePackageDocuments({ eventId, attachments }) {
+  return (attachments ?? []).map((attachment, idx) => {
+    const sourceOrder = attachment.source_order ?? idx + 1;
+    const fileName = sanitizeFileName(attachment.file_name || attachment.filename || `document-${sourceOrder}`);
+    const description = collapseWs(attachment.description || attachment.title || '');
+    const fileType = inferFileType(fileName);
+    const addendumNumberRaw = description.match(/addendum\s*#?\s*(\d+)/i)?.[1]
+      ?? fileName.match(/addendum[_\s-]*(\d+)/i)?.[1]
+      ?? null;
+    const addendumNumber = addendumNumberRaw ? Number(addendumNumberRaw) : null;
+    return {
+      source_key: attachment.source_key || stableAttachmentSourceKey(eventId, sourceOrder, fileName),
+      title: fileName,
+      file_name: fileName,
+      filename: fileName,
+      description: description || null,
+      file_extension: fileType,
+      file_type: fileType,
+      document_family: documentFamilyFor(fileName, description),
+      document_class: documentClassFor(fileName, description),
+      source_order: sourceOrder,
+      document_source_order: sourceOrder,
+      addendum_number: addendumNumber,
+      is_addendum: Boolean(addendumNumber) || /addend/i.test(`${fileName} ${description}`),
+      download_control_id: attachment.download_control_id ?? null,
+      row_html_snippet: attachment.row_html_snippet ?? null,
+    };
+  });
 }
 
 function parseCanonicalDetailUrl(rawUrl, eventId = null) {
@@ -737,6 +860,16 @@ async function extractDetailMetadata(page) {
     const h1 = text(document.querySelector('h1'));
     const eventHeader = bodyText.match(/\bEvent\s*:\s*([A-Z0-9-]+)/i)?.[1] ?? null;
     const email = bodyText.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] ?? null;
+    const sectionBetween = (startLabel, endLabels) => {
+      const start = bodyText.search(new RegExp(`${startLabel}\\s*:`, 'i'));
+      if (start < 0) return null;
+      const afterStart = bodyText.slice(start).replace(new RegExp(`^${startLabel}\\s*:\\s*`, 'i'), '');
+      const endPositions = endLabels
+        .map((label) => afterStart.search(new RegExp(`\\b${label}\\b`, 'i')))
+        .filter((idx) => idx > 20);
+      const end = endPositions.length ? Math.min(...endPositions) : Math.min(afterStart.length, 4000);
+      return clean(afterStart.slice(0, end));
+    };
 
     const rowsFromTable = (rowPrefix, fields) => {
       return Array.from(document.querySelectorAll(`[id^="${CSS.escape(rowPrefix)}"]`)).map((row) => {
@@ -761,6 +894,28 @@ async function extractDetailMetadata(page) {
       county: 'ZZ_SA_VW_COUNTY$',
     });
 
+    const descriptionById = byId('AUC_HDR_DESCRLONG');
+    const descriptionFromBody = sectionBetween('Description', [
+      'Purpose and Description of Services',
+      'Contact Information',
+      'Pre Bid Conference',
+      'UNSPSC',
+      'Contractor License',
+      'Service Area',
+    ]);
+    const purposeSection = sectionBetween('Purpose and Description of Services', [
+      'Contact Information',
+      'Pre Bid Conference',
+      'UNSPSC',
+      'Contractor License',
+      'Service Area',
+    ]);
+    const combinedDescription = [
+      descriptionById,
+      descriptionFromBody && descriptionFromBody !== descriptionById ? descriptionFromBody : null,
+      purposeSection,
+    ].filter(Boolean).join('\n\n') || null;
+
     return {
       pageTitle: document.title || null,
       url: window.location.href,
@@ -781,7 +936,9 @@ async function extractDetailMetadata(page) {
       eventVersion: byId('AUC_HDR_AUC_VERSION'),
       publishedDateRaw: byId('AUC_HDR_AUC_DTTM_START'),
       endDateRaw: byId('AUC_HDR_AUC_DTTM_FINISH') || byPrefix('AUC_HDR_AUC_DTTM_FINISH'),
-      description: byId('AUC_HDR_DESCRLONG'),
+      description: combinedDescription,
+      descriptionRaw: descriptionById,
+      purposeAndDescription: purposeSection,
       contactName: byId('AUC_HDR_NAME1'),
       contactPhone: byId('AUC_HDR_PHONE'),
       contactEmail: byId('RESP_INQ_DL0_WK_EMAILID') || email,
@@ -797,6 +954,7 @@ async function extractDetailMetadata(page) {
       licenses,
       serviceAreas,
       bodyTextPreview: bodyText.slice(0, 2000),
+      bodyTextForExtraction: bodyText.slice(0, 12000),
     };
   });
 }
@@ -811,6 +969,158 @@ async function waitForDetail(page) {
   await page.waitForTimeout(1000);
 }
 
+function caleprocureCredentials() {
+  return {
+    username: process.env.CALEPROCURE_USERNAME
+      || process.env.CALEPROCURE_USER
+      || process.env.CALEPROCURE_EMAIL
+      || null,
+    password: process.env.CALEPROCURE_PASSWORD || null,
+  };
+}
+
+async function isCalEprocureLoginPage(page) {
+  return page.evaluate(() => {
+    const text = document.body?.innerText ?? '';
+    return Boolean(document.querySelector('input[type="password"]'))
+      || /sign\s*in|login|user\s*id|password/i.test(text);
+  }).catch(() => false);
+}
+
+async function caleprocureLogin(page, log = console.log) {
+  if (!(await isCalEprocureLoginPage(page))) return false;
+
+  const { username, password } = caleprocureCredentials();
+  if (!username || !password) {
+    const error = new Error('missing_caleprocure_credentials');
+    error.code = 'missing_caleprocure_credentials';
+    throw error;
+  }
+
+  log('Cal eProcure login required; signing in with configured credentials');
+  const usernameSelectors = [
+    'input[type="email"]',
+    'input[name*="USER" i]',
+    'input[id*="USER" i]',
+    'input[name*="LOGIN" i]',
+    'input[id*="LOGIN" i]',
+    'input[type="text"]',
+  ];
+  let filledUsername = false;
+  for (const selector of usernameSelectors) {
+    const locator = page.locator(selector).first();
+    if (await locator.count().catch(() => 0)) {
+      await locator.fill(username, { timeout: 10000 }).catch(() => {});
+      filledUsername = true;
+      break;
+    }
+  }
+
+  const passwordLocator = page.locator('input[type="password"]').first();
+  if (!(await passwordLocator.count().catch(() => 0))) {
+    throw new Error('Cal eProcure login page did not expose a password input');
+  }
+  await passwordLocator.fill(password, { timeout: 10000 });
+
+  if (!filledUsername) {
+    throw new Error('Cal eProcure login page did not expose a username input');
+  }
+
+  const submit = page.getByRole('button', { name: /sign\s*in|log\s*in|login|submit/i }).first();
+  if (await submit.count().catch(() => 0)) {
+    await submit.click({ timeout: 10000 });
+  } else {
+    await passwordLocator.press('Enter');
+  }
+
+  await page.waitForLoadState('domcontentloaded', { timeout: 60000 }).catch(() => {});
+  await page.waitForFunction(() => {
+    const text = document.body?.innerText ?? '';
+    return !document.querySelector('input[type="password"]')
+      || /Event Details|Comments|View Attachments|Attached File|Event Package/i.test(text);
+  }, { timeout: 60000 }).catch(() => {});
+
+  if (await isCalEprocureLoginPage(page)) {
+    throw new Error('Cal eProcure login did not complete');
+  }
+
+  return true;
+}
+
+async function openEventPackage(page, log = console.log) {
+  const packageButton = page.getByText(/View Event Package/i).first();
+  if (!(await packageButton.count().catch(() => 0))) {
+    throw new Error('Cal eProcure Event Package button not found on detail page');
+  }
+
+  await packageButton.click({ timeout: 15000 });
+  await page.waitForLoadState('domcontentloaded', { timeout: 60000 }).catch(() => {});
+  if (await isCalEprocureLoginPage(page)) {
+    await caleprocureLogin(page, log);
+  }
+  await page.waitForFunction(() => {
+    const text = document.body?.innerText ?? '';
+    return /Comments|View Attachments|Attached File|Download/i.test(text);
+  }, { timeout: 60000 });
+  await page.waitForTimeout(1000);
+}
+
+async function extractEventPackage(page, eventIdHint = null) {
+  const raw = await page.evaluate((eventIdFallback) => {
+    const clean = (value) => (value || '').replace(/\s+/g, ' ').trim();
+    const text = (el) => clean(el?.innerText || el?.textContent || el?.value || '');
+    const bodyText = clean(document.body?.innerText ?? '');
+    const eventId = bodyText.match(/\bEvent ID\s+([A-Z0-9-]+)/i)?.[1]
+      || bodyText.match(/\bEvent\s*:\s*([A-Z0-9-]+)/i)?.[1]
+      || eventIdFallback
+      || null;
+    const eventName = bodyText.match(/\bEvent Name\s+(.+?)(?:\s+Comments\b|\s+View Attachments\b|$)/i)?.[1]
+      || null;
+
+    const textarea = document.querySelector('textarea');
+    let comments = text(textarea);
+    if (!comments) {
+      const match = bodyText.match(/\bComments\s+(.+?)\s+(?:View All\s+)?(?:1\s+of\s+\d+\s+)?View Attachments\b/i);
+      comments = clean(match?.[1] || '');
+    }
+
+    const rows = Array.from(document.querySelectorAll('[id^="trAUC_ATTCH_HD_VW"]'));
+    const attachments = rows.map((row, idx) => {
+      const filename = text(row.querySelector('[id^="PV_ATTACH_WRK_ATTACHUSERFILE$"]'));
+      const description = text(row.querySelector('span[id^="PV_ATTACH_WRK_ATTACH_DESCR$"], input[id^="PV_ATTACH_WRK_ATTACH_DESCR$"]'));
+      const download = row.querySelector('[id^="PV_ATTACH_WRK_SCM_DOWNLOAD$"], button, [role="button"], [onclick]');
+      return {
+        source_order: idx + 1,
+        file_name: filename,
+        description,
+        download_control_id: download?.id || null,
+        has_download_control: Boolean(download),
+        row_html_snippet: row.outerHTML?.slice(0, 1200) ?? null,
+      };
+    }).filter((row) => row.file_name || row.description || row.has_download_control);
+
+    return {
+      url: window.location.href,
+      pageTitle: document.title || null,
+      eventId,
+      eventName,
+      comments: comments || null,
+      attachments,
+      bodyTextPreview: bodyText.slice(0, 2000),
+    };
+  }, eventIdHint);
+
+  const eventId = raw.eventId || eventIdHint;
+  const documents = normalizePackageDocuments({ eventId, attachments: raw.attachments });
+  return {
+    ...raw,
+    eventId,
+    documents,
+    attachment_count: documents.length,
+    extracted_at: new Date().toISOString(),
+  };
+}
+
 function buildCandidateFromDetail({ listingUrl, row, target, detail, packageDiagnostics = null }) {
   const eventId = detail.eventId || row.eventId || target.eventId;
   const title = detail.title || row.title || eventId;
@@ -819,15 +1129,18 @@ function buildCandidateFromDetail({ listingUrl, row, target, detail, packageDiag
   const published = parseCalEprocureDate(detail.publishedDateRaw || row.publishedDateRaw);
   const licenseCodes = uniq((detail.licenses ?? []).map((l) => l.code));
   const counties = uniq((detail.serviceAreas ?? []).map((area) => area.county));
+  const richText = [detail.description, detail.purposeAndDescription, detail.bodyTextForExtraction].filter(Boolean).join('\n');
+  const estimated = extractEstimatedValue(richText);
+  const duration = extractContractDuration(richText);
 
   return {
     source_url: target.sourceUrl,
     raw_title: eventId && title && !title.startsWith(eventId) ? `${eventId} - ${title}` : title,
     agency: department,
     bid_due_at: due.iso,
-    estimated_value: null,
-    estimated_value_low: null,
-    estimated_value_high: null,
+    estimated_value: estimated.value,
+    estimated_value_low: estimated.value,
+    estimated_value_high: estimated.value,
     county: counties.join(', ') || null,
     project_address: null,
     required_licenses: licenseCodes.length > 0 ? licenseCodes : null,
@@ -852,6 +1165,10 @@ function buildCandidateFromDetail({ listingUrl, row, target, detail, packageDiag
       bid_due_time_available: due.hadTime,
       bid_due_note: due.iso ? null : due.sentinel,
       description: detail.description,
+      estimated_value: estimated.value,
+      estimated_value_raw: estimated.raw,
+      contract_duration: duration.value,
+      contract_duration_raw: duration.raw,
       contact: {
         name: detail.contactName,
         phone: detail.contactPhone,
@@ -870,8 +1187,8 @@ function buildCandidateFromDetail({ listingUrl, row, target, detail, packageDiag
       },
       extracted_at: new Date().toISOString(),
       extraction_method: 'caleprocure_v1_browser_detail',
-      document_acquisition_supported: false,
-      document_acquisition_note: 'Phase 1 metadata-only driver. Event Package download protocol is diagnostic-only pending Phase 2.',
+      document_acquisition_supported: true,
+      document_acquisition_note: 'Event Package documents are acquired only on explicit user intent; scan-time auto-prefetch remains disabled.',
     },
   };
 }
@@ -1209,6 +1526,20 @@ async function scrapeCalEprocure(source, log = console.log) {
 
 module.exports = {
   DEFAULT_LISTING_URL,
+  openBrowser,
+  waitForDetail,
+  extractDetailMetadata,
+  buildCandidateFromDetail,
+  openEventPackage,
+  caleprocureLogin,
+  extractEventPackage,
+  normalizePackageDocuments,
+  stableAttachmentSourceKey,
+  sanitizeFileName,
+  inferFileType,
+  extensionToContentType,
+  documentFamilyFor,
+  documentClassFor,
   parseCalEprocureDate,
   parseCanonicalDetailUrl,
   scrapeCalEprocure,

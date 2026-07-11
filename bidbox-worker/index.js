@@ -11,6 +11,7 @@ const { acquirePlanetBidsDocuments, runPlanetBidsBidItemScan } = require('./driv
 const { runPortalIntelligence } = require('./drivers/portal_intelligence');
 const { acquireCaltransDocuments } = require('./drivers/caltrans_documents');
 const { acquireOpenGovDocuments } = require('./drivers/opengov_documents');
+const { acquireCalEprocureDocuments } = require('./drivers/caleprocure_documents');
 const {
   queueDocumentProcessingForCandidate,
   runDocumentProcessing,
@@ -775,7 +776,7 @@ async function runProjectAnalysisAcquisition(task, supabase) {
 
   const { data: candidate, error: candidateError } = await supabase
     .from('opportunity_candidates')
-    .select('id, source_id, source_url, portal_type, raw_title, agency, bid_due_at, crawl_data, document_acquisition_status')
+    .select('id, source_id, source_url, portal_type, raw_title, agency, bid_due_at, county, crawl_data, document_acquisition_status')
     .eq('id', candidate_id)
     .maybeSingle();
 
@@ -808,6 +809,8 @@ async function runProjectAnalysisAcquisition(task, supabase) {
       result = await acquireCaltransDocuments({ supabase, task, candidate, log });
     } else if (candidate.portal_type === 'opengov') {
       result = await acquireOpenGovDocuments({ supabase, task, candidate, log });
+    } else if (candidate.portal_type === 'caleprocure') {
+      result = await acquireCalEprocureDocuments({ supabase, task, candidate, log });
     } else {
       throw new Error(`Document acquisition is not implemented for ${candidate.portal_type ?? 'unknown'} candidates`);
     }
@@ -1155,7 +1158,7 @@ async function runDocumentPrefetchTask(task, supabase) {
 
   const { data: candidate, error } = await supabase
     .from('opportunity_candidates')
-    .select('id, source_id, source_url, portal_type, raw_title, agency, bid_due_at, crawl_data')
+    .select('id, source_id, source_url, portal_type, raw_title, agency, bid_due_at, county, crawl_data')
     .eq('id', candidateId)
     .maybeSingle();
   if (error) throw new Error(`document_prefetch: candidate lookup failed: ${error.message}`);
@@ -1189,8 +1192,7 @@ async function runDocumentPrefetchTask(task, supabase) {
     log('LA Metro document acquisition not implemented (requires manual iSupplier vendor approval) — skipping');
     result = { found: 0, acquired: 0, skipped: 0, failed: 0 };
   } else if (candidate.portal_type === 'caleprocure') {
-    log('Cal eProcure document acquisition not implemented (Phase 2) — skipping');
-    result = { found: 0, acquired: 0, skipped: 0, failed: 0 };
+    result = await acquireCalEprocureDocuments({ supabase, task, candidate, log });
   } else if (candidate.portal_type === 'opengov') {
     // Phase 3: acquire OpenGov project documents (pre-signed S3 URLs embedded
     // in project detail). supportsDocumentPrefetch() still gates opengov out of

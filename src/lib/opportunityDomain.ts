@@ -115,6 +115,7 @@ export function resolveDepartment(crawlData: any): string | null {
 // normalized across portal shapes so the Documents tab can show document
 // titles before any bytes exist in BidBox:
 //   OpenGov:       { name, title, filename, file_extension, type }
+//   Cal eProcure:  { source_key, title, file_name, file_extension }
 //   PlanetBids:    { file_title, filename, file_size }
 //   LA County DPW: { title, notes, pages, size }
 // Uniform document policy: discovery shows titles; bytes arrive only on
@@ -124,8 +125,7 @@ export interface KnownSourceDocument {
   fileType: string | null;
   // Stable per-document key matching the acquisition driver's idempotency key
   // (opportunity_documents.source_url). Present only for portals with a
-  // validated on-demand download path (currently OpenGov); rows without a key
-  // render title-only.
+  // validated on-demand download path; rows without a key render title-only.
   sourceKey: string | null;
 }
 
@@ -134,13 +134,17 @@ export function extractKnownSourceDocuments(crawlData: any): KnownSourceDocument
   const openGovProjectId = crawlData?.opengov_project_id != null ? String(crawlData.opengov_project_id) : null;
   return docs
     .map((d: any): KnownSourceDocument => {
-      const title = String(d?.title ?? d?.file_title ?? d?.name ?? d?.filename ?? "").trim();
+      const title = String(d?.title ?? d?.description ?? d?.file_title ?? d?.name ?? d?.filename ?? d?.file_name ?? "").trim();
       const fromExtField = String(d?.file_extension ?? "").trim().replace(/^\./, "");
-      const fromFilename = String(d?.filename ?? "").match(/\.([a-z0-9]{1,6})$/i)?.[1] ?? "";
+      const fromFilename = String(d?.filename ?? d?.file_name ?? "").match(/\.([a-z0-9]{1,6})$/i)?.[1] ?? "";
       const fileType = (fromExtField || fromFilename).toLowerCase() || null;
       const attachmentId = d?.shared_id ?? d?.id;
       const sourceKey =
-        openGovProjectId && attachmentId != null
+        typeof d?.source_key === "string" && d.source_key.trim()
+          ? d.source_key.trim()
+          : typeof d?.sourceKey === "string" && d.sourceKey.trim()
+            ? d.sourceKey.trim()
+            : openGovProjectId && attachmentId != null
           ? `opengov://project/${openGovProjectId}/attachment/${attachmentId}`
           : null;
       return { title, fileType, sourceKey };

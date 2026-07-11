@@ -8,14 +8,29 @@
 - Existing Cal eProcure rows matching the current non-public-works hygiene patterns are marked `auto_status = red`.
 - Existing Cal eProcure rows with `portal_type IS NULL` are backfilled to `portal_type = 'caleprocure'`.
 
-## Deferred: description, estimated value, and duration
+## Follow-up implemented: description, estimated value, and duration
 
 Production evidence for Event `0000039627` shows the source page contains:
 
 - estimated construction cost: approximately `$7,800,000.00`
 - estimated contract duration: `440 days`
 
-The current row has `crawl_data.description = null`, so estimated value and duration extraction should wait for a driver enhancement that first captures the Cal eProcure event description body reliably. Once description capture is in place, estimate/duration extraction can be added against that text and mapped into the existing normalized/value metadata surfaces.
+The follow-up driver work on 2026-07-11 now captures the visible detail description/body text and extracts estimated construction value and contract duration when the source text explicitly states them. `Event End Date` remains the normalized `bid_due_at` source; estimate fields are promoted only when parsed from source evidence, and duration remains in `crawl_data.contract_duration_raw` unless/until a first-class column exists.
+
+## Follow-up implemented: Event Package manifest and document acquisition
+
+Cal eProcure now has an explicit document acquisition path for selected candidates:
+
+- opens the candidate detail page;
+- clicks `View Event Package`;
+- signs in with `CALEPROCURE_USERNAME`/`CALEPROCURE_PASSWORD` only if Cal eProcure presents a login page;
+- captures Comments and Attachments page comments;
+- captures attachment manifest rows into `crawl_data.documents[]` with stable `caleprocure://event/{event_id}/attachment/{source_order}/{filename}` keys;
+- downloads supported Event Package files on explicit `document_prefetch`/Analyze only;
+- stores files in the shared `opportunity-documents` bucket and idempotent `opportunity_documents` rows;
+- keeps Cal eProcure excluded from scan-time auto-prefetch.
+
+Controlled production validation of a single candidate plus idempotency rerun is still required before calling the portal complete.
 
 ## Deferred: placeholder `[Event Title]`
 
@@ -28,4 +43,4 @@ Recommended driver fix:
 - fall back to the listing row title when the detail title is placeholder or times out;
 - only persist the Event ID as a last resort.
 
-The cleanup migration marks placeholder title rows red/incomplete so they leave the main feed until a future refresh can repair them.
+The later placeholder-title policy reversal keeps these rows visible/yellow unless another valid rejection reason applies. Placeholder title is low-confidence metadata, not automatic suppression.

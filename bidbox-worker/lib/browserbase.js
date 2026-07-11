@@ -149,6 +149,38 @@ function extractFirstFileFromZip(zipBytes) {
   });
 }
 
+function extractFilesFromZip(zipBytes) {
+  return new Promise((resolve, reject) => {
+    yauzl.fromBuffer(zipBytes, { lazyEntries: true }, (err, zipfile) => {
+      if (err) return reject(err);
+      const files = [];
+      zipfile.readEntry();
+      zipfile.on('entry', (entry) => {
+        if (/\/$/.test(entry.fileName)) {
+          zipfile.readEntry();
+          return;
+        }
+        zipfile.openReadStream(entry, (streamErr, stream) => {
+          if (streamErr) return reject(streamErr);
+          const chunks = [];
+          stream.on('data', (chunk) => chunks.push(chunk));
+          stream.on('end', () => {
+            const bytes = Buffer.concat(chunks);
+            files.push({
+              fileName: entry.fileName,
+              bytes,
+              fileSize: bytes.length,
+            });
+            zipfile.readEntry();
+          });
+          stream.on('error', reject);
+        });
+      });
+      zipfile.on('end', () => resolve(files));
+    });
+  });
+}
+
 // Retrieves every file downloaded during the session as a single zip
 // (Browserbase's session-level downloads endpoint), unzips it in memory via
 // yauzl (same library already used by drivers/archive_extraction.js), and
@@ -189,4 +221,35 @@ async function fetchBrowserbaseDownloadZip(sessionId, log = console.log) {
   throw new Error('Browserbase download did not sync any files after retrying');
 }
 
-module.exports = { connectBrowserbaseSession, fetchBrowserbaseDownloadZip, createBrowserbaseSessionId };
+async function fetchBrowserbaseDownloadZipEntries(sessionId, log = console.log) {
+  const apiKey = process.env.BROWSERBASE_API_KEY;
+  if (!apiKey) {
+    throw new Error('BROWSERBASE_API_KEY not configured');
+  }
+
+  const maxAttempts = 8;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const res = await fetch(`${API_BASE}/sessions/${sessionId}/downloads`, {
+      headers: { 'x-bb-api-key': apiKey },
+    });
+    if (!res.ok) {
+      throw new Error(`Browserbase downloads fetch failed: ${res.status}`);
+    }
+    const zipBytes = Buffer.from(await res.arrayBuffer());
+    if (zipBytes.length > 0) {
+      const files = await extractFilesFromZip(zipBytes);
+      if (files.length > 0) return files;
+    }
+    log(`Browserbase downloads not synced yet (attempt ${attempt}/${maxAttempts}) — retrying`);
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+
+  throw new Error('Browserbase downloads did not sync any files after retrying');
+}
+
+module.exports = {
+  connectBrowserbaseSession,
+  fetchBrowserbaseDownloadZip,
+  fetchBrowserbaseDownloadZipEntries,
+  createBrowserbaseSessionId,
+};
