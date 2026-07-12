@@ -12,9 +12,8 @@ const ScrollToTop = () => {
 };
 import { AuthProvider } from "@/hooks/useAuth";
 import Index from "./pages/Index";
-import LandingFull from "./pages/LandingFull";
-import LandingMvp from "./pages/LandingMvp";
-import LandingV1 from "./pages/LandingV1";
+import Landing from "./pages/Landing";
+import AdminLeads from "./pages/AdminLeads";
 import Auth from "./pages/Auth";
 import Projects from "./pages/Projects";
 import NewProject from "./pages/NewProject";
@@ -46,10 +45,7 @@ const App = () => (
         <BrowserRouter>
           <ScrollToTop />
           <Routes>
-            <Route path="/" element={<LandingMvp />} />
-            <Route path="/landing-mvp" element={<LandingMvp />} />
-            <Route path="/landing-v1" element={<LandingV1 />} />
-            <Route path="/landing-full" element={<LandingFull />} />
+            <Route path="/" element={<Landing />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/.lovable/oauth/consent" element={<OAuthConsent />} />
             <Route path="/calendar" element={<CalendarDashboard />} />
