@@ -1,0 +1,190 @@
+.bidbox-landing{
+  --paper:#F7F8FA;
+  --white:#FFFFFF;
+  --ink:#0E1626;
+  --steel:#4B5563;
+  --line:#DDE2EA;
+  --blue:#0952FD;
+  --blue-deep:#0741D6;
+  --blue-tint:#EBF1FF;
+  --orange:#E8630A;
+  --orange-tint:#FDEFE3;
+  --radius:10px;
+  --disp:'Archivo',sans-serif;
+  --body:'Public Sans',sans-serif;
+  --mono:'IBM Plex Mono',monospace;
+  font-family:var(--body);color:var(--ink);background:var(--paper);line-height:1.6;font-size:17px;
+  scroll-behavior:smooth;
+}
+.bidbox-landing *{margin:0;padding:0;box-sizing:border-box}
+.bidbox-landing img{max-width:100%}
+.bidbox-landing a{color:var(--blue)}
+.bidbox-landing .wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+
+.bidbox-landing .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--blue);font-weight:600;display:block;margin-bottom:14px}
+.bidbox-landing .btn{display:inline-block;font-family:var(--disp);font-weight:700;font-size:16px;padding:14px 26px;border-radius:var(--radius);text-decoration:none;border:1.5px solid transparent;transition:transform .12s ease, background .12s ease;cursor:pointer}
+.bidbox-landing .btn:focus-visible{outline:3px solid var(--orange);outline-offset:2px}
+.bidbox-landing .btn-primary{background:var(--blue);color:#fff}
+.bidbox-landing .btn-primary:hover{background:var(--blue-deep);transform:translateY(-1px)}
+.bidbox-landing .btn-ghost{background:transparent;color:var(--ink);border-color:var(--line)}
+.bidbox-landing .btn-ghost:hover{border-color:var(--ink)}
+.bidbox-landing h1,.bidbox-landing h2,.bidbox-landing h3{font-family:var(--disp);line-height:1.12;letter-spacing:-.01em}
+.bidbox-landing h2{font-size:clamp(28px,4vw,40px);font-weight:800}
+.bidbox-landing .lede{color:var(--steel);max-width:640px}
+.bidbox-landing section{padding:88px 0}
+@media(max-width:720px){.bidbox-landing section{padding:60px 0}}
+
+.bidbox-landing .site-header{position:sticky;top:0;z-index:50;background:rgba(247,248,250,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.bidbox-landing .nav{display:flex;align-items:center;justify-content:space-between;height:66px}
+.bidbox-landing .logo{display:inline-flex;align-items:center;text-decoration:none}
+.bidbox-landing .logo img{height:26px;width:auto;display:block}
+.bidbox-landing footer .logo img{height:24px;filter:brightness(0) invert(1)}
+.bidbox-landing .nav-links{display:flex;gap:28px;align-items:center}
+.bidbox-landing .nav-links a{font-size:15px;color:var(--steel);text-decoration:none;font-weight:500}
+.bidbox-landing .nav-links a:hover{color:var(--ink)}
+.bidbox-landing .nav-links a.btn-primary{color:#fff}
+.bidbox-landing .nav-links a.btn-primary:hover{color:#fff}
+.bidbox-landing .nav .btn{padding:10px 20px;font-size:15px}
+.bidbox-landing .menu-btn{display:none;background:none;border:1.5px solid var(--line);border-radius:8px;padding:8px 10px;cursor:pointer;font-size:18px;line-height:1;color:var(--ink)}
+.bidbox-landing .menu-btn:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+@media(max-width:820px){
+  .bidbox-landing .menu-btn{display:block}
+  .bidbox-landing .nav-links{display:none;position:absolute;top:66px;left:0;right:0;background:var(--white);border-bottom:1px solid var(--line);flex-direction:column;align-items:stretch;gap:0;padding:8px 24px 18px}
+  .bidbox-landing .nav-links.open{display:flex}
+  .bidbox-landing .nav-links a{padding:13px 0;border-bottom:1px solid var(--line);font-size:16px}
+  .bidbox-landing .nav-links a.btn{border:none;margin-top:14px;text-align:center}
+}
+
+.bidbox-landing .hero{padding:84px 0 72px}
+.bidbox-landing .hero-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:56px;align-items:center}
+@media(max-width:920px){.bidbox-landing .hero-grid{grid-template-columns:1fr;gap:44px}}
+.bidbox-landing .hero h1{font-size:clamp(36px,5vw,54px);font-weight:800;margin-bottom:20px}
+.bidbox-landing .hero h1 em{font-style:normal;color:var(--blue)}
+.bidbox-landing .hero p{font-size:19px;color:var(--steel);margin-bottom:30px;max-width:520px}
+.bidbox-landing .cta-row{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px}
+.bidbox-landing .micro{font-family:var(--mono);font-size:12.5px;color:var(--steel)}
+
+.bidbox-landing .bidtab{background:var(--white);border:1px solid var(--line);border-radius:14px;box-shadow:0 24px 60px -30px rgba(14,22,38,.25);overflow:hidden}
+.bidbox-landing .bidtab-head{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid var(--line)}
+.bidbox-landing .bidtab-title{font-family:var(--mono);font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--steel);font-weight:600}
+.bidbox-landing .live-dot{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11px;color:var(--blue);font-weight:600;letter-spacing:.08em}
+.bidbox-landing .live-dot::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--blue);animation:bb-pulse 2s infinite}
+@keyframes bb-pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.bidbox-landing .bt-row{display:grid;grid-template-columns:1.6fr 1fr .8fr .9fr;gap:10px;padding:13px 18px;border-bottom:1px solid var(--line);font-size:13.5px;align-items:center}
+.bidbox-landing .bt-row:last-child{border-bottom:none}
+.bidbox-landing .bt-label{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#94A0B4;font-weight:500;padding:10px 18px 6px}
+.bidbox-landing .bt-project{font-weight:600}
+.bidbox-landing .bt-agency{color:var(--steel);font-size:12.5px}
+.bidbox-landing .bt-date{font-family:var(--mono);font-size:12.5px}
+.bidbox-landing .flag{font-family:var(--mono);font-size:10.5px;font-weight:600;letter-spacing:.06em;padding:3px 8px;border-radius:5px;display:inline-block}
+.bidbox-landing .flag-walk{background:var(--orange-tint);color:var(--orange)}
+.bidbox-landing .flag-ok{background:var(--blue-tint);color:var(--blue)}
+.bidbox-landing .toast{margin:14px 18px 18px;padding:12px 14px;background:var(--ink);color:#fff;border-radius:9px;display:flex;gap:10px;align-items:center;font-size:13px;opacity:0;transform:translateY(8px);animation:bb-toastIn .5s ease 1.4s forwards}
+.bidbox-landing .toast .flag{background:var(--orange);color:#fff}
+.bidbox-landing .toast .t-time{font-family:var(--mono);font-size:11px;color:#9AA6BD;margin-left:auto}
+@keyframes bb-toastIn{to{opacity:1;transform:translateY(0)}}
+@media(prefers-reduced-motion:reduce){
+  .bidbox-landing .toast{animation:none;opacity:1;transform:none}
+  .bidbox-landing .live-dot::before{animation:none}
+  .bidbox-landing .btn{transition:none}
+}
+@media(max-width:480px){.bidbox-landing .bt-row{grid-template-columns:1.6fr 1fr}.bidbox-landing .bt-row .bt-walk,.bidbox-landing .bt-row .bt-add,.bidbox-landing .bt-label span:nth-child(3),.bidbox-landing .bt-label span:nth-child(4){display:none}}
+
+.bidbox-landing .coverage{border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--white);padding:26px 0}
+.bidbox-landing .coverage p{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#94A0B4;text-align:center;margin-bottom:14px;font-weight:500}
+.bidbox-landing .marquee{overflow:hidden;-webkit-mask-image:linear-gradient(90deg,transparent,#000 10%,#000 90%,transparent);mask-image:linear-gradient(90deg,transparent,#000 10%,#000 90%,transparent)}
+.bidbox-landing .marquee-track{display:flex;gap:56px;width:max-content;animation:bb-scroll 34s linear infinite}
+.bidbox-landing .marquee-track span{font-family:var(--mono);font-size:13px;color:var(--steel);font-weight:500;white-space:nowrap}
+@keyframes bb-scroll{to{transform:translateX(-50%)}}
+@media(prefers-reduced-motion:reduce){.bidbox-landing .marquee-track{animation:none;width:auto;flex-wrap:wrap;justify-content:center}}
+
+.bidbox-landing .stakes{background:var(--ink);color:#fff}
+.bidbox-landing .stakes .eyebrow{color:var(--orange)}
+.bidbox-landing .stakes h2{color:#fff;max-width:760px}
+.bidbox-landing .stakes p{color:#B9C2D4;max-width:680px;margin-top:18px;font-size:18px}
+.bidbox-landing .stakes strong{color:#fff}
+
+.bidbox-landing .vgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:22px;margin-top:48px}
+@media(max-width:820px){.bidbox-landing .vgrid{grid-template-columns:1fr}}
+.bidbox-landing .vcard{background:var(--white);border:1px solid var(--line);border-radius:14px;padding:32px}
+.bidbox-landing .vcard .vnum{font-family:var(--mono);font-size:12px;color:var(--blue);letter-spacing:.1em;font-weight:600;display:block;margin-bottom:16px}
+.bidbox-landing .vcard h3{font-size:21px;font-weight:700;margin-bottom:10px}
+.bidbox-landing .vcard p{color:var(--steel);font-size:15.5px}
+
+.bidbox-landing .plan{background:var(--white);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.bidbox-landing .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:26px;margin:48px 0 44px}
+@media(max-width:820px){.bidbox-landing .steps{grid-template-columns:1fr}}
+.bidbox-landing .step{border-left:3px solid var(--blue);padding-left:22px}
+.bidbox-landing .step .snum{font-family:var(--mono);font-weight:600;font-size:13px;color:var(--blue);display:block;margin-bottom:10px}
+.bidbox-landing .step h3{font-size:20px;margin-bottom:8px}
+.bidbox-landing .step p{color:var(--steel);font-size:15.5px}
+
+.bidbox-landing .guide-inner{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center}
+@media(max-width:820px){.bidbox-landing .guide-inner{grid-template-columns:1fr}}
+.bidbox-landing .guide blockquote{font-family:var(--disp);font-size:clamp(20px,2.6vw,26px);font-weight:600;line-height:1.35;border-left:3px solid var(--orange);padding-left:24px;margin-top:24px}
+.bidbox-landing .guide .attr{font-family:var(--mono);font-size:13px;color:var(--steel);margin-top:14px;padding-left:27px}
+.bidbox-landing .seo-block{background:var(--white);border:1px solid var(--line);border-radius:14px;padding:32px;font-size:15px;color:var(--steel)}
+.bidbox-landing .seo-block strong{color:var(--ink)}
+
+.bidbox-landing .magnet{background:var(--blue-tint)}
+.bidbox-landing .magnet-inner{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center}
+@media(max-width:820px){.bidbox-landing .magnet-inner{grid-template-columns:1fr}}
+.bidbox-landing .magnet p{color:var(--steel);margin-top:16px;max-width:520px}
+.bidbox-landing .form-row{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
+.bidbox-landing .form-row input{flex:1;min-width:220px;padding:14px 16px;border:1.5px solid var(--line);border-radius:var(--radius);font-family:var(--body);font-size:15.5px;background:var(--white)}
+.bidbox-landing .form-row input:focus-visible{outline:3px solid var(--blue);outline-offset:1px;border-color:var(--blue)}
+.bidbox-landing .form-success{margin-top:12px;font-family:var(--mono);font-size:13px;color:var(--blue);font-weight:600}
+.bidbox-landing .form-error{margin-top:12px;font-family:var(--mono);font-size:13px;color:var(--orange);font-weight:600}
+.bidbox-landing .magnet-card{background:var(--white);border:1px solid var(--line);border-radius:14px;padding:34px;box-shadow:0 20px 50px -30px rgba(14,22,38,.25)}
+.bidbox-landing .magnet-card .mc-tag{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--orange);font-weight:600}
+.bidbox-landing .magnet-card h3{font-size:22px;margin:12px 0 16px}
+.bidbox-landing .magnet-card ul{list-style:none}
+.bidbox-landing .magnet-card li{font-size:15px;color:var(--steel);padding:7px 0 7px 26px;position:relative}
+.bidbox-landing .magnet-card li::before{content:"—";position:absolute;left:0;color:var(--orange);font-weight:700}
+
+.bidbox-landing .pgrid{display:grid;grid-template-columns:1fr 1fr;gap:26px;margin-top:48px;max-width:880px;margin-left:auto;margin-right:auto}
+@media(max-width:760px){.bidbox-landing .pgrid{grid-template-columns:1fr}}
+.bidbox-landing .pcard{background:var(--white);border:1px solid var(--line);border-radius:16px;padding:38px;position:relative}
+.bidbox-landing .pcard.featured{border:2px solid var(--blue);box-shadow:0 24px 60px -34px rgba(9,82,253,.4)}
+.bidbox-landing .pcard .badge{position:absolute;top:-13px;left:38px;background:var(--blue);color:#fff;font-family:var(--mono);font-size:11px;letter-spacing:.08em;font-weight:600;padding:4px 12px;border-radius:20px}
+.bidbox-landing .pcard h3{font-size:22px}
+.bidbox-landing .price{font-family:var(--disp);font-size:44px;font-weight:800;margin:14px 0 2px}
+.bidbox-landing .price small{font-size:16px;font-weight:500;color:var(--steel)}
+.bidbox-landing .p-note{font-family:var(--mono);font-size:12px;color:var(--steel);margin-bottom:22px}
+.bidbox-landing .pcard ul{list-style:none;margin-bottom:28px}
+.bidbox-landing .pcard li{padding:7px 0 7px 28px;position:relative;font-size:15.5px;color:var(--steel)}
+.bidbox-landing .pcard li::before{content:"✓";position:absolute;left:0;color:var(--blue);font-weight:700}
+.bidbox-landing .pcard .btn{width:100%;text-align:center}
+.bidbox-landing .p-foot{text-align:center;font-family:var(--mono);font-size:12.5px;color:var(--steel);margin-top:26px}
+
+.bidbox-landing .faq{background:var(--white);border-top:1px solid var(--line)}
+.bidbox-landing .faq-list{max-width:760px;margin:44px auto 0}
+.bidbox-landing details{border:1px solid var(--line);border-radius:var(--radius);background:var(--paper);margin-bottom:12px;overflow:hidden}
+.bidbox-landing summary{cursor:pointer;padding:18px 22px;font-weight:600;font-family:var(--disp);font-size:16.5px;list-style:none;display:flex;justify-content:space-between;align-items:center;gap:16px}
+.bidbox-landing summary::-webkit-details-marker{display:none}
+.bidbox-landing summary::after{content:"+";font-family:var(--mono);color:var(--blue);font-size:20px;font-weight:600;flex-shrink:0}
+.bidbox-landing details[open] summary::after{content:"−"}
+.bidbox-landing details .a{padding:0 22px 20px;color:var(--steel);font-size:15.5px}
+.bidbox-landing summary:focus-visible{outline:3px solid var(--blue);outline-offset:-3px}
+
+.bidbox-landing .final{background:var(--blue);color:#fff;text-align:center}
+.bidbox-landing .final h2{color:#fff;max-width:640px;margin:0 auto}
+.bidbox-landing .final p{color:#CBD8FA;margin:16px auto 30px;max-width:520px}
+.bidbox-landing .final .form-row{max-width:520px;margin:0 auto;justify-content:center}
+.bidbox-landing .final .btn-primary{background:var(--ink)}
+.bidbox-landing .final .btn-primary:hover{background:#000}
+.bidbox-landing .final .micro{color:#CBD8FA;margin-top:16px;display:block}
+.bidbox-landing .final .form-success{color:#fff}
+
+.bidbox-landing footer{background:var(--ink);color:#8D99B2;padding:64px 0 40px;font-size:14px}
+.bidbox-landing .foot-grid{display:grid;grid-template-columns:2fr 1fr 1fr 1.4fr;gap:40px;margin-bottom:44px}
+@media(max-width:820px){.bidbox-landing .foot-grid{grid-template-columns:1fr 1fr}}
+.bidbox-landing footer .logo{color:#fff;margin-bottom:14px;display:inline-block}
+.bidbox-landing footer h4{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#5B6880;margin-bottom:16px;font-weight:600}
+.bidbox-landing footer a{color:#B9C2D4;text-decoration:none;display:block;padding:4px 0}
+.bidbox-landing footer a:hover{color:#fff}
+.bidbox-landing .foot-one-liner{max-width:340px;line-height:1.7}
+.bidbox-landing .foot-form{display:flex;gap:8px;margin-top:10px}
+.bidbox-landing .foot-form input{flex:1;padding:11px 13px;border-radius:8px;border:1px solid #2A3650;background:#141E33;color:#fff;font-size:14px;font-family:var(--body)}
+.bidbox-landing .foot-form button{padding:11px 16px;border-radius:8px;border:none;background:var(--blue);color:#fff;font-family:var(--disp);font-weight:700;cursor:pointer}
+.bidbox-landing .foot-bottom{border-top:1px solid #22304A;padding-top:26px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;font-family:var(--mono);font-size:12px}

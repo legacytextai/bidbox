@@ -439,6 +439,33 @@ export type Database = {
         }
         Relationships: []
       }
+      landing_leads: {
+        Row: {
+          created_at: string
+          email: string
+          form_type: string
+          id: string
+          source_path: string | null
+          user_agent: string | null
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          form_type: string
+          id?: string
+          source_path?: string | null
+          user_agent?: string | null
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          form_type?: string
+          id?: string
+          source_path?: string | null
+          user_agent?: string | null
+        }
+        Relationships: []
+      }
       opportunity_bid_items: {
         Row: {
           created_at: string
