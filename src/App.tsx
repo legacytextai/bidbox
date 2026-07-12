@@ -60,6 +60,7 @@ const App = () => (
             <Route path="/privacy" element={<PrivacyPolicy />} />
             <Route path="/terms" element={<TermsOfService />} />
             <Route path="/admin/coverage" element={<AdminCoverage />} />
+            <Route path="/admin/leads" element={<AdminLeads />} />
             <Route path="/admin/analytics" element={<AdminAnalytics />} />
             <Route path="/admin/network-subs" element={<AdminNetworkSubs />} />
             <Route path="/settings/subcontractors" element={<SubcontractorDirectory />} />
