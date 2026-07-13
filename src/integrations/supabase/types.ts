@@ -578,6 +578,7 @@ export type Database = {
           auto_status: string | null
           auto_status_reason: string | null
           bid_due_at: string | null
+          canonical_candidate_id: string | null
           converted_project_id: string | null
           county: string | null
           crawl_data: Json | null
@@ -593,7 +594,12 @@ export type Database = {
           estimated_value: number | null
           estimated_value_high: number | null
           estimated_value_low: number | null
+          global_exclusion_code: string | null
+          global_exclusion_reason: string | null
           id: string
+          ingestion_issue_code: string | null
+          ingestion_issue_reason: string | null
+          ingestion_status: string
           last_crawled_at: string | null
           last_metadata_changed_at: string | null
           last_metadata_refreshed_at: string | null
@@ -637,6 +643,7 @@ export type Database = {
           auto_status?: string | null
           auto_status_reason?: string | null
           bid_due_at?: string | null
+          canonical_candidate_id?: string | null
           converted_project_id?: string | null
           county?: string | null
           crawl_data?: Json | null
@@ -652,7 +659,12 @@ export type Database = {
           estimated_value?: number | null
           estimated_value_high?: number | null
           estimated_value_low?: number | null
+          global_exclusion_code?: string | null
+          global_exclusion_reason?: string | null
           id?: string
+          ingestion_issue_code?: string | null
+          ingestion_issue_reason?: string | null
+          ingestion_status?: string
           last_crawled_at?: string | null
           last_metadata_changed_at?: string | null
           last_metadata_refreshed_at?: string | null
@@ -696,6 +708,7 @@ export type Database = {
           auto_status?: string | null
           auto_status_reason?: string | null
           bid_due_at?: string | null
+          canonical_candidate_id?: string | null
           converted_project_id?: string | null
           county?: string | null
           crawl_data?: Json | null
@@ -711,7 +724,12 @@ export type Database = {
           estimated_value?: number | null
           estimated_value_high?: number | null
           estimated_value_low?: number | null
+          global_exclusion_code?: string | null
+          global_exclusion_reason?: string | null
           id?: string
+          ingestion_issue_code?: string | null
+          ingestion_issue_reason?: string | null
+          ingestion_status?: string
           last_crawled_at?: string | null
           last_metadata_changed_at?: string | null
           last_metadata_refreshed_at?: string | null
@@ -756,6 +774,13 @@ export type Database = {
             columns: ["analysis_task_id"]
             isOneToOne: false
             referencedRelation: "agent_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "opportunity_candidates_canonical_candidate_id_fkey"
+            columns: ["canonical_candidate_id"]
+            isOneToOne: false
+            referencedRelation: "opportunity_candidates"
             referencedColumns: ["id"]
           },
           {
@@ -2045,6 +2070,67 @@ export type Database = {
           state_code?: string | null
         }
         Relationships: []
+      }
+      user_opportunity_qualifications: {
+        Row: {
+          bid_profile_id: string | null
+          created_at: string
+          opportunity_candidate_id: string
+          primary_reason: string
+          qualification_score: number
+          qualified_at: string
+          reasons: string[]
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          bid_profile_id?: string | null
+          created_at?: string
+          opportunity_candidate_id: string
+          primary_reason: string
+          qualification_score: number
+          qualified_at?: string
+          reasons?: string[]
+          status: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          bid_profile_id?: string | null
+          created_at?: string
+          opportunity_candidate_id?: string
+          primary_reason?: string
+          qualification_score?: number
+          qualified_at?: string
+          reasons?: string[]
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_opportunity_qualifications_bid_profile_id_fkey"
+            columns: ["bid_profile_id"]
+            isOneToOne: false
+            referencedRelation: "gc_qualification_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_opportunity_qualifications_opportunity_candidate_id_fkey"
+            columns: ["opportunity_candidate_id"]
+            isOneToOne: false
+            referencedRelation: "opportunity_candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_opportunity_qualifications_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_roles: {
         Row: {
