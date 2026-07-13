@@ -127,8 +127,9 @@
 .bidbox-landing .seo-block strong{color:var(--ink)}
 
 .bidbox-landing .magnet{background:var(--blue-tint)}
-.bidbox-landing .magnet-inner{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center}
+.bidbox-landing .magnet-inner{display:grid;grid-template-columns:1.1fr .9fr;gap:48px;align-items:center}
 @media(max-width:820px){.bidbox-landing .magnet-inner{grid-template-columns:1fr}}
+.bidbox-landing .magnet h2{max-width:520px}
 .bidbox-landing .magnet p{color:var(--steel);margin-top:16px;max-width:520px}
 .bidbox-landing .form-row{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
 .bidbox-landing .form-row input{flex:1;min-width:220px;padding:14px 16px;border:1.5px solid var(--line);border-radius:var(--radius);font-family:var(--body);font-size:15.5px;background:var(--white);color:var(--ink);caret-color:var(--ink);-webkit-text-fill-color:var(--ink);pointer-events:auto}
