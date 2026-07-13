@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { Radar, BarChart3, Globe } from "lucide-react";
+import { Radar, BarChart3, Globe, Mail } from "lucide-react";
 
 /**
  * Admin section navigation registry.
@@ -38,5 +38,11 @@ export const ADMIN_NAV: AdminNavItem[] = [
     path: "/admin/network-subs",
     icon: Globe,
     description: "Curated network subcontractor pool management",
+  },
+  {
+    title: "Leads",
+    path: "/admin/leads",
+    icon: Mail,
+    description: "Landing page lead submissions",
   },
 ];
