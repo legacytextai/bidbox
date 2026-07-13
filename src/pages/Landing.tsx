@@ -459,6 +459,10 @@ const Landing = () => {
               <form className="foot-form" onSubmit={news.submit} noValidate>
                 <input
                   type="email"
+                  name="email"
+                  autoComplete="email"
+                  inputMode="email"
+                  spellCheck={false}
                   placeholder="Your email"
                   aria-label="Email for the Bid Report"
                   value={news.email}
