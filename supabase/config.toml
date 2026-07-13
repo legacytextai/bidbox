@@ -41,3 +41,6 @@ verify_jwt = false
 
 [functions.download-opportunity-document]
 verify_jwt = true
+
+[functions.notify-lead]
+verify_jwt = false
