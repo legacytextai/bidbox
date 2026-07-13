@@ -825,6 +825,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "opportunity_candidates_recovery_last_task_id_fkey"
+            columns: ["recovery_last_task_id"]
+            isOneToOne: false
+            referencedRelation: "agent_tasks"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "opportunity_candidates_reviewed_by_fkey"
             columns: ["reviewed_by"]
             isOneToOne: false
@@ -1328,6 +1335,75 @@ export type Database = {
           },
           {
             foreignKeyName: "opportunity_intelligence_reports_opportunity_candidate_id_fkey"
+            columns: ["opportunity_candidate_id"]
+            isOneToOne: false
+            referencedRelation: "opportunity_candidates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      opportunity_recovery_audits: {
+        Row: {
+          after_values: Json
+          agent_task_id: string | null
+          attempt_number: number
+          before_values: Json
+          confidence: string | null
+          created_at: string
+          diagnostics: Json
+          error_code: string | null
+          error_reason: string | null
+          extraction_source: string | null
+          fields_changed: string[]
+          id: string
+          opportunity_candidate_id: string
+          outcome: string
+          trigger: string
+        }
+        Insert: {
+          after_values?: Json
+          agent_task_id?: string | null
+          attempt_number: number
+          before_values?: Json
+          confidence?: string | null
+          created_at?: string
+          diagnostics?: Json
+          error_code?: string | null
+          error_reason?: string | null
+          extraction_source?: string | null
+          fields_changed?: string[]
+          id?: string
+          opportunity_candidate_id: string
+          outcome: string
+          trigger: string
+        }
+        Update: {
+          after_values?: Json
+          agent_task_id?: string | null
+          attempt_number?: number
+          before_values?: Json
+          confidence?: string | null
+          created_at?: string
+          diagnostics?: Json
+          error_code?: string | null
+          error_reason?: string | null
+          extraction_source?: string | null
+          fields_changed?: string[]
+          id?: string
+          opportunity_candidate_id?: string
+          outcome?: string
+          trigger?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "opportunity_recovery_audits_agent_task_id_fkey"
+            columns: ["agent_task_id"]
+            isOneToOne: false
+            referencedRelation: "agent_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "opportunity_recovery_audits_opportunity_candidate_id_fkey"
             columns: ["opportunity_candidate_id"]
             isOneToOne: false
             referencedRelation: "opportunity_candidates"
@@ -1890,6 +1966,90 @@ export type Database = {
           },
         ]
       }
+      qualification_jobs: {
+        Row: {
+          batch_count: number
+          bid_profile_id: string
+          completed_at: string | null
+          created_at: string
+          error_code: string | null
+          error_message: string | null
+          evaluation_time_ms: number | null
+          green_count: number
+          id: string
+          processed_candidates: number
+          profile_version: number
+          query_time_ms: number | null
+          red_count: number
+          started_at: string | null
+          status: string
+          total_candidates: number
+          updated_at: string
+          upsert_time_ms: number | null
+          user_id: string
+          yellow_count: number
+        }
+        Insert: {
+          batch_count?: number
+          bid_profile_id: string
+          completed_at?: string | null
+          created_at?: string
+          error_code?: string | null
+          error_message?: string | null
+          evaluation_time_ms?: number | null
+          green_count?: number
+          id?: string
+          processed_candidates?: number
+          profile_version: number
+          query_time_ms?: number | null
+          red_count?: number
+          started_at?: string | null
+          status?: string
+          total_candidates?: number
+          updated_at?: string
+          upsert_time_ms?: number | null
+          user_id: string
+          yellow_count?: number
+        }
+        Update: {
+          batch_count?: number
+          bid_profile_id?: string
+          completed_at?: string | null
+          created_at?: string
+          error_code?: string | null
+          error_message?: string | null
+          evaluation_time_ms?: number | null
+          green_count?: number
+          id?: string
+          processed_candidates?: number
+          profile_version?: number
+          query_time_ms?: number | null
+          red_count?: number
+          started_at?: string | null
+          status?: string
+          total_candidates?: number
+          updated_at?: string
+          upsert_time_ms?: number | null
+          user_id?: string
+          yellow_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qualification_jobs_bid_profile_id_fkey"
+            columns: ["bid_profile_id"]
+            isOneToOne: false
+            referencedRelation: "gc_qualification_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "qualification_jobs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       saved_opportunities: {
         Row: {
           created_at: string
@@ -2098,90 +2258,6 @@ export type Database = {
         }
         Relationships: []
       }
-      qualification_jobs: {
-        Row: {
-          batch_count: number
-          bid_profile_id: string
-          completed_at: string | null
-          created_at: string
-          error_code: string | null
-          error_message: string | null
-          evaluation_time_ms: number | null
-          green_count: number
-          id: string
-          processed_candidates: number
-          profile_version: number
-          query_time_ms: number | null
-          red_count: number
-          started_at: string | null
-          status: string
-          total_candidates: number
-          updated_at: string
-          upsert_time_ms: number | null
-          user_id: string
-          yellow_count: number
-        }
-        Insert: {
-          batch_count?: number
-          bid_profile_id: string
-          completed_at?: string | null
-          created_at?: string
-          error_code?: string | null
-          error_message?: string | null
-          evaluation_time_ms?: number | null
-          green_count?: number
-          id?: string
-          processed_candidates?: number
-          profile_version: number
-          query_time_ms?: number | null
-          red_count?: number
-          started_at?: string | null
-          status?: string
-          total_candidates?: number
-          updated_at?: string
-          upsert_time_ms?: number | null
-          user_id: string
-          yellow_count?: number
-        }
-        Update: {
-          batch_count?: number
-          bid_profile_id?: string
-          completed_at?: string | null
-          created_at?: string
-          error_code?: string | null
-          error_message?: string | null
-          evaluation_time_ms?: number | null
-          green_count?: number
-          id?: string
-          processed_candidates?: number
-          profile_version?: number
-          query_time_ms?: number | null
-          red_count?: number
-          started_at?: string | null
-          status?: string
-          total_candidates?: number
-          updated_at?: string
-          upsert_time_ms?: number | null
-          user_id?: string
-          yellow_count?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "qualification_jobs_bid_profile_id_fkey"
-            columns: ["bid_profile_id"]
-            isOneToOne: false
-            referencedRelation: "gc_qualification_profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "qualification_jobs_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       user_opportunity_qualifications: {
         Row: {
           active: boolean
@@ -2189,9 +2265,9 @@ export type Database = {
           candidate_metadata_version: string | null
           created_at: string
           opportunity_candidate_id: string
+          primary_reason: string
           profile_version: number
           qualification_job_id: string | null
-          primary_reason: string
           qualification_score: number
           qualified_at: string
           reasons: string[]
@@ -2205,9 +2281,9 @@ export type Database = {
           candidate_metadata_version?: string | null
           created_at?: string
           opportunity_candidate_id: string
+          primary_reason: string
           profile_version?: number
           qualification_job_id?: string | null
-          primary_reason: string
           qualification_score: number
           qualified_at?: string
           reasons?: string[]
@@ -2221,9 +2297,9 @@ export type Database = {
           candidate_metadata_version?: string | null
           created_at?: string
           opportunity_candidate_id?: string
+          primary_reason?: string
           profile_version?: number
           qualification_job_id?: string | null
-          primary_reason?: string
           qualification_score?: number
           qualified_at?: string
           reasons?: string[]
@@ -2292,6 +2368,10 @@ export type Database = {
         Args: { p_ttl_seconds?: number; p_worker_id: string }
         Returns: boolean
       }
+      activate_qualification_job: {
+        Args: { p_job_id: string }
+        Returns: boolean
+      }
       get_active_gcs_30d: { Args: never; Returns: number }
       get_admin_gc_metrics: {
         Args: never
@@ -2329,8 +2409,35 @@ export type Database = {
         Returns: boolean
       }
       queue_qualification_rebuild: {
-        Args: { p_bid_profile_id?: string | null }
-        Returns: Database["public"]["Tables"]["qualification_jobs"]["Row"]
+        Args: { p_bid_profile_id?: string }
+        Returns: {
+          batch_count: number
+          bid_profile_id: string
+          completed_at: string | null
+          created_at: string
+          error_code: string | null
+          error_message: string | null
+          evaluation_time_ms: number | null
+          green_count: number
+          id: string
+          processed_candidates: number
+          profile_version: number
+          query_time_ms: number | null
+          red_count: number
+          started_at: string | null
+          status: string
+          total_candidates: number
+          updated_at: string
+          upsert_time_ms: number | null
+          user_id: string
+          yellow_count: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "qualification_jobs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       release_planetbids_lock: {
         Args: { p_worker_id: string }
