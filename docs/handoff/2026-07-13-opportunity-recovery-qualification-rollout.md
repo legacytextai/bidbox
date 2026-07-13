@@ -123,6 +123,27 @@ where key = 'planetbids_recovery_automatic_enabled';
 
 Never construct the wave population from newly created rows; use the frozen historical candidate ID set.
 
+### Representative dry run completed (2026-07-13)
+
+The read-only gate ran directly through the deployed recovery driver with no candidate, audit, or task writes. It covered 10 existing UUIDs across 10 agencies: three sources that no longer resurfaced, recent resurfacing sources, one quarantined row, records with acquired documents, records without documents, and Downey's known error-page source.
+
+| Candidate | Agency | Documents | Source | Title | Due date (UTC) | Runtime |
+|---|---|---:|---|---|---|---:|
+| `a54c998c-8805-46b2-8d8d-0930781f4e47` | City of Diamond Bar | 8 | listing API | Diamond Bar Facilities Private Event Security | 2025-04-25 01:00 | 10.550s |
+| `bd7975a1-ec44-4776-8725-8fb7ce13fdc8` | Burbank-Glendale-Pasadena Airport Authority | 28 | listing API | Self-Park Management, Valet Parking, and Courtesy Shuttle Services | 2023-05-22 23:00 | 11.525s |
+| `b6ca4405-ac66-4460-9dea-d667316a4a38` | Orange Unified School District | 42 | listing API | Install OFCI Door Entry Access Control at Multiple Sites. | 2025-12-22 22:00 | 10.959s |
+| `41d7afd6-1c88-4602-a882-34aed29f05d6` | Santa Clarita Community College District | 12 | listing API | Compact CNC Turning Centers | 2022-07-07 22:00 | 9.327s |
+| `a6cff9c3-b260-4fa3-ac55-837ed066f397` | City of National City | 37 | listing API | Bayshore Bikeway Segment 5 and Connections (PLA project) | 2025-07-23 00:00 | 10.169s |
+| `502200ab-bde8-4f4b-96bf-ef20168fd72c` | City of Anaheim | 14 | listing API | TREE TRIMMING, CARE, AND MAINTENANCE SERVICES FOR ARMD EAST | 2024-12-17 22:00 | 9.437s |
+| `feb2828a-1a45-416a-9b71-c25eecac254a` | Orange County Sanitation District | 40 | listing API | P1-138, INDUSTRIAL CONTROL SYSTEM AND IT DATA CENTER RELOCATION AT PLANT NO. 1 | 2024-11-21 19:00 | 9.869s |
+| `8af9049a-cbec-40e7-82c8-d8cd3a312d59` | MiraCosta Community College District | 0 | listing API | College for Kids Mailer 2023 | 2022-12-15 18:00 | 10.914s |
+| `4671ee56-d809-499c-95cd-458cfd6cf026` | Downey Unified School District | 0 | listing API | Downey USD Food Services Asian Inspired Food products | 2025-07-11 19:00 | 9.565s |
+| `82bbf99e-9ae5-4780-9f10-c86e64c71fb4` | Chaffey College | 0 | listing API | BID NO. 2025CS593 MOBILE DIGITAL X-RAY SYSTEM | 2025-05-01 21:00 | 10.511s |
+
+Result: 10 attempted, 10 title recoveries, 10 due-date recoveries, 0 unresolved, 0 context deaths, 0 portal error pages, 0 database writes. Cumulative end-to-end runtime was 102.826 seconds. All dates are historical. The matched listing rows did not expose a reliable status value, so status is intentionally unknown pending later evidence. Exact Browserbase billed session-minutes were not emitted by the API result and are not inferred here.
+
+The controlled write gate remains blocked until the additive migration is applied; production did not yet expose the recovery columns/audit table at the time of this dry run.
+
 ## Rollback
 
 - Disable automatic recovery by setting `planetbids_recovery_automatic_enabled.enabled` to false.
