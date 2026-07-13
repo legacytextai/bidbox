@@ -13,6 +13,8 @@ const { acquireCaltransDocuments } = require('./drivers/caltrans_documents');
 const { acquireOpenGovDocuments } = require('./drivers/opengov_documents');
 const { acquireCalEprocureDocuments } = require('./drivers/caleprocure_documents');
 const { classifyIngestionCandidate } = require('./lib/opportunity-policy');
+const { runPlanetBidsCandidateRecovery } = require('./drivers/planetbids_recovery');
+const { runQualificationCandidateFanout, runQualificationRebuild } = require('./drivers/qualification_jobs');
 const {
   queueDocumentProcessingForCandidate,
   runDocumentProcessing,
@@ -144,6 +146,27 @@ function portalOwnedCandidateFields({ source_id, source_name, portal_type, candi
     ingestion_issue_code: ingestion.code,
     ingestion_issue_reason: ingestion.reason,
   };
+}
+
+function safePortalRefreshFields(existing, incoming) {
+  const merged = { ...incoming };
+  for (const [field, value] of Object.entries(incoming)) {
+    if (value === null || value === undefined || (typeof value === 'string' && value.trim() === '')) {
+      if (existing[field] !== null && existing[field] !== undefined && existing[field] !== '') {
+        merged[field] = existing[field];
+      }
+    }
+  }
+  if (existing.crawl_data && incoming.crawl_data && typeof existing.crawl_data === 'object' && typeof incoming.crawl_data === 'object') {
+    merged.crawl_data = { ...existing.crawl_data, ...incoming.crawl_data };
+  }
+  // A failed/empty refresh cannot quarantine a previously valid, titled row.
+  if (existing.ingestion_status === 'valid' && String(existing.raw_title ?? '').trim() && incoming.ingestion_status === 'quarantined') {
+    merged.ingestion_status = 'valid';
+    merged.ingestion_issue_code = existing.ingestion_issue_code ?? null;
+    merged.ingestion_issue_reason = existing.ingestion_issue_reason ?? null;
+  }
+  return merged;
 }
 
 function supportsDocumentPrefetch(portalType) {
@@ -323,7 +346,7 @@ async function persistScannedCandidate({ supabase, source_id, source_name, porta
   const now = new Date().toISOString();
   const { data: existing, error: lookupError } = await supabase
     .from('opportunity_candidates')
-    .select('id, source_id, source_url, portal_type, raw_title, agency, bid_due_at, crawl_data, converted_project_id, analysis_status, document_acquisition_status, document_processing_status, opportunity_intelligence_status, last_metadata_changed_at, metadata_refresh_count')
+    .select('id, source_id, source_url, portal_type, raw_title, agency, bid_due_at, estimated_value, estimated_value_low, estimated_value_high, county, project_address, required_licenses, required_naics, portal_bid_id, portal_department, crawl_data, ingestion_status, ingestion_issue_code, ingestion_issue_reason, converted_project_id, analysis_status, document_acquisition_status, document_processing_status, opportunity_intelligence_status, last_metadata_changed_at, metadata_refresh_count')
     .eq('source_url', candidate.source_url)
     .maybeSingle();
   if (lookupError) throw new Error(`Candidate lookup failed: ${lookupError.message}`);
@@ -341,7 +364,7 @@ async function persistScannedCandidate({ supabase, source_id, source_name, porta
         opportunity_lifecycle_status: 'discovered',
         opportunity_intelligence_status: 'not_requested',
       })
-      .select('id, source_id, source_url, portal_type, raw_title, agency, bid_due_at, crawl_data, converted_project_id, analysis_status, document_acquisition_status, document_processing_status, opportunity_intelligence_status, last_metadata_changed_at, metadata_refresh_count')
+      .select('id, source_id, source_url, portal_type, raw_title, agency, bid_due_at, crawl_data, ingestion_status, converted_project_id, analysis_status, document_acquisition_status, document_processing_status, opportunity_intelligence_status, last_metadata_changed_at, metadata_refresh_count')
       .single();
     if (insertError) throw new Error(`Candidate insert failed: ${insertError.message}`);
     await emitPreBidDebugReport(candidate, inserted, 'INSERT', supabase, sourceTaskId);
@@ -408,9 +431,10 @@ async function persistScannedCandidate({ supabase, source_id, source_name, porta
     return { state: 'new', candidate: inserted, metadataChanged: true, preparation: { queued: false, duplicate: false, skipped: true, reason: 'oml_scan_no_auto_trigger' }, bidItemTask, portalIntelligenceTask, documentPrefetchTask };
   }
 
-  const metadataChanged = changedPortalMetadata(existing, portalFields);
+  const safePortalFields = safePortalRefreshFields(existing, portalFields);
+  const metadataChanged = changedPortalMetadata(existing, safePortalFields);
   const updatePayload = {
-    ...portalFields,
+    ...safePortalFields,
     last_metadata_refreshed_at: now,
     last_metadata_changed_at: metadataChanged ? now : existing.last_metadata_changed_at,
     metadata_refresh_count: (existing.metadata_refresh_count ?? 0) + 1,
@@ -422,7 +446,7 @@ async function persistScannedCandidate({ supabase, source_id, source_name, porta
     .from('opportunity_candidates')
     .update(updatePayload)
     .eq('id', existing.id)
-    .select('id, source_id, source_url, portal_type, raw_title, agency, bid_due_at, crawl_data, converted_project_id, analysis_status, document_acquisition_status, document_processing_status, opportunity_intelligence_status, last_metadata_changed_at, metadata_refresh_count')
+    .select('id, source_id, source_url, portal_type, raw_title, agency, bid_due_at, crawl_data, ingestion_status, converted_project_id, analysis_status, document_acquisition_status, document_processing_status, opportunity_intelligence_status, last_metadata_changed_at, metadata_refresh_count')
     .single();
   if (updateError) throw new Error(`Candidate metadata refresh failed: ${updateError.message}`);
 
@@ -538,6 +562,7 @@ async function runScan(task, supabase, driver) {
     candidates,
     errors: driverErrors,
     errorMessages = [],
+    telemetry = {},
   } = await driver(
     { source_id, source_name, listing_url, portal_type: resolvedPortalType },
     log
@@ -550,6 +575,26 @@ async function runScan(task, supabase, driver) {
   let unchangedCount = 0;
   let preparationQueued = 0;
   let preparationDuplicates = 0;
+
+  // Existing rows that fail authoritative extraction are enrolled for a later
+  // bounded retry. New empty shells are never inserted as candidates.
+  if (resolvedPortalType === 'planetbids' && Array.isArray(telemetry.recovery_candidates)) {
+    for (const failure of telemetry.recovery_candidates) {
+      const { data: existingFailure } = await supabase.from('opportunity_candidates')
+        .select('id, raw_title, ingestion_status')
+        .eq('source_url', failure.source_url).maybeSingle();
+      if (!existingFailure?.id || String(existingFailure.raw_title ?? '').trim()) continue;
+      const { error: enrollmentError } = await supabase.from('opportunity_candidates').update({
+        ingestion_status: 'quarantined',
+        ingestion_issue_code: failure.error_code,
+        ingestion_issue_reason: `PlanetBids detail extraction failed (${failure.error_code})`,
+        recovery_next_attempt_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+        recovery_last_error_code: failure.error_code,
+        recovery_last_error_reason: `PlanetBids detail extraction failed (${failure.error_code})`,
+      }).eq('id', existingFailure.id);
+      if (!enrollmentError) telemetry.candidates_quarantined = (telemetry.candidates_quarantined ?? 0) + 1;
+    }
+  }
 
   for (const candidate of candidates) {
     try {
@@ -678,7 +723,7 @@ async function runScan(task, supabase, driver) {
     }
   }
 
-  return { found, new: newCount, refreshed: refreshedCount, unchanged: unchangedCount, preparationQueued, preparationDuplicates, errors, errorSummary, logs };
+  return { found, new: newCount, refreshed: refreshedCount, unchanged: unchangedCount, preparationQueued, preparationDuplicates, errors, errorSummary, telemetry, logs };
 }
 
 async function runPlanetBidsScan(task, supabase) {
@@ -1133,7 +1178,7 @@ async function claimNextTask() {
     .from('agent_tasks')
     .select('*')
     .eq('status', 'pending')
-    .in('task_type', ['planetbids_scan', 'caltrans_scan', 'lacounty_dpw_scan', 'lacmta_scan', 'caleprocure_scan', 'opengov_scan', 'bid_item_scan', 'portal_intelligence', 'document_prefetch', 'project_analysis', 'document_processing', 'project_intelligence'])
+    .in('task_type', ['planetbids_scan', 'planetbids_candidate_recovery', 'qualification_rebuild', 'qualification_candidate_fanout', 'caltrans_scan', 'lacounty_dpw_scan', 'lacmta_scan', 'caleprocure_scan', 'opengov_scan', 'bid_item_scan', 'portal_intelligence', 'document_prefetch', 'project_analysis', 'document_processing', 'project_intelligence'])
     .order('priority', { ascending: false })
     .order('created_at', { ascending: true })
     .limit(1)
@@ -1230,6 +1275,19 @@ async function processTask(task) {
     let result;
     if (task.task_type === 'planetbids_scan') {
       result = await runPlanetBidsScan(task, supabase);
+    } else if (task.task_type === 'planetbids_candidate_recovery') {
+      const log = (msg) => console.log(`[${ts()}] [recovery:${task.payload?.candidate_id ?? 'unknown'}] ${msg}`);
+      const workerId = crypto.randomUUID();
+      await acquirePlanetBidsLock(workerId, log);
+      try {
+        result = await runPlanetBidsCandidateRecovery({ task, supabase, log });
+      } finally {
+        await releasePlanetBidsLock(workerId, log);
+      }
+    } else if (task.task_type === 'qualification_rebuild') {
+      result = await runQualificationRebuild({ task, supabase, log: (msg) => console.log(`[${ts()}] ${msg}`) });
+    } else if (task.task_type === 'qualification_candidate_fanout') {
+      result = await runQualificationCandidateFanout({ task, supabase, log: (msg) => console.log(`[${ts()}] ${msg}`) });
     } else if (task.task_type === 'caltrans_scan') {
       result = await runCaltransScan(task, supabase);
     } else if (task.task_type === 'lacounty_dpw_scan') {
@@ -1256,7 +1314,13 @@ async function processTask(task) {
       throw new Error(`Unsupported task type: ${task.task_type}`);
     }
 
-    const taskResult = ['planetbids_scan', 'caltrans_scan', 'lacounty_dpw_scan', 'lacmta_scan', 'caleprocure_scan', 'opengov_scan'].includes(task.task_type)
+    const taskResult = task.task_type === 'planetbids_candidate_recovery'
+      ? { ...result, phase: 'planetbids_candidate_recovery_v1' }
+      : task.task_type === 'qualification_rebuild'
+      ? { ...result, phase: 'qualification_rebuild_v1' }
+      : task.task_type === 'qualification_candidate_fanout'
+      ? { ...result, phase: 'qualification_candidate_fanout_v1' }
+      : ['planetbids_scan', 'caltrans_scan', 'lacounty_dpw_scan', 'lacmta_scan', 'caleprocure_scan', 'opengov_scan'].includes(task.task_type)
       ? {
           found: result.found,
           new: result.new,
@@ -1265,6 +1329,16 @@ async function processTask(task) {
           opportunity_intelligence_queued: result.preparationQueued ?? 0,
           opportunity_intelligence_duplicates: result.preparationDuplicates ?? 0,
           errors: result.errors,
+          candidates_discovered: result.telemetry?.candidates_discovered ?? result.found,
+          candidates_fully_extracted: result.telemetry?.candidates_fully_extracted ?? result.found,
+          candidates_quarantined: result.telemetry?.candidates_quarantined ?? 0,
+          candidates_queued_for_recovery: result.telemetry?.candidates_queued_for_recovery ?? 0,
+          extraction_failures: result.telemetry?.extraction_failures ?? 0,
+          portal_errors: result.telemetry?.portal_errors ?? 0,
+          empty_shells: result.telemetry?.empty_shells ?? 0,
+          context_deaths: result.telemetry?.context_deaths ?? 0,
+          retryable_failures: result.telemetry?.retryable_failures ?? 0,
+          terminal_failures: result.telemetry?.terminal_failures ?? 0,
           error_summary: result.errorSummary,
           phase: task.task_type === 'caltrans_scan'
             ? 'caltrans_discovery_v1'
@@ -1362,7 +1436,9 @@ async function processTask(task) {
           intelligence_status: result.project_intelligence_task_id ? 'queued' : 'not_generated',
         };
 
-    const taskError = task.task_type === 'project_analysis'
+    const taskError = ['planetbids_candidate_recovery', 'qualification_rebuild', 'qualification_candidate_fanout'].includes(task.task_type)
+      ? null
+      : task.task_type === 'project_analysis'
       ? (result.acquisition_status === 'failed' ? result.errorSummary : null)
       : ['bid_item_scan', 'portal_intelligence', 'document_prefetch'].includes(task.task_type)
       ? null

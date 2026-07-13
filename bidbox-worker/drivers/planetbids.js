@@ -1,5 +1,6 @@
 const { chromium } = require('playwright');
 const { createBrowserbaseSessionId } = require('../lib/browserbase');
+const { extractExactApiMetadata } = require('../lib/planetbids-recovery');
 
 function extractBidId(url) {
   const m = url.match(/\/bo-detail\/(\d+)/);
@@ -218,6 +219,28 @@ async function waitForDocumentReady(page, timeout = 30000) {
     () => ['interactive', 'complete'].includes(document.readyState),
     { timeout }
   ).then(() => true).catch(() => false);
+}
+
+async function waitForDetailReadiness(page, targetBidId, apiMetadataByBidId, timeout = Number(process.env.PLANETBIDS_SCAN_DETAIL_TIMEOUT_MS ?? 15000)) {
+  const started = Date.now();
+  while (Date.now() - started < timeout) {
+    const api = apiMetadataByBidId.get(String(targetBidId));
+    if (api?.raw_title) return { outcome: 'detail_api', api, duration_ms: Date.now() - started };
+    const state = await page.evaluate(() => {
+      const body = (document.body?.innerText ?? '').replace(/\s+/g, ' ').trim();
+      return {
+        body_chars: body.length,
+        detail_root: Boolean(document.querySelector('#bo-detail-content, [data-test*="bo-detail" i], [class*="bo-detail" i], [class*="bid-detail" i]')),
+        terminal_error: /something went wrong|service unavailable|project (?:is )?unavailable|not found|session expired/i.test(body),
+      };
+    }).catch((error) => {
+      throw error;
+    });
+    if (state.terminal_error) return { outcome: 'portal_error_page', duration_ms: Date.now() - started };
+    if (state.detail_root && state.body_chars > 40) return { outcome: 'rendered_page', duration_ms: Date.now() - started };
+    await page.waitForTimeout(500);
+  }
+  return { outcome: 'detail_timeout', duration_ms: Date.now() - started };
 }
 
 function parseFoundBidsCount(value) {
@@ -498,6 +521,17 @@ async function scrapePlanetBids(payload, log) {
   const candidates = [];
   const errorMessages = [];
   let errors = 0;
+  const telemetry = {
+    candidates_discovered: 0,
+    candidates_fully_extracted: 0,
+    extraction_failures: 0,
+    portal_errors: 0,
+    empty_shells: 0,
+    context_deaths: 0,
+    retryable_failures: 0,
+    terminal_failures: 0,
+    recovery_candidates: [],
+  };
 
   const recordError = (message) => {
     const clean = String(message ?? 'Unknown error');
@@ -510,7 +544,7 @@ async function scrapePlanetBids(payload, log) {
 
   if (!bbApiKey) {
     recordError('BROWSERBASE_API_KEY not configured');
-    return { candidates, errors: 1, errorMessages };
+    return { candidates, errors: 1, errorMessages, telemetry };
   }
 
   let browser = null;
@@ -551,6 +585,7 @@ async function scrapePlanetBids(payload, log) {
         let apiResponsesObserved = 0;
         const portalId = extractPortalId(listing_url);
         const apiDetailUrls = new Set();
+        const apiMetadataByBidId = new Map();
         const apiExtractionTasks = [];
         page.on('request', (req) => {
           if (req.url().includes('api-external.prod.planetbids.com')) {
@@ -562,14 +597,16 @@ async function scrapePlanetBids(payload, log) {
           if (isPlanetBidsApiResponse(res)) {
             apiResponsesObserved++;
             const responseUrl = res.url();
-            apiExtractionTasks.push(
-              res.json()
-                .then((json) => collectPlanetBidsApiDetailUrls(json, portalId, responseUrl))
-                .then((urls) => {
-                  for (const url of urls) apiDetailUrls.add(url);
-                })
-                .catch(() => {})
-            );
+            apiExtractionTasks.push(res.json().then((json) => {
+              const urls = collectPlanetBidsApiDetailUrls(json, portalId, responseUrl);
+              for (const url of urls) {
+                apiDetailUrls.add(url);
+                const responseBidId = extractBidId(url);
+                if (!responseBidId) continue;
+                const exact = extractExactApiMetadata(json, responseBidId, responseUrl, res.status());
+                if (exact) apiMetadataByBidId.set(String(responseBidId), exact);
+              }
+            }).catch(() => {}));
           }
         });
 
@@ -629,6 +666,7 @@ async function scrapePlanetBids(payload, log) {
         }
 
         const targetCount = detailUrlFallbacks.length > 0 ? detailUrlFallbacks.length : rowCount;
+        telemetry.candidates_discovered = targetCount;
 
         if (targetCount === 0) {
           const diagnostics = await captureZeroRowDiagnostics(page);
@@ -677,6 +715,17 @@ async function scrapePlanetBids(payload, log) {
             const bidId = extractBidId(detailUrl);
             if (!bidId) {
               log(`[${source_name}] Item ${i}: unexpected detail URL: ${detailUrl} — skipping`);
+              errors++;
+              continue;
+            }
+
+            const readiness = await waitForDetailReadiness(page, bidId, apiMetadataByBidId);
+            if (readiness.outcome === 'portal_error_page' || readiness.outcome === 'detail_timeout') {
+              telemetry.extraction_failures++;
+              telemetry.retryable_failures++;
+              if (readiness.outcome === 'portal_error_page') telemetry.portal_errors++;
+              recordError(`${readiness.outcome}: target_bid_id=${bidId}; url=${detailUrl}; render_wait_ms=${readiness.duration_ms}`);
+              telemetry.recovery_candidates.push({ portal_bid_id: bidId, source_url: detailUrl, error_code: readiness.outcome });
               errors++;
               continue;
             }
@@ -1083,6 +1132,16 @@ async function scrapePlanetBids(payload, log) {
               };
             });
 
+            const authoritative = readiness.api ?? apiMetadataByBidId.get(String(bidId));
+            if (authoritative) {
+              raw.raw_title = authoritative.raw_title ?? raw.raw_title;
+              raw.due_date_raw = authoritative.due_date_raw ?? raw.due_date_raw;
+              raw.department = authoritative.project_type ?? raw.department;
+              raw.county = authoritative.county ?? raw.county;
+              raw.project_address = authoritative.project_address ?? raw.project_address;
+              raw.scope_text = authoritative.scope_text ?? raw.scope_text;
+            }
+
             if (!raw.raw_title || !raw.due_date_raw) {
               const detailDiagnostics = await page.evaluate(() => ({
                 page_title: document.title,
@@ -1096,6 +1155,22 @@ async function scrapePlanetBids(payload, log) {
                 body_chars: (document.body?.innerText ?? '').length,
               })).catch(() => null);
               log(`[${source_name}] Detail metadata incomplete before normalization: url=${detailUrl}; parser=planetbids_scan_detail_body_text_v1; title=${JSON.stringify(raw.raw_title ?? null)}; bid_due=${JSON.stringify(raw.due_date_raw ?? null)}; department=${JSON.stringify(raw.department ?? null)}; county=${JSON.stringify(raw.county ?? null)}; roots=${JSON.stringify(detailDiagnostics?.root_containers ?? {})}; page_title=${JSON.stringify(detailDiagnostics?.page_title ?? '')}; body_chars=${detailDiagnostics?.body_chars ?? 0}; body_preview=${detailDiagnostics?.body_preview ?? ''}`);
+              if (!raw.raw_title) {
+                const code = (detailDiagnostics?.body_chars ?? 0) === 0 ||
+                  (detailDiagnostics?.root_containers?.ember_application && !detailDiagnostics?.root_containers?.bo_detail_content)
+                  ? 'empty_detail_shell'
+                  : /something went wrong|service unavailable/i.test(detailDiagnostics?.body_preview ?? '')
+                    ? 'portal_error_page'
+                    : 'missing_required_title';
+                telemetry.extraction_failures++;
+                telemetry.retryable_failures++;
+                if (code === 'empty_detail_shell') telemetry.empty_shells++;
+                if (code === 'portal_error_page') telemetry.portal_errors++;
+                recordError(`${code}: target_bid_id=${bidId}; url=${detailUrl}; page_title=${detailDiagnostics?.page_title ?? ''}; body_chars=${detailDiagnostics?.body_chars ?? 0}`);
+                telemetry.recovery_candidates.push({ portal_bid_id: bidId, source_url: detailUrl, error_code: code });
+                errors++;
+                continue;
+              }
             }
 
             // Preserve failed detail extraction as a traceable quarantined row;
@@ -1168,6 +1243,10 @@ async function scrapePlanetBids(payload, log) {
               commodity_codes: raw.commodity_codes,
               scope_text: raw.scope_text,
               scraped_at: new Date().toISOString(),
+              extraction_source: authoritative ? 'detail_api' : 'rendered_page',
+              extraction_confidence: authoritative ? 'authoritative' : 'high',
+              api_response_url: authoritative?.api_response_url ?? null,
+              api_response_status: authoritative?.api_response_status ?? null,
             };
 
             // Debug state travels on the candidate object, not in crawl_data.
@@ -1208,10 +1287,14 @@ async function scrapePlanetBids(payload, log) {
               _debugPreBid,
               _domInspection,
             });
+            telemetry.candidates_fully_extracted++;
 
             log(`[${source_name}] Row ${i + 1}: bid_id=${bidId} title="${(raw.raw_title ?? '').substring(0, 60)}"`);
           } catch (e) {
             recordError(`Item ${i}: error — ${e.message}`);
+            telemetry.extraction_failures++;
+            telemetry.retryable_failures++;
+            if (/context.*closed|target.*closed|browser.*closed/i.test(e.message)) telemetry.context_deaths++;
             errors++;
           }
         }
@@ -1276,11 +1359,12 @@ async function scrapePlanetBids(payload, log) {
     }
   }
 
-  return { candidates, errors, errorMessages };
+  return { candidates, errors, errorMessages, telemetry };
 }
 
 module.exports = {
   scrapePlanetBids,
+  parseBidDueDate,
   parseEstimatedValue,
   parseEstimatedValueDetails,
 };

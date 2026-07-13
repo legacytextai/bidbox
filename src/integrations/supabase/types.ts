@@ -317,6 +317,7 @@ export type Database = {
           min_project_value: number | null
           naics_codes: string[]
           profile_id: string
+          profile_version: number
           target_counties: string[]
           updated_at: string
         }
@@ -328,6 +329,7 @@ export type Database = {
           min_project_value?: number | null
           naics_codes?: string[]
           profile_id: string
+          profile_version?: number
           target_counties?: string[]
           updated_at?: string
         }
@@ -339,6 +341,7 @@ export type Database = {
           min_project_value?: number | null
           naics_codes?: string[]
           profile_id?: string
+          profile_version?: number
           target_counties?: string[]
           updated_at?: string
         }
@@ -606,6 +609,7 @@ export type Database = {
           metadata_refresh_count: number
           metadata_refresh_source: string | null
           metadata_refresh_trigger: string | null
+          metadata_version: string | null
           opportunity_intelligence_error: string | null
           opportunity_intelligence_ready_at: string | null
           opportunity_intelligence_status: string
@@ -620,6 +624,13 @@ export type Database = {
           qualification_score: number | null
           qualified_at: string | null
           raw_title: string | null
+          recovery_attempt_count: number
+          recovery_exhausted_at: string | null
+          recovery_last_attempt_at: string | null
+          recovery_last_error_code: string | null
+          recovery_last_error_reason: string | null
+          recovery_last_task_id: string | null
+          recovery_next_attempt_at: string | null
           required_licenses: string[] | null
           required_naics: string[] | null
           review_notes: string | null
@@ -671,6 +682,7 @@ export type Database = {
           metadata_refresh_count?: number
           metadata_refresh_source?: string | null
           metadata_refresh_trigger?: string | null
+          metadata_version?: string | null
           opportunity_intelligence_error?: string | null
           opportunity_intelligence_ready_at?: string | null
           opportunity_intelligence_status?: string
@@ -685,6 +697,13 @@ export type Database = {
           qualification_score?: number | null
           qualified_at?: string | null
           raw_title?: string | null
+          recovery_attempt_count?: number
+          recovery_exhausted_at?: string | null
+          recovery_last_attempt_at?: string | null
+          recovery_last_error_code?: string | null
+          recovery_last_error_reason?: string | null
+          recovery_last_task_id?: string | null
+          recovery_next_attempt_at?: string | null
           required_licenses?: string[] | null
           required_naics?: string[] | null
           review_notes?: string | null
@@ -736,6 +755,7 @@ export type Database = {
           metadata_refresh_count?: number
           metadata_refresh_source?: string | null
           metadata_refresh_trigger?: string | null
+          metadata_version?: string | null
           opportunity_intelligence_error?: string | null
           opportunity_intelligence_ready_at?: string | null
           opportunity_intelligence_status?: string
@@ -750,6 +770,13 @@ export type Database = {
           qualification_score?: number | null
           qualified_at?: string | null
           raw_title?: string | null
+          recovery_attempt_count?: number
+          recovery_exhausted_at?: string | null
+          recovery_last_attempt_at?: string | null
+          recovery_last_error_code?: string | null
+          recovery_last_error_reason?: string | null
+          recovery_last_task_id?: string | null
+          recovery_next_attempt_at?: string | null
           required_licenses?: string[] | null
           required_naics?: string[] | null
           review_notes?: string | null
@@ -2071,11 +2098,99 @@ export type Database = {
         }
         Relationships: []
       }
+      qualification_jobs: {
+        Row: {
+          batch_count: number
+          bid_profile_id: string
+          completed_at: string | null
+          created_at: string
+          error_code: string | null
+          error_message: string | null
+          evaluation_time_ms: number | null
+          green_count: number
+          id: string
+          processed_candidates: number
+          profile_version: number
+          query_time_ms: number | null
+          red_count: number
+          started_at: string | null
+          status: string
+          total_candidates: number
+          updated_at: string
+          upsert_time_ms: number | null
+          user_id: string
+          yellow_count: number
+        }
+        Insert: {
+          batch_count?: number
+          bid_profile_id: string
+          completed_at?: string | null
+          created_at?: string
+          error_code?: string | null
+          error_message?: string | null
+          evaluation_time_ms?: number | null
+          green_count?: number
+          id?: string
+          processed_candidates?: number
+          profile_version: number
+          query_time_ms?: number | null
+          red_count?: number
+          started_at?: string | null
+          status?: string
+          total_candidates?: number
+          updated_at?: string
+          upsert_time_ms?: number | null
+          user_id: string
+          yellow_count?: number
+        }
+        Update: {
+          batch_count?: number
+          bid_profile_id?: string
+          completed_at?: string | null
+          created_at?: string
+          error_code?: string | null
+          error_message?: string | null
+          evaluation_time_ms?: number | null
+          green_count?: number
+          id?: string
+          processed_candidates?: number
+          profile_version?: number
+          query_time_ms?: number | null
+          red_count?: number
+          started_at?: string | null
+          status?: string
+          total_candidates?: number
+          updated_at?: string
+          upsert_time_ms?: number | null
+          user_id?: string
+          yellow_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qualification_jobs_bid_profile_id_fkey"
+            columns: ["bid_profile_id"]
+            isOneToOne: false
+            referencedRelation: "gc_qualification_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "qualification_jobs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_opportunity_qualifications: {
         Row: {
+          active: boolean
           bid_profile_id: string | null
+          candidate_metadata_version: string | null
           created_at: string
           opportunity_candidate_id: string
+          profile_version: number
+          qualification_job_id: string | null
           primary_reason: string
           qualification_score: number
           qualified_at: string
@@ -2085,9 +2200,13 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          active?: boolean
           bid_profile_id?: string | null
+          candidate_metadata_version?: string | null
           created_at?: string
           opportunity_candidate_id: string
+          profile_version?: number
+          qualification_job_id?: string | null
           primary_reason: string
           qualification_score: number
           qualified_at?: string
@@ -2097,9 +2216,13 @@ export type Database = {
           user_id: string
         }
         Update: {
+          active?: boolean
           bid_profile_id?: string | null
+          candidate_metadata_version?: string | null
           created_at?: string
           opportunity_candidate_id?: string
+          profile_version?: number
+          qualification_job_id?: string | null
           primary_reason?: string
           qualification_score?: number
           qualified_at?: string
@@ -2121,6 +2244,13 @@ export type Database = {
             columns: ["opportunity_candidate_id"]
             isOneToOne: false
             referencedRelation: "opportunity_candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_opportunity_qualifications_qualification_job_id_fkey"
+            columns: ["qualification_job_id"]
+            isOneToOne: false
+            referencedRelation: "qualification_jobs"
             referencedColumns: ["id"]
           },
           {
@@ -2197,6 +2327,10 @@ export type Database = {
       is_company_member: {
         Args: { target_company_id: string }
         Returns: boolean
+      }
+      queue_qualification_rebuild: {
+        Args: { p_bid_profile_id?: string | null }
+        Returns: Database["public"]["Tables"]["qualification_jobs"]["Row"]
       }
       release_planetbids_lock: {
         Args: { p_worker_id: string }

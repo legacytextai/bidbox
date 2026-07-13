@@ -15,6 +15,7 @@ import { LICENSE_CLASSES } from "@/lib/licenseClasses";
 import { ALL_NAICS_CODES, NAICS_SECTORS } from "@/lib/naicsCodes";
 import { ChevronDown, X, Loader2, Check } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
+import { useQualificationJob } from "@/hooks/useQualificationJob";
 
 type SaveStage = "idle" | "saving" | "requalifying" | "done";
 
@@ -152,8 +153,10 @@ const QualificationProfile = () => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [saveStage, setSaveStage] = useState<SaveStage>("idle");
-  const saving = saveStage !== "idle";
+  const saving = saveStage === "saving";
   const [profile, setProfile] = useState<ProfileRow>(EMPTY_PROFILE);
+  const [userId, setUserId] = useState<string | null>(null);
+  const qualification = useQualificationJob(userId);
 
   const countyOptions = useMemo(
     () => CA_COUNTIES.map((c) => ({ value: c, label: c })),
@@ -184,6 +187,7 @@ const QualificationProfile = () => {
       navigate("/auth");
       return;
     }
+    setUserId(session.user.id);
 
     const { data, error } = await (supabase as any)
       .from("gc_qualification_profiles")
@@ -260,24 +264,23 @@ const QualificationProfile = () => {
         return;
       }
 
-      setSaveStage("requalifying");
-      const { data: qData, error: qError } = await supabase.functions.invoke(
-        "qualify-candidates",
-        { body: {} },
+      const { error: queueError } = await supabase.rpc(
+        "queue_qualification_rebuild",
+        { p_bid_profile_id: null },
       );
 
-      if (qError) {
+      if (queueError) {
         toast({
           title: "Profile saved",
-          description: "Re-qualification failed — please try again shortly.",
+          description: "The opportunity update could not be queued. Your previous results are unchanged.",
           variant: "destructive",
         });
       } else {
-        const evaluated = (qData as any)?.evaluated ?? 0;
         toast({
           title: "Profile saved",
-          description: `${evaluated} ${evaluated === 1 ? "opportunity" : "opportunities"} re-evaluated`,
+          description: "Updating opportunities in the background. You may leave this page.",
         });
+        await qualification.refresh();
       }
     } catch (e: any) {
       toast({
@@ -400,12 +403,6 @@ const QualificationProfile = () => {
                     Saving profile…
                   </>
                 )}
-                {saveStage === "requalifying" && (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Re-evaluating opportunities…
-                  </>
-                )}
                 {saveStage === "done" && (
                   <>
                     <Check className="mr-2 h-4 w-4" />
@@ -415,12 +412,30 @@ const QualificationProfile = () => {
                 {saveStage === "idle" && "Save Profile"}
               </Button>
 
-              {saveStage === "requalifying" && (
+              {qualification.isUpdating && (
                 <div className="w-full max-w-sm animate-fade-in space-y-2">
-                  <Progress value={undefined} className="h-1.5 overflow-hidden [&>div]:animate-[slide-in-right_1.2s_ease-in-out_infinite] [&>div]:bg-[hsl(var(--bidbox-blue))]" />
+                  <Progress
+                    value={qualification.job?.total_candidates
+                      ? (qualification.job.processed_candidates / qualification.job.total_candidates) * 100
+                      : undefined}
+                    className="h-1.5 overflow-hidden [&>div]:bg-[hsl(var(--bidbox-blue))]"
+                  />
                   <p className="text-xs text-muted-foreground text-right">
-                    Re-checking every opportunity against your new profile. This usually takes a few seconds…
+                    Opportunity evaluation in progress
+                    {qualification.job?.total_candidates
+                      ? ` — ${qualification.job.processed_candidates} of ${qualification.job.total_candidates}`
+                      : ""}. You may navigate away.
                   </p>
+                </div>
+              )}
+              {qualification.job?.status === "failed" && (
+                <div className="w-full max-w-sm text-right space-y-2">
+                  <p className="text-xs text-destructive">
+                    The update failed. Your previous complete results are still active.
+                  </p>
+                  <Button type="button" variant="outline" size="sm" onClick={() => void qualification.retry()}>
+                    Retry opportunity update
+                  </Button>
                 </div>
               )}
             </div>

@@ -33,6 +33,7 @@ import { formatProjectDateTime, formatInProjectTimezone } from "@/lib/timezoneUt
 import { getStoredFilterReasons, isQuarantined, type StoredQualification } from "@/lib/opportunityVisibility";
 import { useAuth } from "@/hooks/useAuth";
 import { toZonedTime } from "date-fns-tz";
+import { useQualificationJob } from "@/hooks/useQualificationJob";
 
 // Transient (per-tab) anchor for restoring list position when navigating back
 // from a detail page. Session-only by design — never persisted across browser
@@ -64,6 +65,7 @@ interface Candidate {
   qualification_score: number | null;
   qualified_at: string | null;
   crawl_data: any | null;
+  county: string | null;
   analysis_status: AnalysisStatus;
   analysis_task_id: string | null;
   analysis_requested_at: string | null;
@@ -180,8 +182,8 @@ const SORT_OPTIONS: { label: string; value: SortKey }[] = [
 ];
 
 
-function getCandidateCounty(c: { crawl_data: any | null }): string | null {
-  const v = c.crawl_data?.county;
+function getCandidateCounty(c: { county?: string | null; crawl_data: any | null }): string | null {
+  const v = c.county ?? c.crawl_data?.county;
   return typeof v === "string" && v.trim() ? v.trim() : null;
 }
 
@@ -319,6 +321,8 @@ const Opportunities = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user, authReady } = useAuth();
+  const qualificationJob = useQualificationJob(user?.id);
+  const completedQualificationJob = useRef<string | null>(null);
 
   const mapRow = useCallback((row: any): Candidate => ({
     id: row.id,
@@ -338,6 +342,7 @@ const Opportunities = () => {
     qualification_score: row.qualification_score ?? null,
     qualified_at: row.qualified_at ?? null,
     crawl_data: row.crawl_data ?? null,
+    county: row.county ?? row.crawl_data?.county ?? null,
     analysis_status: (row.analysis_status ?? "not_requested") as AnalysisStatus,
     analysis_task_id: row.analysis_task_id ?? null,
     analysis_requested_at: row.analysis_requested_at ?? null,
@@ -420,7 +425,8 @@ const Opportunities = () => {
       const { data: qualificationRows, error: qualificationError } = await (supabase as any)
         .from("user_opportunity_qualifications")
         .select("opportunity_candidate_id, status, primary_reason, reasons")
-        .eq("user_id", session.user.id);
+        .eq("user_id", session.user.id)
+        .eq("active", true);
       if (!qualificationError) {
         setQualificationByCandidate(new Map((qualificationRows ?? []).map((row: any) => [
           row.opportunity_candidate_id,
@@ -509,6 +515,14 @@ const Opportunities = () => {
     };
     checkAuth();
   }, [navigate, loadCandidates, user, authReady]);
+
+  useEffect(() => {
+    if (qualificationJob.job?.status !== "complete") return;
+    if (completedQualificationJob.current === qualificationJob.job.id) return;
+    completedQualificationJob.current = qualificationJob.job.id;
+    void loadCandidates({ silent: true });
+    toast({ title: "Opportunities updated", description: "Your latest Bid Profile results are now active." });
+  }, [qualificationJob.job?.id, qualificationJob.job?.status, loadCandidates, toast]);
 
   // Realtime: opportunity_candidates INSERT/UPDATE
   useEffect(() => {
@@ -947,6 +961,8 @@ const Opportunities = () => {
     };
     const saved = savedCandidateIds.has(candidate.id);
     const filterReasons = getStoredFilterReasons(candidate, qualificationByCandidate.get(candidate.id));
+    const storedQualification = qualificationByCandidate.get(candidate.id);
+    const countyVerified = Boolean(getCandidateCounty(candidate));
 
     return (
       <div
@@ -1023,6 +1039,20 @@ const Opportunities = () => {
               </span>
             </div>
           )}
+          <div className="flex flex-wrap gap-1.5">
+            {qualificationJob.hasBidProfile && !storedQualification && (
+              <Badge variant="outline" className="text-[10px] text-muted-foreground">Not yet evaluated</Badge>
+            )}
+            {qualificationJob.hasBidProfile && !countyVerified && (
+              <Badge variant="outline" className="text-[10px] text-amber-700 border-amber-300 bg-amber-50">County not verified</Badge>
+            )}
+            {storedQualification?.status === "yellow" && storedQualification.reasons
+              .filter((reason) => reason !== "County not verified" && reason !== "County unknown")
+              .slice(0, 2)
+              .map((reason) => (
+                <Badge key={reason} variant="outline" className="text-[10px] text-amber-700 border-amber-300 bg-amber-50">{reason}</Badge>
+              ))}
+          </div>
 
           {filterReasons.length > 0 && (
             <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-950">
@@ -1123,6 +1153,24 @@ const Opportunities = () => {
                   setScanStartedAt(null);
                 }}
               />
+            )}
+
+            {qualificationJob.isUpdating && (
+              <div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                <p className="font-medium">Updating opportunities for your new Bid Profile</p>
+                <p className="mt-1 text-blue-800">
+                  Existing results remain visible until the update completes
+                  {qualificationJob.job?.total_candidates
+                    ? ` (${qualificationJob.job.processed_candidates} of ${qualificationJob.job.total_candidates})`
+                    : ""}.
+                </p>
+              </div>
+            )}
+            {qualificationJob.job?.status === "failed" && (
+              <div className="mb-6 flex items-center justify-between gap-4 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm">
+                <span>The Bid Profile update failed. Your previous complete results are still active.</span>
+                <Button variant="outline" size="sm" onClick={() => void qualificationJob.retry()}>Retry</Button>
+              </div>
             )}
 
 

@@ -494,6 +494,29 @@ serve(async (req) => {
       });
     }
 
+    // Compatibility endpoint: qualification is now a durable Railway job.
+    // Use a caller-scoped client so queue_qualification_rebuild resolves
+    // auth.uid() correctly; never run the candidate loop in this request.
+    const callerClient = createClient(
+      supabaseUrl,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: authHeader } } },
+    );
+    const { data: queuedJob, error: queueError } = await callerClient.rpc(
+      "queue_qualification_rebuild",
+      { p_bid_profile_id: (profile as { id: string }).id },
+    );
+    if (queueError) {
+      console.error("Failed to queue qualification rebuild:", queueError);
+      return jsonResponse(500, { success: false, error: "Failed to queue qualification rebuild" });
+    }
+    return jsonResponse(202, {
+      success: true,
+      queued: true,
+      job: queuedJob,
+      message: "Qualification rebuild queued",
+    });
+
     // Load pending candidates (skip any that have been manually reviewed)
     let query = supabase
       .from("opportunity_candidates")

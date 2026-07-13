@@ -8,6 +8,51 @@ const corsHeaders = {
 
 type TaskType = "planetbids_scan" | "caltrans_scan" | "lacounty_dpw_scan" | "lacmta_scan" | "caleprocure_scan" | "opengov_scan";
 
+async function queueDuePlanetBidsRecoveries(supabase: ReturnType<typeof createClient>, requestedAt: string) {
+  const { data: setting } = await supabase.from("app_settings").select("value").eq("key", "planetbids_recovery_automatic_enabled").maybeSingle();
+  const enabled = setting?.value === true || (typeof setting?.value === "object" && setting?.value !== null && (setting.value as Record<string, unknown>).enabled === true);
+  if (!enabled) return { queued: 0, skipped: 0, unavailable: false, disabled: true };
+  const { data: due, error } = await supabase
+    .from("opportunity_candidates")
+    .select("id, source_id, portal_bid_id, source_url, recovery_attempt_count")
+    .eq("portal_type", "planetbids")
+    .eq("ingestion_status", "quarantined")
+    .is("recovery_exhausted_at", null)
+    .lt("recovery_attempt_count", 3)
+    // Null means "not enrolled". Historical rows are enrolled only through
+    // the guarded rollout; ordinary failures receive an explicit next time.
+    .lte("recovery_next_attempt_at", requestedAt)
+    .order("recovery_next_attempt_at", { ascending: true, nullsFirst: true })
+    .limit(100);
+  if (error) {
+    // Rollout compatibility: the additive migration may not have reached the
+    // environment yet. Normal scans must continue even when recovery is absent.
+    console.warn(`[refresh-opportunities] recovery queue skipped: ${error.message}`);
+    return { queued: 0, skipped: 0, unavailable: true, disabled: false };
+  }
+  let queued = 0;
+  let skipped = 0;
+  for (const candidate of due ?? []) {
+    const { error: insertError } = await supabase.from("agent_tasks").insert({
+      task_type: "planetbids_candidate_recovery",
+      status: "pending",
+      priority: 9,
+      trigger_reason: "nightly_recovery",
+      payload: {
+        candidate_id: candidate.id,
+        source_id: candidate.source_id,
+        portal_bid_id: candidate.portal_bid_id,
+        detail_url: candidate.source_url,
+        recovery_trigger: "nightly_recovery",
+        attempt_number: Number(candidate.recovery_attempt_count ?? 0) + 1,
+        dry_run: false,
+      },
+    });
+    if (insertError) skipped++; else queued++;
+  }
+  return { queued, skipped, unavailable: false, disabled: false };
+}
+
 // One-time backfill: queues Opportunity Intelligence for candidates that existed
 // before the autonomous pipeline was deployed. Runs once per environment, gated by
 // an app_settings row. Future refreshes skip it entirely.
@@ -159,6 +204,9 @@ serve(async (req) => {
     const window = body?.refresh_window ?? refreshWindow(now);
     const force = Boolean(body?.force);
     const bypassCadence = force || trigger === "nightly_cron";
+    const recovery = trigger === "nightly_cron"
+      ? await queueDuePlanetBidsRecoveries(supabase, now.toISOString())
+      : { queued: 0, skipped: 0, unavailable: false, disabled: false };
 
     const { data: sources, error: sourcesError } = await supabase
       .from("opportunity_sources")
@@ -324,6 +372,7 @@ serve(async (req) => {
       trigger_reason: triggerReason,
       force,
       refresh_window: window,
+      recovery,
       sources_considered: sources?.length ?? 0,
       sources_due: eligible.length,
       sources_queued: tasks?.length ?? 0,

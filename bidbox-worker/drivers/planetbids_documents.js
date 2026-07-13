@@ -2119,4 +2119,6 @@ module.exports = {
   runPlanetBidsBidItemScan,
   DOCUMENT_BUCKET,
   extractPlanetBidsBidItemsFromJson,
+  createBrowserbasePage,
+  loginToPlanetBids,
 };

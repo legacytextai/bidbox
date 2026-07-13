@@ -25,27 +25,6 @@ function refreshWindow(date = new Date()) {
   return date.toISOString().slice(0, 13);
 }
 
-async function qualifyCandidates(authHeader: string) {
-  if (!authHeader) return;
-
-  try {
-    const qualifyUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/qualify-candidates`;
-    const qualifyRes = await fetch(qualifyUrl, {
-      method: "POST",
-      headers: { Authorization: authHeader, "Content-Type": "application/json" },
-      body: JSON.stringify({}),
-    });
-    if (qualifyRes.ok) {
-      const q = await qualifyRes.json();
-      console.log(`qualify-candidates: evaluated=${q.evaluated} green=${q.auto_green} yellow=${q.auto_yellow} red=${q.auto_red}`);
-    } else {
-      console.warn(`qualify-candidates returned ${qualifyRes.status}`);
-    }
-  } catch (e) {
-    console.warn(`qualify-candidates error: ${e}`);
-  }
-}
-
 async function queueWorkerScanSources(
   sources: OpportunitySource[],
   supabase: ReturnType<typeof createClient>,
@@ -453,10 +432,6 @@ serve(async (req) => {
       if (index < sourcesToScan.length - 1) {
         await new Promise((resolve) => setTimeout(resolve, 250));
       }
-    }
-
-    if (sourcesToScan.length > 0) {
-      await qualifyCandidates(authHeader);
     }
 
     const totalFound = runs.reduce((s, r) => s + r.found, 0);
