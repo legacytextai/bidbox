@@ -299,6 +299,10 @@ const Landing = () => {
             <form className="form-row" onSubmit={guide.submit} noValidate>
               <input
                 type="email"
+                name="email"
+                autoComplete="email"
+                inputMode="email"
+                spellCheck={false}
                 placeholder="Enter your work email"
                 aria-label="Work email"
                 required
