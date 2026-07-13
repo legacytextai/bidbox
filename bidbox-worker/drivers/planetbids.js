@@ -1,6 +1,7 @@
 const { chromium } = require('playwright');
 const { createBrowserbaseSessionId } = require('../lib/browserbase');
 const { extractExactApiMetadata } = require('../lib/planetbids-recovery');
+const { parseBidDueDate } = require('../lib/planetbids-date');
 
 function extractBidId(url) {
   const m = url.match(/\/bo-detail\/(\d+)/);
@@ -15,59 +16,6 @@ function extractPortalId(url) {
 function buildPlanetBidsDetailUrl(portalId, bidId) {
   if (!portalId || !bidId) return null;
   return `https://vendors.planetbids.com/portal/${portalId}/bo/bo-detail/${bidId}`;
-}
-
-function pacificOffsetHoursForDate(year, month, day) {
-  try {
-    const parts = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'America/Los_Angeles',
-      timeZoneName: 'shortOffset',
-    }).formatToParts(new Date(Date.UTC(year, month - 1, day, 12, 0, 0)));
-    const tzName = parts.find((part) => part.type === 'timeZoneName')?.value ?? '';
-    const match = tzName.match(/GMT([+-]\d{1,2})(?::?(\d{2}))?/i);
-    if (match) return Math.abs(Number(match[1]));
-  } catch {
-    // Fall through to a conservative California bidding-season default.
-  }
-  return month >= 3 && month <= 10 ? 7 : 8;
-}
-
-function parseBidDueDate(raw) {
-  if (!raw) return null;
-  const text = String(raw).replace(/\s+/g, ' ').trim();
-  const explicitPacific = text.match(
-    /\b(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2})(?::(\d{2}))?\s*(AM|PM)\s*(?:\(?\s*(PDT|PST|PT)\s*\)?)?/i
-  );
-  if (explicitPacific) {
-    const [, monthText, dayText, yearText, hourText, minuteText = '0', meridiem, tzText] = explicitPacific;
-    let hour = Number(hourText);
-    const minute = Number(minuteText);
-    if (/PM/i.test(meridiem) && hour !== 12) hour += 12;
-    if (/AM/i.test(meridiem) && hour === 12) hour = 0;
-    const year = Number(yearText);
-    const month = Number(monthText);
-    const day = Number(dayText);
-    const offsetHours = /PST/i.test(tzText || '')
-      ? 8
-      : /PDT/i.test(tzText || '')
-        ? 7
-        : pacificOffsetHoursForDate(year, month, day);
-    const d = new Date(Date.UTC(
-      year,
-      month - 1,
-      day,
-      hour + offsetHours,
-      minute,
-      0
-    ));
-    return isNaN(d.getTime()) ? null : d.toISOString();
-  }
-  try {
-    const d = new Date(text);
-    return isNaN(d.getTime()) ? null : d.toISOString();
-  } catch {
-    return null;
-  }
 }
 
 function parseMoneyToken(token) {

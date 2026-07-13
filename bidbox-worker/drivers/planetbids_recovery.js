@@ -1,7 +1,7 @@
 'use strict';
 
 const { createBrowserbasePage, loginToPlanetBids } = require('./planetbids_documents');
-const { parseBidDueDate } = require('./planetbids');
+const { parsePlanetBidsDate } = require('../lib/planetbids-date');
 const {
   classifyFailure,
   extractExactApiMetadata,
@@ -12,6 +12,10 @@ const {
 
 const API_HOST = 'api-external.prod.planetbids.com';
 const DETAIL_TIMEOUT_MS = Number(process.env.PLANETBIDS_RECOVERY_DETAIL_TIMEOUT_MS ?? 45000);
+
+function parseRecoveredDueDate(raw) {
+  return parsePlanetBidsDate(raw);
+}
 
 function truncate(value, length = 800) {
   return String(value ?? '').replace(/\s+/g, ' ').trim().substring(0, length);
@@ -93,7 +97,8 @@ async function recoverFromPortal(candidate, log) {
     const readiness = await waitForAuthoritativeDetail(page, targetBidId, apiMatches, apiDiagnostics);
     if (readiness.error) throw Object.assign(readiness.error, { diagnostics: readiness.diagnostics });
     const metadata = readiness.metadata;
-    metadata.bid_due_at = parseBidDueDate(metadata.due_date_raw);
+    const dueDateParse = parseRecoveredDueDate(metadata.due_date_raw);
+    metadata.bid_due_at = dueDateParse.value;
     metadata.diagnostics = {
       page_title: readiness.diagnostics?.page_title ?? null,
       body_chars: readiness.diagnostics?.body_chars ?? 0,
@@ -105,6 +110,8 @@ async function recoverFromPortal(candidate, log) {
       browser_session_id: null,
       extraction_source: metadata.extraction_source,
       extraction_confidence: metadata.extraction_confidence,
+      due_date_raw: metadata.due_date_raw,
+      due_date_parse: dueDateParse,
     };
     return metadata;
   } catch (error) {
@@ -140,13 +147,16 @@ async function recoverFromListingApi(supabase, candidate, log) {
     while (!matches.length && Date.now() < deadline) await page.waitForTimeout(500);
     if (!matches.length) return null;
     const metadata = matches[0];
-    metadata.bid_due_at = parseBidDueDate(metadata.due_date_raw);
+    const dueDateParse = parseRecoveredDueDate(metadata.due_date_raw);
+    metadata.bid_due_at = dueDateParse.value;
     metadata.diagnostics = {
       target_bid_id: targetBidId,
       api_response_status: metadata.api_response_status,
       api_response_url: metadata.api_response_url,
       extraction_source: 'listing_api',
       extraction_confidence: 'authoritative',
+      due_date_raw: metadata.due_date_raw,
+      due_date_parse: dueDateParse,
     };
     return metadata;
   } finally {
@@ -168,13 +178,18 @@ async function recoverFromDocuments(supabase, candidate) {
     ?? null;
   const dueRaw = text.match(/(?:BID DUE|DUE DATE|RECEIVED (?:UNTIL|BY)|CLOSING DATE)\s*[:\-]?\s*([^\n]{6,120})/i)?.[1] ?? null;
   if (!title && !dueRaw) return null;
+  const dueDateParse = parseRecoveredDueDate(dueRaw);
   return {
     raw_title: truncate(title, 500),
     due_date_raw: truncate(dueRaw, 150),
-    bid_due_at: parseBidDueDate(dueRaw),
+    bid_due_at: dueDateParse.value,
     extraction_source: 'document',
     extraction_confidence: 'high',
-    diagnostics: { evidence: chunks.slice(0, 3).map((chunk) => ({ document_id: chunk.opportunity_document_id, page: chunk.page_start, citation: chunk.citation_label })) },
+    diagnostics: {
+      due_date_raw: dueRaw,
+      due_date_parse: dueDateParse,
+      evidence: chunks.slice(0, 3).map((chunk) => ({ document_id: chunk.opportunity_document_id, page: chunk.page_start, citation: chunk.citation_label })),
+    },
   };
 }
 
@@ -253,4 +268,4 @@ async function runPlanetBidsCandidateRecovery({ task, supabase, log = console.lo
   };
 }
 
-module.exports = { recoverFromDocuments, recoverFromListingApi, recoverFromPortal, runPlanetBidsCandidateRecovery, waitForAuthoritativeDetail };
+module.exports = { parseRecoveredDueDate, recoverFromDocuments, recoverFromListingApi, recoverFromPortal, runPlanetBidsCandidateRecovery, waitForAuthoritativeDetail };
