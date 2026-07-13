@@ -3,11 +3,21 @@
 -- worker/function/frontend first. Run the diagnostic SQL and record expected counts.
 
 BEGIN;
-CREATE TABLE IF NOT EXISTS public.opportunity_remediation_backup_20260713 AS
-SELECT id, auto_status, auto_status_reason, qualification_score, qualified_at,
-  ingestion_status, ingestion_issue_code, ingestion_issue_reason,
-  global_exclusion_code, global_exclusion_reason, canonical_candidate_id, crawl_data, updated_at
-FROM public.opportunity_candidates WHERE false;
+CREATE TABLE IF NOT EXISTS public.opportunity_remediation_backup_20260713 (
+  id uuid PRIMARY KEY,
+  auto_status text,
+  auto_status_reason text,
+  qualification_score integer,
+  qualified_at timestamptz,
+  ingestion_status text,
+  ingestion_issue_code text,
+  ingestion_issue_reason text,
+  global_exclusion_code text,
+  global_exclusion_reason text,
+  canonical_candidate_id uuid,
+  crawl_data jsonb,
+  updated_at timestamptz
+);
 
 -- 1. Snapshot only confirmed exact Caltrans / Cal eProcure pairs.
 INSERT INTO public.opportunity_remediation_backup_20260713
@@ -16,10 +26,21 @@ SELECT c.id, c.auto_status, c.auto_status_reason, c.qualification_score, c.quali
   c.global_exclusion_code, c.global_exclusion_reason, c.canonical_candidate_id, c.crawl_data, c.updated_at
 FROM public.opportunity_candidates c
 WHERE EXISTS (
-  SELECT 1 FROM public.opportunity_candidates other
-  WHERE other.portal_bid_id = c.portal_bid_id AND other.portal_type <> c.portal_type
-    AND other.portal_type IN ('caltrans', 'caleprocure') AND c.portal_type IN ('caltrans', 'caleprocure')
-) ON CONFLICT DO NOTHING;
+    SELECT 1 FROM public.opportunity_candidates other
+    WHERE other.portal_bid_id = c.portal_bid_id AND other.portal_type <> c.portal_type
+      AND other.portal_type IN ('caltrans', 'caleprocure') AND c.portal_type IN ('caltrans', 'caleprocure')
+  )
+  OR (
+    c.portal_type = 'planetbids'
+    AND nullif(btrim(c.raw_title), '') IS NULL
+    AND c.source_url ~ '/bo-detail/[0-9]+'
+    AND coalesce(
+      nullif(btrim(c.crawl_data->>'title'), ''),
+      nullif(btrim(c.crawl_data->>'raw_title'), ''),
+      nullif(btrim(c.crawl_data->>'bid_title'), '')
+    ) IS NULL
+  )
+ON CONFLICT (id) DO NOTHING;
 
 -- 2. Make Caltrans canonical; no user-owned status, bookmarks, pursuits,
 -- intelligence, documents, or project linkage is changed.
