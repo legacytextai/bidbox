@@ -48,12 +48,9 @@ function useLeadForm(formType: FormType) {
   return { email, setEmail, status, error, submit };
 }
 
-function scrollToTrialForm(e: React.MouseEvent) {
-  e.preventDefault();
-  const el = document.getElementById("trial-form");
+function scrollToId(id: string) {
+  const el = document.getElementById(id);
   if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-  const menu = document.getElementById("navlinks");
-  if (menu?.classList.contains("open")) closeMenu();
 }
 
 function closeMenu() {
@@ -75,8 +72,16 @@ function toggleMenu() {
   btn.textContent = open ? "✕" : "☰";
 }
 
-function anchorClick(_e: React.MouseEvent) {
+function anchorClick(e: React.MouseEvent<HTMLAnchorElement>, id: string) {
+  e.preventDefault();
   closeMenu();
+  scrollToId(id);
+}
+
+function scrollToTrialForm(e: React.MouseEvent<HTMLAnchorElement>) {
+  e.preventDefault();
+  closeMenu();
+  scrollToId("trial-form");
 }
 
 const Landing = () => {
@@ -87,9 +92,9 @@ const Landing = () => {
     if (authReady && user) navigate("/calendar", { replace: true });
   }, [authReady, user, navigate]);
 
-  const guide = useLeadForm("guide");
-  const trial = useLeadForm("trial_request");
   const news = useLeadForm("newsletter");
+  const trial = useLeadForm("trial_request");
+  const footerNews = useLeadForm("newsletter");
 
   if (!authReady) return null;
 
@@ -109,9 +114,9 @@ const Landing = () => {
             ☰
           </button>
           <nav className="nav-links" id="navlinks">
-            <a href="#how" onClick={anchorClick}>How it works</a>
-            <a href="#pricing" onClick={anchorClick}>Pricing</a>
-            <a href="#report" onClick={anchorClick}>What's bidding</a>
+            <a href="#how" onClick={(e) => anchorClick(e, "how")}>How it works</a>
+            <a href="#pricing" onClick={(e) => anchorClick(e, "pricing")}>Pricing</a>
+            <a href="#report" onClick={(e) => anchorClick(e, "report")}>What's bidding</a>
             <a
               href="/auth"
               onClick={(e) => { e.preventDefault(); closeMenu(); navigate("/auth"); }}
@@ -119,7 +124,7 @@ const Landing = () => {
             >
               Log in
             </a>
-            <a className="btn btn-primary" href="#trial-form" onClick={scrollToTrialForm}>
+            <a className="btn btn-primary" href="#pricing" onClick={(e) => anchorClick(e, "pricing")}>
               Start free trial
             </a>
           </nav>
@@ -138,10 +143,10 @@ const Landing = () => {
               flags the requirements, and gets you ready for bid day.
             </p>
             <div className="cta-row">
-              <a className="btn btn-primary" href="#trial-form" onClick={scrollToTrialForm}>Start free trial</a>
-              <a className="btn btn-ghost" href="#how" onClick={anchorClick}>See how it works</a>
+              <a className="btn btn-primary" href="#pricing" onClick={(e) => anchorClick(e, "pricing")}>Start free trial</a>
+              <a className="btn btn-ghost" href="#how" onClick={(e) => anchorClick(e, "how")}>See how it works</a>
             </div>
-            <span className="micro">Set up in minutes · No credit card · Your counties, your trades</span>
+            <span className="micro">Set up in minutes · 14-day free trial · Your counties, your trades</span>
           </div>
 
           <div className="bidtab" aria-label="Sample BidBox project pipeline">
@@ -229,21 +234,41 @@ const Landing = () => {
               <span className="vnum">DISCOVERY</span>
               <h3>Every bid, one place.</h3>
               <p>BidBox watches the agency portals so you don't have to. New projects in your counties and trades show up in your pipeline automatically, with plans and specs already pulled.</p>
+              <div className="v-vig" aria-hidden="true">
+                <div className="vr"><span className="vl">CITY OF ANAHEIM</span><span className="vv blue">NEW BID · 6:14 AM</span></div>
+                <div className="vr"><span className="vl">RIVERSIDE USD</span><span className="vv blue">NEW BID · 6:15 AM</span></div>
+                <div className="vr"><span className="vl">OC PUBLIC WORKS</span><span className="vv blue">NEW BID · 6:15 AM</span></div>
+              </div>
             </div>
             <div className="vcard">
               <span className="vnum">ANALYSIS</span>
               <h3>Read 400 pages in 4 minutes.</h3>
               <p>Bid date, job walk, bond requirements, licensing, engineer's estimate, addenda count. Extracted from the documents and linked back to the source page so you can verify in one click.</p>
+              <div className="v-vig" aria-hidden="true">
+                <div className="vr"><span className="vl">BID BOND</span><span className="vv">10% <span style={{ color: "var(--blue)" }}>→ p.14</span></span></div>
+                <div className="vr"><span className="vl">LICENSE</span><span className="vv">CLASS A <span style={{ color: "var(--blue)" }}>→ p.3</span></span></div>
+                <div className="vr"><span className="vl">ENGINEER'S EST</span><span className="vv">$4.2M <span style={{ color: "var(--blue)" }}>→ p.1</span></span></div>
+              </div>
             </div>
             <div className="vcard">
               <span className="vnum">TRACKING</span>
               <h3>Nothing slips.</h3>
               <p>Deadline calendar, addenda alerts, and job walk reminders. The details that disqualify bids get flagged before they cost you the job.</p>
+              <div className="v-vig" aria-hidden="true">
+                <div className="vr"><span className="vl">STORM DRAIN REHAB</span><span className="vv orange">ADDENDUM 3 · TODAY</span></div>
+                <div className="vr"><span className="vl">JOB WALK</span><span className="vv orange">MANDATORY · JUL 30</span></div>
+                <div className="vr"><span className="vl">BID DUE</span><span className="vv">AUG 06 · 2:00 PM</span></div>
+              </div>
             </div>
             <div className="vcard">
               <span className="vnum">BID DAY</span>
-              <h3>Bid day, handled.</h3>
-              <p>Share a Bid Room link with your subs. No logins, no accounts. Quotes come back to one organized place, so you walk into bid day calm instead of digging through email threads.</p>
+              <h3>Your subs, one link.</h3>
+              <p>Send every sub the full document set with a single link. No logins, no accounts, no 50MB attachments. See how many times your plans have been opened, so you know if your invites are landing.</p>
+              <div className="v-vig" aria-hidden="true">
+                <div className="vr"><span className="vl">BID ROOM LINK</span><span className="vv blue">SENT · 12 SUBS</span></div>
+                <div className="vr"><span className="vl">PLAN VIEWS</span><span className="vv ok">27</span></div>
+                <div className="vr"><span className="vl">LOGINS REQUIRED</span><span className="vv">0</span></div>
+              </div>
             </div>
           </div>
         </div>
@@ -257,35 +282,56 @@ const Landing = () => {
             <div className="step">
               <span className="snum">STEP 1</span>
               <h3>Set your coverage.</h3>
-              <p>Your counties, your trades, two minutes.</p>
+              <p>Pick your counties and the work you chase. Two minutes, no onboarding calls, no training. BidBox starts watching immediately.</p>
+              <div className="s-vig" aria-hidden="true"><span className="s-chip">ORANGE ✓</span><span className="s-chip">RIVERSIDE ✓</span><span className="s-chip">SITEWORK ✓</span><span className="s-chip">CONCRETE ✓</span></div>
             </div>
             <div className="step">
               <span className="snum">STEP 2</span>
-              <h3>BidBox does the digging.</h3>
-              <p>Every matching bid found, analyzed, and tracked.</p>
+              <h3>BidBox works the portals.</h3>
+              <p>Every agency checked daily. New bids land in your pipeline with the documents pulled, key requirements extracted, and every deadline already on your calendar.</p>
+              <div className="s-vig" aria-hidden="true"><span className="s-chip dark">41 AGENCIES CHECKED</span><span className="s-chip">3 NEW MATCHES</span></div>
             </div>
             <div className="step">
               <span className="snum">STEP 3</span>
-              <h3>Show up ready.</h3>
-              <p>Organized pursuits, coordinated subs, clean bid days.</p>
+              <h3>You show up ready.</h3>
+              <p>Job walks and addenda flagged the moment they drop. Subs get one link to everything. You walk into bid day organized instead of scrambling.</p>
+              <div className="s-vig" aria-hidden="true"><span className="s-chip orange">ADDENDUM FLAGGED</span><span className="s-chip dark">BID DAY · READY ✓</span></div>
             </div>
           </div>
-          <a className="btn btn-primary" href="#trial-form" onClick={scrollToTrialForm}>Start free trial</a>
+          <a className="btn btn-primary" href="#pricing" onClick={(e) => anchorClick(e, "pricing")}>Start free trial</a>
         </div>
       </section>
 
       <section className="guide">
         <div className="wrap guide-inner">
           <div>
-            <span className="eyebrow">Who built this</span>
-            <h2>Built by someone who lived it.</h2>
-            <blockquote>This is the tool our estimating desk always needed. I spent years finding jobs the hard way, chasing addenda, and running 4am bid days.</blockquote>
-            <div className="attr">Abdul Bidiwi · Founder, BidBox · Former VP of Operations, public works GC</div>
+            <span className="eyebrow">The difference</span>
+            <h2>What changes when nothing slips.</h2>
+            <div className="ba">
+              <div className="ba-col ba-before">
+                <h4>Before BidBox</h4>
+                <ul>
+                  <li>Portals checked "when there's time"</li>
+                  <li>Addenda discovered on bid day</li>
+                  <li>Sub docs scattered across email threads</li>
+                  <li>Missed jobs found out at the results</li>
+                </ul>
+              </div>
+              <div className="ba-col ba-after">
+                <h4>With BidBox</h4>
+                <ul>
+                  <li>Every agency watched daily, automatically</li>
+                  <li>Addenda flagged the morning they drop</li>
+                  <li>One link to your subs, engagement visible</li>
+                  <li>You choose your bids instead of finding them late</li>
+                </ul>
+              </div>
+            </div>
+            <div className="founder-line">Built by the founder of BidBox, former VP of Operations at a Public Works GC.</div>
           </div>
           <div className="seo-block">
-            <p><strong>Public works contractors waste hours digging through agency portals and still miss bids they should have won. BidBox finds every project worth bidding, flags what it takes to qualify, and gets you ready for bid day. So you win more work without hiring another estimator.</strong></p>
-            <br />
-            <p>BidBox is a bid management platform for public works general contractors in California. It monitors hundreds of city, county, school district, and special district portals, automatically extracts key requirements from plans and specifications, tracks addenda and deadlines, and coordinates subcontractor quotes through shareable Bid Rooms. Small GCs use BidBox to pursue more public bids with the same team, qualify faster, and stay organized through bid day.</p>
+            <p className="seo-lede">Public works contractors waste hours digging through agency portals and still miss bids they should have won. BidBox finds every project worth bidding, flags what it takes to qualify, and gets you ready for bid day.</p>
+            <p className="seo-kicker">So you win more work without hiring another estimator.</p>
           </div>
         </div>
       </section>
@@ -293,10 +339,13 @@ const Landing = () => {
       <section className="magnet" id="report">
         <div className="wrap magnet-inner">
           <div>
-            <span className="eyebrow">Free guide</span>
-            <h2>The 7 ways GCs lose public works bids before bid day.</h2>
-            <p>The missed addendum. The mandatory job walk nobody attended. The bond requirement found too late. Seven silent killers and the checklist that stops every one of them.</p>
-            <form className="form-row" onSubmit={guide.submit} noValidate>
+            <div className="report-masthead">
+              <span className="report-badge">What's bidding · Who won · Every Tuesday</span>
+              <div className="report-name">The California Public Works<br />Bid Report</div>
+            </div>
+            <h2 className="report-hook">Keep your finger on the pulse.</h2>
+            <p>A free weekly email: every public works job bidding in your counties, who won last week's bids, and by how much. The numbers estimators forward to each other, and nobody else publishes.</p>
+            <form className="form-row" onSubmit={news.submit} noValidate>
               <input
                 type="email"
                 name="email"
@@ -306,31 +355,28 @@ const Landing = () => {
                 placeholder="Enter your work email"
                 aria-label="Work email"
                 required
-                value={guide.email}
-                onChange={(e) => guide.setEmail(e.target.value)}
-                disabled={guide.status === "loading" || guide.status === "success"}
+                value={news.email}
+                onChange={(e) => news.setEmail(e.target.value)}
+                disabled={news.status === "loading" || news.status === "success"}
               />
-              <button className="btn btn-primary" type="submit" disabled={guide.status === "loading" || guide.status === "success"}>
-                {guide.status === "loading" ? "Sending..." : "Send me the guide"}
+              <button className="btn btn-primary" type="submit" disabled={news.status === "loading" || news.status === "success"}>
+                {news.status === "loading" ? "Sending..." : "Get the Bid Report"}
               </button>
             </form>
-            {guide.status === "success" && <div className="form-success">{SUCCESS}</div>}
-            {guide.status === "error" && <div className="form-error">{guide.error}</div>}
+            {news.status === "success" && <div className="form-success">{SUCCESS}</div>}
+            {news.status === "error" && <div className="form-error">{news.error}</div>}
             <span className="micro" style={{ display: "block", marginTop: 10 }}>
-              Includes the weekly California Public Works Bid Report. Unsubscribe anytime.
+              Free, every Tuesday. Unsubscribe anytime.
             </span>
           </div>
           <div className="magnet-card">
-            <span className="mc-tag">Inside the guide</span>
-            <h3>What kills bids early:</h3>
+            <span className="mc-tag">Sample issue</span>
+            <h3>This week:</h3>
             <ul>
-              <li>The job you never saw</li>
-              <li>The addendum that disqualified you</li>
-              <li>The mandatory walk nobody attended</li>
-              <li>The qualification detail found too late</li>
-              <li>The sub quotes that never came</li>
-              <li>The bid day scramble</li>
-              <li>The lesson nobody logged</li>
+              <li>Who won last week, and by how much</li>
+              <li>41 new public works bids across SoCal</li>
+              <li>Storm drain rehab: 9 bidders, low bid 11% under estimate</li>
+              <li>14 jobs bidding in Orange County in the next 30 days</li>
             </ul>
           </div>
         </div>
@@ -359,14 +405,14 @@ const Landing = () => {
               <div className="p-note">THE FULL BIDDING OPERATION</div>
               <ul>
                 <li>Everything in Tracker</li>
-                <li>Document analysis and requirement extraction</li>
-                <li>Qualification flags: license, DIR, bonds, prequal</li>
-                <li>Bid Rooms and sub coordination, no sub logins</li>
+                <li>AI document analysis: read 400 pages in 4 minutes</li>
+                <li>Requirements extracted and source-linked: bonds, licensing, job walks, deadlines</li>
+                <li>Bid Rooms: send subs everything in one link, see who opened the plans</li>
               </ul>
               <a className="btn btn-primary" href="#trial-form" onClick={scrollToTrialForm}>Start free trial</a>
             </div>
           </div>
-          <p className="p-foot">14-day trial · No credit card · Cancel anytime · Your data exports with you</p>
+          <p className="p-foot">14-day free trial · Cancel anytime before day 14 and pay nothing</p>
         </div>
       </section>
 
@@ -376,8 +422,20 @@ const Landing = () => {
           <h2>Frequently asked questions.</h2>
           <div className="faq-list">
             <details>
+              <summary>What is BidBox?</summary>
+              <div className="a">BidBox is bid management software for California public works general contractors. It watches hundreds of agency websites, finds every project that fits your counties and trades, pulls the plans and specs, extracts the key requirements, and tracks every deadline, job walk, and addendum through bid day. Think of it as an extra estimator who never sleeps and never forgets a portal.</div>
+            </details>
+            <details>
+              <summary>How does BidBox help a small or mid-size GC?</summary>
+              <div className="a">Three ways. You see every job worth bidding instead of only the ones you stumble on. You stop losing bids to missed addenda, job walks, and buried requirements. And your bid days get calm: documents to subs in one link, every deadline on one calendar, nothing living in email threads. More bids submitted, fewer disqualifications, same team.</div>
+            </details>
+            <details>
+              <summary>What do I need to do to get it?</summary>
+              <div className="a">1. Request your free trial with the form below. 2. Complete your bidder profile. 3. Bid for 14 days free, card on file. Cancel anytime before day 14 and pay nothing.</div>
+            </details>
+            <details>
               <summary>Do my subs need accounts?</summary>
-              <div className="a">No. That's the point. Subs get one link, see the documents organized by trade, and send quotes back. No logins, no downloads, no friction.</div>
+              <div className="a">No. That's the point. Subs get one link and see everything organized, no logins, no account walls, no giant downloads. Easier access means more subs actually looking at your job.</div>
             </details>
             <details>
               <summary>Which agencies do you cover?</summary>
@@ -388,12 +446,8 @@ const Landing = () => {
               <div className="a">Every extracted field links directly back to the page in the source document it came from. You never trust a summary; you verify in one click instead of reading 400 pages. Treat it like a sharp junior estimator: it does the reading, you do the confirming.</div>
             </details>
             <details>
-              <summary>Can I take my data if I leave?</summary>
-              <div className="a">Yes. Your bid history is yours. Ask and we deliver everything as Excel files, anytime, including on your way out. No lock-in, no hostage data.</div>
-            </details>
-            <details>
               <summary>Is this a planroom?</summary>
-              <div className="a">No. Planrooms show you what's out there. BidBox helps you win it: qualification flags, addenda tracking, sub coordination, and bid day prep on top of discovery.</div>
+              <div className="a">No. Planrooms show you what's out there. BidBox runs the pursuit: extracted requirements, addenda tracking, job walk alerts, sub document distribution, and one calendar through bid day.</div>
             </details>
           </div>
         </div>
@@ -423,7 +477,7 @@ const Landing = () => {
           </form>
           {trial.status === "success" && <div className="form-success">{SUCCESS}</div>}
           {trial.status === "error" && <div className="form-error">{trial.error}</div>}
-          <span className="micro">✓ 14-day trial &nbsp; ✓ No credit card &nbsp; ✓ Set up in minutes</span>
+          <span className="micro">✓ 14-day free trial &nbsp; ✓ Cancel anytime &nbsp; ✓ Set up in minutes</span>
         </div>
       </section>
 
@@ -438,8 +492,8 @@ const Landing = () => {
             </div>
             <div>
               <h4>Product</h4>
-              <a href="#how" onClick={anchorClick}>How it works</a>
-              <a href="#pricing" onClick={anchorClick}>Pricing</a>
+              <a href="#how" onClick={(e) => anchorClick(e, "how")}>How it works</a>
+              <a href="#pricing" onClick={(e) => anchorClick(e, "pricing")}>Pricing</a>
               <a
                 href="/auth"
                 onClick={(e) => { e.preventDefault(); navigate("/auth"); }}
@@ -456,7 +510,7 @@ const Landing = () => {
             <div>
               <h4>The California Public Works Bid Report</h4>
               <p style={{ fontSize: 13.5 }}>What's bidding. Who won. Every week.</p>
-              <form className="foot-form" onSubmit={news.submit} noValidate>
+              <form className="foot-form" onSubmit={footerNews.submit} noValidate>
                 <input
                   type="email"
                   name="email"
@@ -465,16 +519,16 @@ const Landing = () => {
                   spellCheck={false}
                   placeholder="Your email"
                   aria-label="Email for the Bid Report"
-                  value={news.email}
-                  onChange={(e) => news.setEmail(e.target.value)}
-                  disabled={news.status === "loading" || news.status === "success"}
+                  value={footerNews.email}
+                  onChange={(e) => footerNews.setEmail(e.target.value)}
+                  disabled={footerNews.status === "loading" || footerNews.status === "success"}
                 />
-                <button type="submit" disabled={news.status === "loading" || news.status === "success"}>
-                  {news.status === "loading" ? "..." : "Subscribe"}
+                <button type="submit" disabled={footerNews.status === "loading" || footerNews.status === "success"}>
+                  {footerNews.status === "loading" ? "..." : "Subscribe"}
                 </button>
               </form>
-              {news.status === "success" && <div className="form-success" style={{ color: "#fff" }}>{SUCCESS}</div>}
-              {news.status === "error" && <div className="form-error">{news.error}</div>}
+              {footerNews.status === "success" && <div className="form-success" style={{ color: "#fff" }}>{SUCCESS}</div>}
+              {footerNews.status === "error" && <div className="form-error">{footerNews.error}</div>}
             </div>
           </div>
           <div className="foot-bottom">
