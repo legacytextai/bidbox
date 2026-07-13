@@ -52,6 +52,12 @@ interface QualificationResult {
   qualification_score: number;
 }
 
+function reasonsFor(result: QualificationResult): string[] {
+  return result.auto_status === "yellow"
+    ? result.auto_status_reason.split(";").map((reason) => reason.trim()).filter(Boolean)
+    : [result.auto_status_reason];
+}
+
 // Handles: $5M  $2.5M  $2,500,000  $150K  $1.2B  (case-insensitive suffix)
 function parseValueFromTitle(title: string | null): number | null {
   if (!title) return null;
@@ -440,38 +446,33 @@ serve(async (req) => {
   try {
     // Parse request body — all fields optional
     let candidateId: string | null = null;
-    let profileId: string | null = null;
 
     if (req.method === "POST") {
       try {
         const body = await req.json();
         candidateId = body?.candidate_id ?? null;
-        profileId   = body?.profile_id   ?? null;
       } catch {
         // No body or invalid JSON — use defaults
       }
     }
 
-    // profile_id not in body — resolve from bearer token
-    if (!profileId) {
-      const authHeader = req.headers.get("Authorization");
-      if (!authHeader) {
-        return jsonResponse(401, { success: false, error: "Missing authorization header" });
-      }
-      const token = authHeader.replace("Bearer ", "");
-      const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-      if (authError || !user) {
-        return jsonResponse(401, { success: false, error: "Invalid token" });
-      }
-      profileId = user.id;
+    // The authenticated identity is authoritative. Never accept profile_id
+    // from the request body: the service-role client bypasses RLS.
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return jsonResponse(401, { success: false, error: "Missing authorization header" });
     }
+    const token = authHeader.replace("Bearer ", "");
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) {
+      return jsonResponse(401, { success: false, error: "Invalid token" });
+    }
+    const profileId = user.id;
 
     // Load the qualification profile for the resolved user
     const { data: profile, error: profileError } = await supabase
       .from("gc_qualification_profiles")
-      .select(
-        "target_counties, licenses_held, naics_codes, min_project_value, max_project_value",
-      )
+      .select("id, target_counties, licenses_held, naics_codes, min_project_value, max_project_value")
       .eq("profile_id", profileId)
       .maybeSingle();
 
@@ -497,7 +498,8 @@ serve(async (req) => {
     let query = supabase
       .from("opportunity_candidates")
       .select("id, source_id, portal_type, raw_title, agency, bid_due_at, scope_text, estimated_value, county, required_licenses, required_naics, crawl_data")
-      .eq("status", "pending");
+      .eq("status", "pending")
+      .eq("ingestion_status", "valid");
 
     if (candidateId) {
       query = query.eq("id", candidateId);
@@ -531,14 +533,18 @@ serve(async (req) => {
       const result = qualifyCandidate(candidate, profile as QualificationProfile);
 
       const { error: updateError } = await supabase
-        .from("opportunity_candidates")
-        .update({
-          auto_status:         result.auto_status,
-          auto_status_reason:  result.auto_status_reason,
+        .from("user_opportunity_qualifications")
+        .upsert({
+          user_id: profileId,
+          opportunity_candidate_id: result.id,
+          bid_profile_id: (profile as { id: string }).id,
+          status: result.auto_status,
+          primary_reason: result.auto_status_reason,
+          reasons: reasonsFor(result),
           qualification_score: result.qualification_score,
-          qualified_at:        now,
-        })
-        .eq("id", result.id);
+          qualified_at: now,
+          updated_at: now,
+        }, { onConflict: "user_id,opportunity_candidate_id" });
 
       if (updateError) {
         console.error(`Failed to update candidate ${result.id}:`, updateError);

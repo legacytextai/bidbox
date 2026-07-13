@@ -32,6 +32,7 @@ import Opportunities from "./pages/Opportunities";
 import OpportunityReport from "./pages/OpportunityReport";
 import QualificationProfile from "./pages/QualificationProfile";
 import OAuthConsent from "./pages/OAuthConsent";
+import CheckEmail from "./pages/CheckEmail";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -47,6 +48,7 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Landing />} />
             <Route path="/auth" element={<Auth />} />
+            <Route path="/auth/check-email" element={<CheckEmail />} />
             <Route path="/.lovable/oauth/consent" element={<OAuthConsent />} />
             <Route path="/calendar" element={<CalendarDashboard />} />
             <Route path="/opportunities" element={<Opportunities />} />

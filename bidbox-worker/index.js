@@ -12,6 +12,7 @@ const { runPortalIntelligence } = require('./drivers/portal_intelligence');
 const { acquireCaltransDocuments } = require('./drivers/caltrans_documents');
 const { acquireOpenGovDocuments } = require('./drivers/opengov_documents');
 const { acquireCalEprocureDocuments } = require('./drivers/caleprocure_documents');
+const { classifyIngestionCandidate } = require('./lib/opportunity-policy');
 const {
   queueDocumentProcessingForCandidate,
   runDocumentProcessing,
@@ -27,9 +28,7 @@ const supabase = createClient(
 );
 
 const IDLE_POLL_INTERVAL_MS = 30000;
-const QUALIFY_MIN_INTERVAL_MS = 2 * 60 * 1000;
 const CLAIM_RETRY = Symbol('claim-retry');
-let lastQualifyAt = 0;
 const CALEPROCURE_SOURCE_ID = '75d7fa42-2302-4fce-ba0f-ba33ef6e9a82';
 
 // ── PlanetBids distributed login lock ────────────────────────────────────────
@@ -122,6 +121,7 @@ function changedPortalMetadata(existing, next) {
 }
 
 function portalOwnedCandidateFields({ source_id, source_name, portal_type, candidate }) {
+  const ingestion = classifyIngestionCandidate(portal_type, candidate);
   return {
     source_id,
     source_url: candidate.source_url,
@@ -140,6 +140,9 @@ function portalOwnedCandidateFields({ source_id, source_name, portal_type, candi
     portal_bid_id:        candidate.portal_bid_id        ?? null,
     portal_department:    candidate.portal_department    ?? null,
     crawl_data: candidate.crawl_data ?? null,
+    ingestion_status: ingestion.status,
+    ingestion_issue_code: ingestion.code,
+    ingestion_issue_reason: ingestion.reason,
   };
 }
 
@@ -197,6 +200,9 @@ async function markCalEprocureDuplicateOfCaltrans({ supabase, source_id, candida
     },
     auto_status: 'red',
     auto_status_reason: `Duplicate of Caltrans-native opportunity ${candidate.portal_bid_id}`,
+    global_exclusion_code: 'duplicate_of_caltrans',
+    global_exclusion_reason: `Duplicate of Caltrans opportunity ${candidate.portal_bid_id}`,
+    canonical_candidate_id: caltransDuplicate.id,
     qualification_score: 0,
     qualified_at: now,
     last_metadata_refreshed_at: now,
@@ -435,6 +441,38 @@ async function persistScannedCandidate({ supabase, source_id, source_name, porta
   };
 }
 
+async function enforceCaltransCanonical({ supabase, caltransCandidate, log }) {
+  if (!caltransCandidate?.id || !caltransCandidate?.portal_bid_id) return 0;
+  const now = new Date().toISOString();
+  const reason = `Duplicate of Caltrans opportunity ${caltransCandidate.portal_bid_id}`;
+  const { data, error } = await supabase
+    .from('opportunity_candidates')
+    .update({
+      global_exclusion_code: 'duplicate_of_caltrans',
+      global_exclusion_reason: reason,
+      canonical_candidate_id: caltransCandidate.id,
+      auto_status: 'red',
+      auto_status_reason: reason,
+      qualification_score: 0,
+      qualified_at: now,
+    })
+    .eq('portal_type', 'caleprocure')
+    .eq('portal_bid_id', caltransCandidate.portal_bid_id)
+    .neq('id', caltransCandidate.id)
+    .select('id');
+  if (error) throw new Error(`Cal eProcure canonicalization failed: ${error.message}`);
+
+  // A Caltrans row can carry a stale reversed link from historical cleanup.
+  const { error: canonicalError } = await supabase
+    .from('opportunity_candidates')
+    .update({ global_exclusion_code: null, global_exclusion_reason: null, canonical_candidate_id: null })
+    .eq('id', caltransCandidate.id)
+    .eq('global_exclusion_code', 'duplicate_of_caleprocure');
+  if (canonicalError) throw new Error(`Caltrans canonical normalization failed: ${canonicalError.message}`);
+  if (data?.length) log(`Canonicalized ${data.length} Cal eProcure duplicate(s) to Caltrans ${caltransCandidate.id}`);
+  return data?.length ?? 0;
+}
+
 async function updateTaskStage(task, stage) {
   if (!task?.id) return;
   const payload = {
@@ -449,35 +487,6 @@ async function updateTaskStage(task, stage) {
     .eq('id', task.id);
   if (error) {
     console.warn(`[${ts()}] task stage update failed: ${error.message}`);
-  }
-}
-
-async function maybeQualifyCandidates() {
-  const qualifyUrl = process.env.QUALIFY_CANDIDATES_URL;
-  if (!qualifyUrl) return;
-
-  const now = Date.now();
-  if (now - lastQualifyAt < QUALIFY_MIN_INTERVAL_MS) {
-    return;
-  }
-
-  lastQualifyAt = now;
-  try {
-    const qualifyRes = await fetch(qualifyUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ profile_id: '324e7848-6c4d-4fe5-a826-91427265a76e' }),
-    });
-    if (qualifyRes.ok) {
-      const q = await qualifyRes.json();
-      console.log(`[${ts()}] qualify-candidates: evaluated=${q.evaluated} green=${q.auto_green} yellow=${q.auto_yellow} red=${q.auto_red}`);
-    } else {
-      console.warn(`[${ts()}] qualify-candidates returned ${qualifyRes.status}`);
-    }
-  } catch (e) {
-    console.warn(`[${ts()}] qualify-candidates error: ${e.message}`);
   }
 }
 
@@ -580,6 +589,14 @@ async function runScan(task, supabase, driver) {
         sourceTaskId: task.id,
         log,
       });
+
+      if (resolvedPortalType === 'caltrans' && saved.candidate?.id && candidate.portal_bid_id) {
+        await enforceCaltransCanonical({
+          supabase,
+          caltransCandidate: { id: saved.candidate.id, portal_bid_id: candidate.portal_bid_id },
+          log,
+        });
+      }
 
       if (saved.state === 'new') {
         newCount++;
@@ -1363,7 +1380,6 @@ async function processTask(task) {
 
     if (['planetbids_scan', 'caltrans_scan', 'lacounty_dpw_scan', 'lacmta_scan', 'caleprocure_scan', 'opengov_scan'].includes(task.task_type)) {
       console.log(`[${ts()}] Task ${task.id} complete: found=${result.found} new=${result.new} refreshed=${result.refreshed ?? 0} unchanged=${result.unchanged ?? 0} errors=${result.errors}`);
-      await maybeQualifyCandidates();
     } else if (task.task_type === 'document_processing') {
       console.log(`[${ts()}] Task ${task.id} complete: documents_processed=${result.documents_processed} documents_failed=${result.documents_failed} pages=${result.pages_extracted} chunks=${result.chunks_created}`);
     } else if (task.task_type === 'project_intelligence') {

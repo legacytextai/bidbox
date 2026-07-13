@@ -1098,6 +1098,10 @@ async function scrapePlanetBids(payload, log) {
               log(`[${source_name}] Detail metadata incomplete before normalization: url=${detailUrl}; parser=planetbids_scan_detail_body_text_v1; title=${JSON.stringify(raw.raw_title ?? null)}; bid_due=${JSON.stringify(raw.due_date_raw ?? null)}; department=${JSON.stringify(raw.department ?? null)}; county=${JSON.stringify(raw.county ?? null)}; roots=${JSON.stringify(detailDiagnostics?.root_containers ?? {})}; page_title=${JSON.stringify(detailDiagnostics?.page_title ?? '')}; body_chars=${detailDiagnostics?.body_chars ?? 0}; body_preview=${detailDiagnostics?.body_preview ?? ''}`);
             }
 
+            // Preserve failed detail extraction as a traceable quarantined row;
+            // persistScannedCandidate assigns ingestion_status and keeps it out
+            // of every end-user opportunity view.
+
             const _debugTitle = (raw.raw_title ?? '');
             const _isDebugTarget = detailUrl.includes('142261');
 

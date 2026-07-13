@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, ExternalLink, RefreshCw, ChevronDown, Check, Filter, CalendarCheck2, Bookmark } from "lucide-react";
+import { Building2, ExternalLink, RefreshCw, ChevronDown, Check, Filter, CalendarCheck2, Bookmark, Info } from "lucide-react";
 import { resolveEstimatedValue, resolvePortalStyle } from "@/lib/opportunityDomain";
 import { fetchCompanyPursuits, upsertPursuit, type PursuitLite } from "@/lib/tenant";
 import { Layout } from "@/components/Layout";
@@ -30,10 +30,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { ActiveScansPanel } from "@/components/ActiveScansPanel";
 import { formatProjectDateTime, formatInProjectTimezone } from "@/lib/timezoneUtils";
-import {
-  OPPORTUNITY_FILTER_REASON_LABELS,
-  classifyOpportunityTitle,
-} from "@/lib/opportunityRelevance";
+import { getStoredFilterReasons, isQuarantined, type StoredQualification } from "@/lib/opportunityVisibility";
+import { useAuth } from "@/hooks/useAuth";
 import { toZonedTime } from "date-fns-tz";
 
 // Transient (per-tab) anchor for restoring list position when navigating back
@@ -85,6 +83,11 @@ interface Candidate {
   opportunity_intelligence_task_id?: string | null;
   opportunity_intelligence_ready_at?: string | null;
   opportunity_intelligence_error?: string | null;
+  ingestion_status: string;
+  ingestion_issue_reason: string | null;
+  global_exclusion_code: string | null;
+  global_exclusion_reason: string | null;
+  canonical_candidate_id: string | null;
 }
 
 const FILTERS: { label: string; value: string }[] = [
@@ -98,15 +101,6 @@ const isClosedCandidate = (c: { bid_due_at: string | null }) => {
   const t = new Date(c.bid_due_at).getTime();
   return !isNaN(t) && t < Date.now();
 };
-
-// Portal scans can persist a candidate at discovery — before metadata
-// enrichment fills in the title — so the row briefly has a null/empty
-// raw_title and renders as "Untitled Opportunity". These are kept in the DB for
-// auditability but should not clutter the main "All" feed; like auto-Red /
-// low-relevance rows they are routed into the collapsible "Filtered Out"
-// section (still viewable, never hidden or deleted).
-const isIncompleteCandidate = (c: { raw_title: string | null }) =>
-  !c.raw_title || c.raw_title.trim() === "";
 
 const AUTO_RANK: Record<string, number> = {
   green: 0,
@@ -308,6 +302,7 @@ const Opportunities = () => {
   // Tenant boundary: company-scoped pursuit rows overlaid on canonical
   // candidates (dual-read; legacy candidate columns remain the fallback).
   const [pursuitByCandidate, setPursuitByCandidate] = useState<Map<string, PursuitLite>>(new Map());
+  const [qualificationByCandidate, setQualificationByCandidate] = useState<Map<string, StoredQualification>>(new Map());
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState("all");
   const [sortKey, setSortKey] = useState<SortKey>("due_asc");
@@ -323,6 +318,7 @@ const Opportunities = () => {
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user, authReady } = useAuth();
 
   const mapRow = useCallback((row: any): Candidate => ({
     id: row.id,
@@ -361,6 +357,11 @@ const Opportunities = () => {
     opportunity_intelligence_task_id: row.opportunity_intelligence_task_id ?? null,
     opportunity_intelligence_ready_at: row.opportunity_intelligence_ready_at ?? null,
     opportunity_intelligence_error: row.opportunity_intelligence_error ?? null,
+    ingestion_status: row.ingestion_status ?? "valid",
+    ingestion_issue_reason: row.ingestion_issue_reason ?? null,
+    global_exclusion_code: row.global_exclusion_code ?? null,
+    global_exclusion_reason: row.global_exclusion_reason ?? null,
+    canonical_candidate_id: row.canonical_candidate_id ?? null,
   }), []);
 
   const loadCandidates = useCallback(async (opts?: { silent?: boolean }) => {
@@ -405,6 +406,8 @@ const Opportunities = () => {
     const rows: Candidate[] = (data || []).map(mapRow);
     let pursuits = new Map<string, PursuitLite>();
     if (session) {
+      setSavedCandidateIds(new Set());
+      setQualificationByCandidate(new Map());
       const { data: savedRows, error: savedError } = await (supabase as any)
         .from("saved_opportunities")
         .select("opportunity_candidate_id")
@@ -414,6 +417,16 @@ const Opportunities = () => {
       }
       pursuits = await fetchCompanyPursuits();
       setPursuitByCandidate(pursuits);
+      const { data: qualificationRows, error: qualificationError } = await (supabase as any)
+        .from("user_opportunity_qualifications")
+        .select("opportunity_candidate_id, status, primary_reason, reasons")
+        .eq("user_id", session.user.id);
+      if (!qualificationError) {
+        setQualificationByCandidate(new Map((qualificationRows ?? []).map((row: any) => [
+          row.opportunity_candidate_id,
+          { status: row.status, primary_reason: row.primary_reason, reasons: row.reasons ?? [] },
+        ])));
+      }
     }
 
     if (silent) {
@@ -464,8 +477,14 @@ const Opportunities = () => {
 
   useEffect(() => {
     const checkAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) { navigate("/auth"); return; }
+      if (!authReady) return;
+      if (!user) { navigate("/auth"); return; }
+      setLoading(true);
+      setCandidates([]);
+      setPursuitByCandidate(new Map());
+      setQualificationByCandidate(new Map());
+      setSavedCandidateIds(new Set());
+      setAgencyFilter([]);
       loadCandidates();
 
       // Rehydrate active scan panel if there are non-terminal portal scan
@@ -489,7 +508,7 @@ const Opportunities = () => {
       }
     };
     checkAuth();
-  }, [navigate, loadCandidates]);
+  }, [navigate, loadCandidates, user, authReady]);
 
   // Realtime: opportunity_candidates INSERT/UPDATE
   useEffect(() => {
@@ -870,17 +889,17 @@ const Opportunities = () => {
     };
   }, []);
 
-  // Separate auto-Red / low-relevance into Filtered Out; sort remainder.
+  // Global validity and the authenticated user's qualification are distinct.
+  // Quarantined ingestion artifacts never render as normal opportunities.
   const { visibleCards, filteredOutCards } = useMemo(() => {
     const isFilteredOut = (candidate: Candidate) =>
       activeFilter === "all" &&
-      (candidate.auto_status === "red" ||
-        isIncompleteCandidate(candidate) ||
-        classifyOpportunityTitle(candidate.raw_title).relevance === "low");
+      getStoredFilterReasons(candidate, qualificationByCandidate.get(candidate.id)).length > 0;
 
     const visible: Candidate[] = [];
     const filteredOut: Candidate[] = [];
     for (const c of filtered) {
+      if (isQuarantined(c)) continue;
       if (isFilteredOut(c)) filteredOut.push(c);
       else visible.push(c);
     }
@@ -890,7 +909,7 @@ const Opportunities = () => {
     filteredOut.sort(cmp);
 
     return { visibleCards: visible, filteredOutCards: filteredOut };
-  }, [filtered, activeFilter, sortKey, buildComparator]);
+  }, [filtered, activeFilter, sortKey, buildComparator, qualificationByCandidate]);
 
   const hasActiveFacetFilters = agencyFilter.length > 0;
 
@@ -900,16 +919,15 @@ const Opportunities = () => {
 
   const tabCounts = useMemo(() => {
     const isHiddenFromMainAll = (candidate: Candidate) =>
-      candidate.auto_status === "red" ||
-      isIncompleteCandidate(candidate) ||
-      classifyOpportunityTitle(candidate.raw_title).relevance === "low";
+      isQuarantined(candidate) ||
+      getStoredFilterReasons(candidate, qualificationByCandidate.get(candidate.id)).length > 0;
     const matching = candidates.filter(matchesFacets);
     return {
       all: matching.filter((c) => !isClosedCandidate(c) && !isHiddenFromMainAll(c)).length,
       saved: matching.filter((c) => !isClosedCandidate(c) && savedCandidateIds.has(c.id)).length,
       closed: matching.filter(isClosedCandidate).length,
     };
-  }, [candidates, matchesFacets, savedCandidateIds]);
+  }, [candidates, matchesFacets, savedCandidateIds, qualificationByCandidate]);
 
   const renderCard = (candidate: Candidate, _index: number, navIds?: string[]) => {
     // Dual-read: pursuit linkage first, legacy converted columns as fallback.
@@ -928,6 +946,7 @@ const Opportunities = () => {
       );
     };
     const saved = savedCandidateIds.has(candidate.id);
+    const filterReasons = getStoredFilterReasons(candidate, qualificationByCandidate.get(candidate.id));
 
     return (
       <div
@@ -1002,6 +1021,20 @@ const Opportunities = () => {
               >
                 {candidate.portal_type}
               </span>
+            </div>
+          )}
+
+          {filterReasons.length > 0 && (
+            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-950">
+              <p className="flex items-start gap-1.5 text-xs font-semibold">
+                <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                Filtered out: {filterReasons[0]}
+              </p>
+              {filterReasons.length > 1 && (
+                <ul className="mt-1 list-disc pl-5 text-xs">
+                  {filterReasons.slice(1).map((reason) => <li key={reason}>{reason}</li>)}
+                </ul>
+              )}
             </div>
           )}
 

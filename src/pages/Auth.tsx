@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
 import { ArrowLeft, RefreshCw } from "lucide-react";
 import bidboxLogo from "@/assets/bidbox-logo-auth.png";
+import { authErrorMessage, isUnverifiedEmailError } from "@/lib/authMessages";
 
 const authSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -26,11 +27,12 @@ const Auth = () => {
   const [searchParams] = useSearchParams();
   const emailFromUrl = searchParams.get("email") || "";
   const nextPath = safeNext(searchParams.get("next"));
-  const [isLogin, setIsLogin] = useState(!emailFromUrl);
+  const [isLogin, setIsLogin] = useState(searchParams.get("mode") === "login" || !emailFromUrl);
   const [email, setEmail] = useState(emailFromUrl);
   const [password, setPassword] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [loading, setLoading] = useState(false);
+  const [authNotice, setAuthNotice] = useState<string | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -73,6 +75,7 @@ const Auth = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setAuthNotice(null);
 
     try {
       const validation = authSchema.parse({
@@ -95,7 +98,7 @@ const Auth = () => {
         });
         navigate("/calendar");
       } else {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email: validation.email,
           password: validation.password,
           options: {
@@ -108,11 +111,13 @@ const Auth = () => {
 
         if (error) throw error;
 
-        toast({
-          title: "Success",
-          description: "Account created successfully",
-        });
-        navigate("/calendar");
+        if (data.session) {
+          navigate("/calendar");
+        } else {
+          navigate(`/auth/check-email?email=${encodeURIComponent(validation.email)}`, {
+            state: { email: validation.email },
+          });
+        }
       }
     } catch (error: any) {
       if (error instanceof z.ZodError) {
@@ -121,10 +126,12 @@ const Auth = () => {
           description: error.errors[0].message,
           variant: "destructive",
         });
+      } else if (isUnverifiedEmailError(error)) {
+        setAuthNotice(authErrorMessage(error));
       } else {
         toast({
-          title: "Error",
-          description: error.message || "Something went wrong",
+          title: "Sign in failed",
+          description: authErrorMessage(error),
           variant: "destructive",
         });
       }
@@ -159,6 +166,11 @@ const Auth = () => {
 
         <div className="bg-card border border-border rounded-lg p-8 shadow-sm">
           <form onSubmit={handleSubmit} className="space-y-4">
+            {authNotice && (
+              <div role="alert" className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+                {authNotice}
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -247,7 +259,7 @@ const ResendVerificationButton = ({ email }: { email: string }) => {
 
       toast({
         title: "Email sent",
-        description: "Check your inbox for the verification link",
+        description: "Check your inbox and Spam or Junk folder for the verification link.",
       });
     } catch (error: any) {
       toast({
