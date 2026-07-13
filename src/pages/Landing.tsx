@@ -26,10 +26,11 @@ function useLeadForm(formType: FormType) {
       return;
     }
     setStatus("loading");
+    const source_path = typeof window !== "undefined" ? window.location.pathname : null;
     const { error: dbError } = await supabase.from("landing_leads").insert({
       email: parsed.data,
       form_type: formType,
-      source_path: typeof window !== "undefined" ? window.location.pathname : null,
+      source_path,
       user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
     });
     if (dbError) {
@@ -37,6 +38,9 @@ function useLeadForm(formType: FormType) {
       setError("Something went wrong. Please try again.");
       return;
     }
+    supabase.functions.invoke("notify-lead", {
+      body: { email: parsed.data, form_type: formType, source_path },
+    }).catch((err) => console.error("notify-lead failed:", err));
     setStatus("success");
     setEmail("");
   }
