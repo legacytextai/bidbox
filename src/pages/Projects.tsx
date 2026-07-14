@@ -8,7 +8,7 @@ import { Layout } from "@/components/Layout";
 import { formatInProjectTimezone } from "@/lib/timezoneUtils";
 import { useSubscription } from "@/hooks/useSubscription";
 import { ENFORCE_FREE_PROJECT_LIMIT, FREE_PROJECT_LIMIT } from "@/lib/featureFlags";
-import { resolveEstimatedValue } from "@/lib/opportunityDomain";
+import { resolveEstimatedValue, resolveEstimatedValueRaw } from "@/lib/opportunityDomain";
 
 
 interface Project {
@@ -22,7 +22,9 @@ interface Project {
   pursuit_status: string | null;
   submission_count?: number;
   estimated_value_display?: string | null;
+  estimated_value_raw?: number | null;
 }
+
 
 type TabKey = "all" | "live" | "submitted" | "passed";
 
@@ -79,6 +81,25 @@ const Projects = () => {
       return Number.isNaN(t) || t >= now;
     });
   }, [projects, activeTab]);
+
+  const tabSummary = useMemo(() => {
+    const count = filteredProjects.length;
+    const total = filteredProjects.reduce(
+      (sum, p) => sum + (typeof p.estimated_value_raw === "number" ? p.estimated_value_raw : 0),
+      0,
+    );
+    const hasAnyEstimate = filteredProjects.some(
+      (p) => typeof p.estimated_value_raw === "number" && p.estimated_value_raw > 0,
+    );
+    let totalDisplay: string | null = null;
+    if (hasAnyEstimate) {
+      if (total >= 1_000_000) totalDisplay = `$${(total / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+      else if (total >= 1_000) totalDisplay = `$${Math.round(total / 1_000)}K`;
+      else totalDisplay = `$${total.toLocaleString("en-US")}`;
+    }
+    return { count, totalDisplay };
+  }, [filteredProjects]);
+
   const navigate = useNavigate();
   const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -151,10 +172,14 @@ const Projects = () => {
         const estimated_value_display = cand
           ? resolveEstimatedValue(cand.crawl_data, cand.estimated_value)
           : null;
+        const estimated_value_raw = cand
+          ? resolveEstimatedValueRaw(cand.crawl_data, cand.estimated_value)
+          : null;
         return {
           ...project,
           submission_count: count || 0,
           estimated_value_display,
+          estimated_value_raw,
         };
       })
     );
@@ -232,6 +257,16 @@ const Projects = () => {
               </button>
             ))}
           </div>
+
+          {tabSummary.count > 0 && (
+            <p className="text-sm text-muted-foreground mb-6">
+              {tabSummary.count} {tabSummary.count === 1 ? "project" : "projects"}
+              {tabSummary.totalDisplay
+                ? <> · <span className="font-medium text-foreground">{tabSummary.totalDisplay}</span> total estimate</>
+                : <> · Estimate not available</>}
+            </p>
+          )}
+
 
           {filteredProjects.length === 0 && (
             <p className="text-sm text-muted-foreground mb-6">No projects in this tab.</p>
