@@ -28,7 +28,11 @@ import {
 } from "@/components/ui/command";
 import { Badge } from "@/components/ui/badge";
 import { ActiveScansPanel } from "@/components/ActiveScansPanel";
-import { getStoredFilterReasons, type StoredQualification } from "@/lib/opportunityVisibility";
+import {
+  getCardFilterReasons,
+  type OpportunityCardReasonContext,
+  type StoredQualification,
+} from "@/lib/opportunityVisibility";
 import { useAuth } from "@/hooks/useAuth";
 import { useQualificationJob } from "@/hooks/useQualificationJob";
 import { fetchAllPages } from "@/lib/paginatedRows";
@@ -959,7 +963,8 @@ const Opportunities = () => {
   const hasActiveFacetFilters = agencyFilter.length > 0;
 
   // Global validity and the authenticated user's qualification are distinct.
-  // The qualification map feeds only the card-internal messaging below.
+  // Qualification reasons are presentation-scoped so they cannot leak into
+  // the unfiltered All inventory.
   const hasActiveQualifications = qualificationByCandidate.size > 0;
 
   // Records viewed state on deliberate project-detail activation, and stamps
@@ -981,7 +986,11 @@ const Opportunities = () => {
     }
   }, [markViewed, activeTab]);
 
-  const renderCandidateCard = (candidate: Candidate, navIds?: string[]) => (
+  const renderCandidateCard = (
+    candidate: Candidate,
+    navIds?: string[],
+    cardContext: OpportunityCardReasonContext = "for-you",
+  ) => (
     <ViewedCardWrapper key={candidate.id} viewed={viewedIds.has(candidate.id)}>
       <OpportunityCard
         candidate={candidate}
@@ -991,7 +1000,12 @@ const Opportunities = () => {
           Boolean(pursuitByCandidate.get(candidate.id)?.project_id) ||
           (candidate.status === "converted" && !!candidate.converted_project_id)
         }
-        filterReasons={getStoredFilterReasons(candidate, qualificationByCandidate.get(candidate.id), hasActiveQualifications)}
+        filterReasons={getCardFilterReasons(
+          candidate,
+          qualificationByCandidate.get(candidate.id),
+          hasActiveQualifications,
+          cardContext,
+        )}
         viewed={viewedIds.has(candidate.id)}
         onToggleSaved={handleToggleSaved}
         onOpen={handleCardOpen}
@@ -1177,7 +1191,7 @@ const Opportunities = () => {
                     </OpportunitySectionEmpty>
                   ) : (
                     <OpportunityGrid>
-                      {tabLists.forYouConfirmed.map((c) => renderCandidateCard(c, forYouNavIds))}
+                      {tabLists.forYouConfirmed.map((c) => renderCandidateCard(c, forYouNavIds, "for-you"))}
                     </OpportunityGrid>
                   )}
                 </section>
@@ -1200,7 +1214,7 @@ const Opportunities = () => {
                   ) : (
                     <div data-testid="unpriced-opportunities-card-grid">
                       <OpportunityGrid>
-                        {tabLists.forYouUnpriced.map((c) => renderCandidateCard(c, forYouNavIds))}
+                        {tabLists.forYouUnpriced.map((c) => renderCandidateCard(c, forYouNavIds, "for-you"))}
                       </OpportunityGrid>
                     </div>
                   )}
@@ -1233,7 +1247,11 @@ const Opportunities = () => {
                   </div>
                 ) : (
                   <OpportunityGrid>
-                    {(currentTabList ?? []).map((c) => renderCandidateCard(c, currentTabNavIds))}
+                    {(currentTabList ?? []).map((c) => renderCandidateCard(
+                      c,
+                      currentTabNavIds,
+                      activeTab === "all" ? "all-main" : activeTab,
+                    ))}
                   </OpportunityGrid>
                 )}
                 {activeTab === "all" && tabLists.allFilteredOut.length > 0 && (
@@ -1251,7 +1269,7 @@ const Opportunities = () => {
                     <CollapsibleContent className="mt-4">
                       <div className="opacity-70">
                         <OpportunityGrid>
-                          {tabLists.allFilteredOut.map((c) => renderCandidateCard(c))}
+                          {tabLists.allFilteredOut.map((c) => renderCandidateCard(c, undefined, "all-filtered"))}
                         </OpportunityGrid>
                       </div>
                     </CollapsibleContent>

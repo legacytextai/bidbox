@@ -517,7 +517,14 @@ const OpportunityReport = () => {
     setAdding(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) { navigate("/auth"); return; }
+      if (!session) {
+        toast({
+          title: "Sign in required",
+          description: "Sign in to add this opportunity to your calendar.",
+          variant: "destructive",
+        });
+        return;
+      }
       const sb = supabase as any;
       const scopeFinding = findings.find((f) => f.category === "scope_summary" && f.status === "found");
       const now = new Date().toISOString();
@@ -567,7 +574,7 @@ const OpportunityReport = () => {
         await seedProjectTradesFromFindings(existing.id);
         await syncCandidateLink(existing.id);
         await queuePostCalendarPreparation(candidate.id);
-        navigate(`/projects/${existing.id}`);
+        toast({ title: "Added to Calendar", description: "This opportunity is already on your calendar." });
         return;
       }
 
@@ -616,7 +623,7 @@ const OpportunityReport = () => {
             await seedProjectTradesFromFindings(recovered.id);
             await syncCandidateLink(recovered.id);
             await queuePostCalendarPreparation(candidate.id);
-            navigate(`/projects/${recovered.id}`);
+            toast({ title: "Added to Calendar", description: "This opportunity is already on your calendar." });
             return;
           }
         }
@@ -633,7 +640,6 @@ const OpportunityReport = () => {
             ? "Project created and source document preparation has started."
             : "Project created. Preparation is already in progress.",
       });
-      navigate(`/projects/${project.id}`);
     } catch (e: any) {
       toast({ title: "Failed to add", description: e?.message ?? "Unknown error", variant: "destructive" });
     } finally {

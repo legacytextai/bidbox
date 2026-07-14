@@ -4,6 +4,16 @@ export interface StoredQualification {
   reasons: string[];
 }
 
+// Presentation context is deliberately separate from membership. A user
+// qualification can explain why a candidate is absent from For You, but it is
+// not an explanation that belongs on an otherwise valid All-inventory card.
+export type OpportunityCardReasonContext =
+  | "all-main"
+  | "all-filtered"
+  | "for-you"
+  | "saved"
+  | "closed";
+
 export interface VisibilityCandidate {
   auto_status?: string | null;
   auto_status_reason?: string | null;
@@ -37,15 +47,7 @@ export function isQuarantined(candidate: VisibilityCandidate): boolean {
 export const NOT_YET_EVALUATED_REASON =
   "Not yet evaluated against your Bid Profile";
 
-export function getStoredFilterReasons(
-  candidate: VisibilityCandidate,
-  qualification?: StoredQualification | null,
-  // Pass true when the viewer has an active qualification result set. A
-  // candidate with no row in that set is an evaluation gap and must fail
-  // closed (filtered), never render as a profile match. Defaults to false so
-  // accounts without a Bid Profile keep seeing the globally valid inventory.
-  hasActiveQualifications = false,
-): string[] {
+export function getGlobalFilterReasons(candidate: VisibilityCandidate): string[] {
   if (candidate.global_exclusion_reason) return [candidate.global_exclusion_reason];
 
   const crawl = candidate.crawl_data ?? {};
@@ -64,6 +66,21 @@ export function getStoredFilterReasons(
     return [candidate.auto_status_reason];
   }
 
+  return [];
+}
+
+export function getStoredFilterReasons(
+  candidate: VisibilityCandidate,
+  qualification?: StoredQualification | null,
+  // Pass true when the viewer has an active qualification result set. A
+  // candidate with no row in that set is an evaluation gap and must fail
+  // closed (filtered), never render as a profile match. Defaults to false so
+  // accounts without a Bid Profile keep seeing the globally valid inventory.
+  hasActiveQualifications = false,
+): string[] {
+  const globalReasons = getGlobalFilterReasons(candidate);
+  if (globalReasons.length > 0) return globalReasons;
+
   if (qualification?.status === "red") {
     const reasons = qualification.reasons?.filter(Boolean) ?? [];
     return reasons.length ? reasons : [qualification.primary_reason];
@@ -75,4 +92,22 @@ export function getStoredFilterReasons(
     return [NOT_YET_EVALUATED_REASON];
   }
   return [];
+}
+
+export function getCardFilterReasons(
+  candidate: VisibilityCandidate,
+  qualification: StoredQualification | null | undefined,
+  hasActiveQualifications: boolean,
+  context: OpportunityCardReasonContext,
+): string[] {
+  // All is the unfiltered valid inventory. Per-user Bid Profile results must
+  // never leak into its normal cards.
+  if (context === "all-main") return [];
+
+  // The collapsed All section contains only global/system exclusions, so its
+  // card explanation must be global as well.
+  if (context === "all-filtered") return getGlobalFilterReasons(candidate);
+
+  // Preserve the established presentation for the other tabs.
+  return getStoredFilterReasons(candidate, qualification, hasActiveQualifications);
 }

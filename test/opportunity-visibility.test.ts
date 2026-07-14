@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { getStoredFilterReasons, isQuarantined, NOT_YET_EVALUATED_REASON } from "../src/lib/opportunityVisibility.ts";
+import {
+  getCardFilterReasons,
+  getStoredFilterReasons,
+  isQuarantined,
+  NOT_YET_EVALUATED_REASON,
+} from "../src/lib/opportunityVisibility.ts";
 
 test("stored global duplicate reason wins over user qualification", () => {
   assert.deepEqual(getStoredFilterReasons({
@@ -77,4 +82,49 @@ test("evaluated rows are unaffected by the fail-closed flag", () => {
 test("incomplete ingestion artifacts are quarantined, not user-filtered", () => {
   assert.equal(isQuarantined({ ingestion_status: "quarantined", raw_title: null }), true);
   assert.equal(isQuarantined({ ingestion_status: "valid", raw_title: "Road paving" }), false);
+});
+
+test("All main cards suppress every user-specific qualification reason", () => {
+  const candidate = { raw_title: "Road paving", ingestion_status: "valid" };
+  const redQualification = {
+    status: "red" as const,
+    primary_reason: "County not verified — cannot confirm location within target counties (Riverside)",
+    reasons: ["County not verified — cannot confirm location within target counties (Riverside)"],
+  };
+
+  assert.deepEqual(getCardFilterReasons(candidate, redQualification, true, "all-main"), []);
+  assert.deepEqual(getCardFilterReasons(candidate, null, true, "all-main"), []);
+});
+
+test("Filtered Out cards retain only their global/system explanation", () => {
+  const globalCandidate = {
+    raw_title: "Duplicate paving record",
+    global_exclusion_reason: "Duplicate of Caltrans opportunity 04-1J7104",
+  };
+  const userQualification = {
+    status: "red" as const,
+    primary_reason: "Location outside target counties (Riverside)",
+    reasons: ["Location outside target counties (Riverside)"],
+  };
+
+  assert.deepEqual(
+    getCardFilterReasons(globalCandidate, userQualification, true, "all-filtered"),
+    ["Duplicate of Caltrans opportunity 04-1J7104"],
+  );
+  assert.deepEqual(getCardFilterReasons({ raw_title: "Normal record" }, userQualification, true, "all-filtered"), []);
+});
+
+test("For You, Saved, and Closed preserve their existing reason presentation", () => {
+  const candidate = { raw_title: "Road paving", ingestion_status: "valid" };
+  const qualification = {
+    status: "red" as const,
+    primary_reason: "Project size outside target range",
+    reasons: ["Project size outside target range"],
+  };
+  for (const context of ["for-you", "saved", "closed"] as const) {
+    assert.deepEqual(
+      getCardFilterReasons(candidate, qualification, true, context),
+      ["Project size outside target range"],
+    );
+  }
 });
