@@ -53,6 +53,14 @@ async function allRows(makeQuery, pageSize = 500) {
   }
 }
 
+async function rowsForChunks(values, makeQuery, chunkSize = 100) {
+  const rows = [];
+  for (let index = 0; index < values.length; index += chunkSize) {
+    rows.push(...await allRows(() => makeQuery(values.slice(index, index + chunkSize))));
+  }
+  return rows;
+}
+
 async function automaticRecoverySetting(sb) {
   const { data, error } = await sb.from('app_settings').select('key,value,updated_at').eq('key', 'planetbids_recovery_automatic_enabled').maybeSingle();
   if (error) throw error;
@@ -80,9 +88,9 @@ async function loadOrCreateJob(sb, manifest) {
 
   const activeChildren = await allRows(() => sb.from('agent_tasks').select('id,status,payload').eq('task_type', CHILD_TYPE).in('status', ['pending', 'running', 'retrying']));
   if (activeChildren.length) throw new Error(`refusing to start while ${activeChildren.length} PlanetBids recovery task(s) are active`);
-  const candidates = await allRows(() => sb.from('opportunity_candidates').select('id,portal_type').in('id', manifest.frozenIds));
+  const candidates = await rowsForChunks(manifest.frozenIds, (ids) => sb.from('opportunity_candidates').select('id,portal_type').in('id', ids));
   if (candidates.length !== EXPECTED_MANIFEST_COUNT || candidates.some((row) => row.portal_type !== 'planetbids')) throw new Error('production candidate identity validation failed for frozen manifest');
-  const audits = await allRows(() => sb.from('opportunity_recovery_audits').select('opportunity_candidate_id,outcome').in('opportunity_candidate_id', manifest.frozenIds));
+  const audits = await rowsForChunks(manifest.frozenIds, (ids) => sb.from('opportunity_recovery_audits').select('opportunity_candidate_id,outcome').in('opportunity_candidate_id', ids));
   const recoveredIds = [...new Set(audits.filter((row) => row.outcome === 'recovered').map((row) => row.opportunity_candidate_id))];
   const plan = buildRecoveryPlan({ ...manifest, recoveredIds, waveSize: 100 });
   if (plan.remainingIds.some((id) => manifest.wave1Ids.includes(id))) throw new Error('Wave 1 UUID leaked into remaining plan');
