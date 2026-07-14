@@ -2,6 +2,7 @@
 'use strict';
 
 require('dotenv').config();
+const zlib = require('zlib');
 const { createClient } = require('@supabase/supabase-js');
 const {
   buildRecoveryPlan,
@@ -31,7 +32,8 @@ function required(name) {
 }
 
 function decodeManifest() {
-  const parsed = JSON.parse(Buffer.from(required('HISTORICAL_RECOVERY_MANIFEST_B64'), 'base64').toString('utf8'));
+  const encoded = required('HISTORICAL_RECOVERY_MANIFEST_GZIP_B64');
+  const parsed = JSON.parse(zlib.gunzipSync(Buffer.from(encoded, 'base64')).toString('utf8'));
   const frozenIds = parsed.frozen_ids || [];
   const wave1Ids = parsed.wave1_ids || [];
   const authenticationExpiredIds = parsed.authentication_expired_ids || [];
