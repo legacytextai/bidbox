@@ -2,7 +2,7 @@
 
 **Status:** [CURRENT] — implementation complete as of 2026-06-30  
 **Branch:** phase1-opportunity-intelligence  
-**Replaces / supersedes:** [v1 auto-analysis pipeline](../archive/v1-auto-analysis-pipeline.md)
+**Replaces / supersedes:** [v1 auto-analysis pipeline](../../archive/v1-auto-analysis-pipeline.md)
 
 ---
 
