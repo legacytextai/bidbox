@@ -65,6 +65,7 @@ interface Candidate {
   qualification_score: number | null;
   qualified_at: string | null;
   crawl_data: any | null;
+  estimated_value: number | null;
   county: string | null;
   analysis_status: AnalysisStatus;
   analysis_task_id: string | null;
@@ -118,6 +119,62 @@ const ACTIVE_DOCUMENT_STATUSES: DocumentAcquisitionStatus[] = ["queued", "acquir
 const ACTIVE_DOCUMENT_PROCESSING_STATUSES: DocumentProcessingStatus[] = ["queued", "processing"];
 const ACTIVE_ANALYSIS_STATUSES: AnalysisStatus[] = ["queued", "analyzing"];
 const POLLING_INTERVAL_MS = 7000;
+const QUERY_TIMEOUT_MS = 10000;
+
+const OPPORTUNITY_LIST_SELECT = `
+  id,
+  source_url,
+  portal_type,
+  raw_title,
+  agency,
+  bid_due_at,
+  scope_text,
+  status,
+  review_notes,
+  converted_project_id,
+  created_at,
+  auto_status,
+  auto_status_reason,
+  qualification_score,
+  qualified_at,
+  estimated_value,
+  county,
+  analysis_status,
+  analysis_task_id,
+  analysis_requested_at,
+  analysis_started_at,
+  analysis_completed_at,
+  analysis_error,
+  document_acquisition_status,
+  document_acquisition_started_at,
+  document_acquisition_completed_at,
+  document_acquisition_error,
+  document_processing_status,
+  document_processing_started_at,
+  document_processing_completed_at,
+  document_processing_error,
+  opportunity_lifecycle_status,
+  opportunity_intelligence_status,
+  opportunity_intelligence_task_id,
+  opportunity_intelligence_ready_at,
+  opportunity_intelligence_error,
+  ingestion_status,
+  ingestion_issue_reason,
+  global_exclusion_code,
+  global_exclusion_reason,
+  canonical_candidate_id,
+  opportunity_sources(name, last_scanned_at)
+`;
+
+function withTimeout<T>(promise: PromiseLike<T>, label: string, timeoutMs = QUERY_TIMEOUT_MS): Promise<T> {
+  let timeoutId: number | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = window.setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+  });
+  return Promise.race([Promise.resolve(promise), timeout]).finally(() => {
+    if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+  });
+}
 
 function formatBidDate(iso: string | null): string {
   if (!iso) return "—";
@@ -341,7 +398,8 @@ const Opportunities = () => {
     auto_status_reason: row.auto_status_reason ?? null,
     qualification_score: row.qualification_score ?? null,
     qualified_at: row.qualified_at ?? null,
-    crawl_data: row.crawl_data ?? null,
+    crawl_data: row.crawl_data ?? (row.estimated_value ? { estimated_value: row.estimated_value } : null),
+    estimated_value: row.estimated_value ?? null,
     county: row.county ?? row.crawl_data?.county ?? null,
     analysis_status: (row.analysis_status ?? "not_requested") as AnalysisStatus,
     analysis_task_id: row.analysis_task_id ?? null,
@@ -382,7 +440,7 @@ const Opportunities = () => {
       loadInFlightRef.current = true;
     }
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session } } = await withTimeout(supabase.auth.getSession(), "auth session");
       // Paginated fetch — REQUIRED. A single unranged `.select()` is silently
       // capped at Supabase/PostgREST's default 1000-row limit. Once
       // opportunity_candidates crossed 1000 rows (nightly multi-portal scans), an
@@ -396,11 +454,11 @@ const Opportunities = () => {
       const MAX_CANDIDATE_ROWS = 50000; // safety ceiling, far above realistic volume
       const data: any[] = [];
       for (let from = 0; ; from += PAGE_SIZE) {
-        const { data: page, error } = await supabase
+        const { data: page, error } = await withTimeout(supabase
           .from("opportunity_candidates")
-          .select("*, opportunity_sources(name, last_scanned_at)")
+          .select(OPPORTUNITY_LIST_SELECT)
           .order("created_at", { ascending: false })
-          .range(from, from + PAGE_SIZE - 1);
+          .range(from, from + PAGE_SIZE - 1), `opportunity candidates page ${from / PAGE_SIZE + 1}`);
 
         if (error) {
           if (!silent) {
@@ -421,27 +479,45 @@ const Opportunities = () => {
       const rows: Candidate[] = (data || []).map(mapRow);
       let pursuits = new Map<string, PursuitLite>();
       if (session) {
-        setSavedCandidateIds(new Set());
-        setQualificationByCandidate(new Map());
-        const { data: savedRows, error: savedError } = await (supabase as any)
-          .from("saved_opportunities")
-          .select("opportunity_candidate_id")
-          .eq("user_id", session.user.id);
-        if (!savedError) {
-          setSavedCandidateIds(new Set((savedRows ?? []).map((r: any) => r.opportunity_candidate_id).filter(Boolean)));
+        const [savedResult, pursuitsResult, qualificationResult] = await Promise.allSettled([
+          withTimeout(
+            (supabase as any)
+              .from("saved_opportunities")
+              .select("opportunity_candidate_id")
+              .eq("user_id", session.user.id),
+            "saved opportunities",
+          ),
+          withTimeout(fetchCompanyPursuits(), "company pursuits"),
+          withTimeout(
+            (supabase as any)
+              .from("user_opportunity_qualifications")
+              .select("opportunity_candidate_id, status, primary_reason, reasons")
+              .eq("user_id", session.user.id)
+              .eq("active", true),
+            "user opportunity qualifications",
+          ),
+        ]);
+
+        if (savedResult.status === "fulfilled" && !(savedResult.value as any)?.error) {
+          setSavedCandidateIds(new Set(((savedResult.value as any)?.data ?? []).map((r: any) => r.opportunity_candidate_id).filter(Boolean)));
+        } else if (savedResult.status === "rejected") {
+          console.warn("[opps] saved opportunities skipped", savedResult.reason);
         }
-        pursuits = await fetchCompanyPursuits();
-        setPursuitByCandidate(pursuits);
-        const { data: qualificationRows, error: qualificationError } = await (supabase as any)
-          .from("user_opportunity_qualifications")
-          .select("opportunity_candidate_id, status, primary_reason, reasons")
-          .eq("user_id", session.user.id)
-          .eq("active", true);
-        if (!qualificationError) {
-          setQualificationByCandidate(new Map((qualificationRows ?? []).map((row: any) => [
+
+        if (pursuitsResult.status === "fulfilled") {
+          pursuits = pursuitsResult.value;
+          setPursuitByCandidate(pursuits);
+        } else {
+          console.warn("[opps] pursuits skipped", pursuitsResult.reason);
+        }
+
+        if (qualificationResult.status === "fulfilled" && !(qualificationResult.value as any)?.error) {
+          setQualificationByCandidate(new Map(((qualificationResult.value as any)?.data ?? []).map((row: any) => [
             row.opportunity_candidate_id,
             { status: row.status, primary_reason: row.primary_reason, reasons: row.reasons ?? [] },
           ])));
+        } else if (qualificationResult.status === "rejected") {
+          console.warn("[opps] qualifications skipped", qualificationResult.reason);
         }
       }
 

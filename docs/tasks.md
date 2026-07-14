@@ -23,6 +23,20 @@ Keep this `tasks.md` file focused on broad product implementation history and ap
 
 ## 📅 Session Changelog
 
+### 2026-07-14: Opportunities Loading Hotfix
+
+**Completed**:
+- Replaced the Opportunities list `select *` query with a lean list-only projection to avoid shipping full `crawl_data` JSON for every candidate on initial load.
+- Added client-side timeouts around the initial auth/session read and follow-up saved/pursuit/qualification reads so optional side data cannot pin `/opportunities` on the loading screen.
+- Made saved opportunities, pursuits, and qualifications fail-soft during bootstrap; the list now renders even if one side query is slow.
+
+**How to test**:
+- Hard-refresh `/opportunities` while signed in and confirm the opportunity cards render instead of staying on "Loading opportunities...".
+- Confirm Saved badges/counts still populate after load and saving/unsaving an opportunity still works.
+
+**Next step**:
+- If the page still hangs, inspect the `[opps] ... skipped` warnings to identify the exact slow backend read.
+
 ### 2026-01-18: Bid Readiness Checklist
 
 **Completed**:
