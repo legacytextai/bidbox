@@ -1,5 +1,6 @@
 const { chromium } = require('playwright');
 const { connectBrowserbaseSession, fetchBrowserbaseDownloadZip } = require('../lib/browserbase');
+const { chooseBestEventTitle } = require('../lib/caleprocure-quality');
 
 const DEFAULT_LISTING_URL = 'https://caleprocure.ca.gov/pages/Events-BS3/event-search.aspx';
 const DEFAULT_DETAIL_LIMIT = 300;
@@ -974,6 +975,15 @@ async function waitForDetail(page) {
     return /Event\s*:|Details|Published Date|Event End Date|Dept:/i.test(bodyText)
       || Boolean(document.querySelector('[data-if-label="eventName"], #RESP_AUC_H0B_WK_AUC_ID_BUS_UNIT'));
   }, { timeout: 60000 });
+  // The detail shell renders before data binding: the event-name node exists
+  // but contains the literal template placeholder "[Event Title]". Wait for
+  // hydration to replace it with the real title; fall through on timeout and
+  // let title validation flag the record for recovery instead of blocking.
+  await page.waitForFunction(() => {
+    const node = document.querySelector('[data-if-label="eventName"], h1');
+    const text = (node?.innerText || node?.textContent || '').replace(/\s+/g, ' ').trim();
+    return Boolean(text) && !/\[\s*event\s*title\s*\]/i.test(text);
+  }, { timeout: 20000 }).catch(() => {});
   await page.waitForTimeout(1000);
 }
 
@@ -1610,7 +1620,16 @@ async function extractEventPackage(page, eventIdHint = null) {
 
 function buildCandidateFromDetail({ listingUrl, row, target, detail, packageDiagnostics = null }) {
   const eventId = detail.eventId || row.eventId || target.eventId;
-  const title = detail.title || row.title || eventId;
+  // Quality precedence: verified detail title > page metadata > listing title.
+  // A truthy placeholder ("[Event Title]") must never beat a real listing
+  // title, and an event id alone is not a valid title.
+  const chosenTitle = chooseBestEventTitle([
+    { value: detail.title, source: 'detail_event_name' },
+    { value: detail.pageTitle, source: 'detail_page_title' },
+    { value: row.title, source: 'listing_row' },
+  ], eventId);
+  const title = chosenTitle.title ?? detail.title ?? row.title ?? eventId;
+  const titleQuality = chosenTitle.title ? 'valid' : 'placeholder';
   const department = detail.department || row.department || null;
   const due = parseCalEprocureDate(detail.endDateRaw || row.endDateRaw);
   const published = parseCalEprocureDate(detail.publishedDateRaw || row.publishedDateRaw);
@@ -1651,6 +1670,9 @@ function buildCandidateFromDetail({ listingUrl, row, target, detail, packageDiag
       bid_due_raw: detail.endDateRaw || row.endDateRaw || null,
       bid_due_time_available: due.hadTime,
       bid_due_note: due.iso ? null : due.sentinel,
+      title_quality: titleQuality,
+      title_source: chosenTitle.source,
+      title_recovery_required: titleQuality !== 'valid',
       description: detail.description,
       estimated_value: estimated.value,
       estimated_value_raw: estimated.raw,
@@ -2036,4 +2058,8 @@ module.exports = {
   parseCalEprocureDate,
   parseCanonicalDetailUrl,
   scrapeCalEprocure,
+  // Reused by the title-recovery driver.
+  openBrowser,
+  waitForDetail,
+  extractDetailMetadata,
 };

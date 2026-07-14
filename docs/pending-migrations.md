@@ -11,6 +11,34 @@ environment — the only paths are Lovable or the Supabase dashboard SQL editor.
 
 ---
 
+## PENDING — Cal eProcure title-recovery task dedupe (2026-07-14)
+
+### 20260714080000_caleprocure_title_recovery_dedupe.sql
+
+**Status:** PENDING — DDL (partial unique index), cannot be applied via the
+service role from the worker environment.
+**File:** `supabase/migrations/20260714080000_caleprocure_title_recovery_dedupe.sql`
+
+**What it does:**
+One partial unique index on `agent_tasks((payload->>'candidate_id'))` scoped to
+active (`pending`/`running`/`retrying`) `caleprocure_title_recovery` tasks, so a
+candidate can never have two live title-recovery tasks. Mirrors the PlanetBids
+recovery index from `20260713233000`. No tables or columns change; the recovery
+driver reuses the existing `recovery_*` candidate columns and
+`opportunity_recovery_audits`.
+
+**Until applied:** the worker performs an application-level active-task check
+before enqueueing (`maybeQueueCaleprocureTitleRecovery` in
+`bidbox-worker/index.js`) and the controlled-batch queue script does the same,
+so the system is safe but not race-proof until the index lands.
+
+**Validation queries:**
+```sql
+SELECT indexname FROM pg_indexes
+WHERE tablename = 'agent_tasks'
+  AND indexname = 'idx_agent_tasks_active_caleprocure_title_recovery';
+```
+
 ## PENDING — OpenGov Phase 1 discovery driver (2026-07-07)
 
 ### 20260707230000_seed_opengov_source.sql

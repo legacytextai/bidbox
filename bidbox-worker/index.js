@@ -13,9 +13,11 @@ const { acquireCaltransDocuments } = require('./drivers/caltrans_documents');
 const { acquireOpenGovDocuments } = require('./drivers/opengov_documents');
 const { acquireCalEprocureDocuments } = require('./drivers/caleprocure_documents');
 const { classifyIngestionCandidate } = require('./lib/opportunity-policy');
+const { classifyCalEprocureRelevance, isPlaceholderEventTitle, NON_PUBLIC_WORKS_EXCLUSION_CODE, shouldPreserveExistingTitle } = require('./lib/caleprocure-quality');
 const { agencyRegistryFromRows, COUNTY_FIPS, DEFAULT_AGENCIES, resolveCandidateGeography } = require('./lib/geography');
 const { runPlanetBidsCandidateRecovery } = require('./drivers/planetbids_recovery');
 const { claimedPayload, heartbeatPayload, leaseFor } = require('./lib/planetbids-task-lease');
+const { runCaleprocureTitleRecovery } = require('./drivers/caleprocure_title_recovery');
 const { runQualificationCandidateFanout, runQualificationRebuild } = require('./drivers/qualification_jobs');
 const {
   queueDocumentProcessingForCandidate,
@@ -245,7 +247,88 @@ function safePortalRefreshFields(existing, incoming) {
     merged.ingestion_issue_code = existing.ingestion_issue_code ?? null;
     merged.ingestion_issue_reason = existing.ingestion_issue_reason ?? null;
   }
+  // Quality precedence: a placeholder title from an unhydrated scrape must
+  // never overwrite a previously captured real title.
+  if ((incoming.portal_type ?? existing.portal_type) === 'caleprocure'
+      && shouldPreserveExistingTitle(existing, merged)) {
+    merged.raw_title = existing.raw_title;
+    if (merged.crawl_data && typeof merged.crawl_data === 'object') {
+      merged.crawl_data = {
+        ...merged.crawl_data,
+        title: existing.crawl_data?.title ?? existing.raw_title,
+        title_quality: 'valid',
+        title_recovery_required: false,
+      };
+    }
+  }
   return merged;
+}
+
+// Cal eProcure construction-relevance exclusion. Computes the additive
+// global_exclusion fields for a candidate; never touches candidates already
+// excluded for a different reason (cross-portal dedupe is authoritative).
+// Returns {} when nothing should change.
+function calEprocureRelevanceFields(portalType, fields, existing = null) {
+  if (portalType !== 'caleprocure') return {};
+  const existingCode = existing?.global_exclusion_code ?? null;
+  if (existingCode && existingCode !== NON_PUBLIC_WORKS_EXCLUSION_CODE) return {};
+
+  const relevance = classifyCalEprocureRelevance({
+    title: fields.raw_title,
+    description: fields.crawl_data?.description ?? null,
+  });
+  if (relevance.verdict === 'excluded') {
+    return {
+      global_exclusion_code: NON_PUBLIC_WORKS_EXCLUSION_CODE,
+      global_exclusion_reason: relevance.reason,
+      crawl_data: {
+        ...(fields.crawl_data ?? {}),
+        relevance_category: relevance.category,
+        relevance_evidence: relevance.evidence,
+        relevance_classified_at: new Date().toISOString(),
+      },
+    };
+  }
+  // Reclassification cleared a previously applied relevance exclusion.
+  if (existingCode === NON_PUBLIC_WORKS_EXCLUSION_CODE) {
+    return { global_exclusion_code: null, global_exclusion_reason: null };
+  }
+  return {};
+}
+
+// Queue durable title recovery for a Cal eProcure candidate persisted with a
+// placeholder title. The partial unique index on active recovery tasks makes
+// double-enqueues a no-op. Auto-enqueue is flag-gated for controlled rollout;
+// the controlled-batch script enqueues explicitly regardless of the flag.
+async function maybeQueueCaleprocureTitleRecovery({ supabase, candidateRow, triggerReason, log }) {
+  if (candidateRow?.portal_type !== 'caleprocure') return { queued: false, reason: 'not_caleprocure' };
+  const eventId = candidateRow.portal_bid_id ?? candidateRow.crawl_data?.event_id ?? null;
+  if (!isPlaceholderEventTitle(candidateRow.raw_title, eventId)) return { queued: false, reason: 'title_valid' };
+  if (!envBool('CALEPROCURE_TITLE_RECOVERY_AUTO_ENABLED', false)) {
+    return { queued: false, reason: 'auto_recovery_disabled' };
+  }
+  // Application-level dedupe in addition to the partial unique index
+  // (20260714080000), which may not be applied yet.
+  const { data: active } = await supabase.from('agent_tasks')
+    .select('id')
+    .eq('task_type', 'caleprocure_title_recovery')
+    .in('status', ['pending', 'running', 'retrying'])
+    .eq('payload->>candidate_id', candidateRow.id)
+    .limit(1);
+  if (active && active.length > 0) return { queued: false, reason: 'already_queued' };
+  const { error } = await supabase.from('agent_tasks').insert({
+    task_type: 'caleprocure_title_recovery',
+    status: 'pending',
+    priority: 4,
+    trigger_reason: triggerReason,
+    payload: { candidate_id: candidateRow.id, event_id: eventId },
+  });
+  if (error) {
+    if (String(error.code) === '23505') return { queued: false, reason: 'already_queued' };
+    log?.(`Warning: failed to queue caleprocure title recovery for ${candidateRow.id}: ${error.message}`);
+    return { queued: false, reason: error.message };
+  }
+  return { queued: true };
 }
 
 function supportsDocumentPrefetch(portalType) {
@@ -425,16 +508,18 @@ async function persistScannedCandidate({ supabase, source_id, source_name, porta
   const now = new Date().toISOString();
   const { data: existing, error: lookupError } = await supabase
     .from('opportunity_candidates')
-    .select('id, source_id, source_url, portal_type, raw_title, agency, bid_due_at, estimated_value, estimated_value_low, estimated_value_high, county, project_address, required_licenses, required_naics, portal_bid_id, portal_department, crawl_data, ingestion_status, ingestion_issue_code, ingestion_issue_reason, converted_project_id, analysis_status, document_acquisition_status, document_processing_status, opportunity_intelligence_status, last_metadata_changed_at, metadata_refresh_count')
+    .select('id, source_id, source_url, portal_type, raw_title, agency, bid_due_at, estimated_value, estimated_value_low, estimated_value_high, county, project_address, required_licenses, required_naics, portal_bid_id, portal_department, crawl_data, ingestion_status, ingestion_issue_code, ingestion_issue_reason, global_exclusion_code, converted_project_id, analysis_status, document_acquisition_status, document_processing_status, opportunity_intelligence_status, last_metadata_changed_at, metadata_refresh_count')
     .eq('source_url', candidate.source_url)
     .maybeSingle();
   if (lookupError) throw new Error(`Candidate lookup failed: ${lookupError.message}`);
 
   if (!existing) {
+    const relevanceFields = calEprocureRelevanceFields(portal_type, portalFields);
     const { data: inserted, error: insertError } = await supabase
       .from('opportunity_candidates')
       .insert({
         ...portalFields,
+        ...relevanceFields,
         last_metadata_refreshed_at: now,
         last_metadata_changed_at: now,
         metadata_refresh_count: 1,
@@ -443,10 +528,11 @@ async function persistScannedCandidate({ supabase, source_id, source_name, porta
         opportunity_lifecycle_status: 'discovered',
         opportunity_intelligence_status: 'not_requested',
       })
-      .select('id, source_id, source_url, portal_type, raw_title, agency, bid_due_at, crawl_data, ingestion_status, converted_project_id, analysis_status, document_acquisition_status, document_processing_status, opportunity_intelligence_status, last_metadata_changed_at, metadata_refresh_count')
+      .select('id, source_id, source_url, portal_type, raw_title, agency, bid_due_at, portal_bid_id, crawl_data, ingestion_status, converted_project_id, analysis_status, document_acquisition_status, document_processing_status, opportunity_intelligence_status, last_metadata_changed_at, metadata_refresh_count')
       .single();
     if (insertError) throw new Error(`Candidate insert failed: ${insertError.message}`);
     await emitPreBidDebugReport(candidate, inserted, 'INSERT', supabase, sourceTaskId);
+    const titleRecoveryTask = await maybeQueueCaleprocureTitleRecovery({ supabase, candidateRow: inserted, triggerReason, log });
     // OML: F2/F3/F4 stays user-triggered.
     // bid_item_scan is NOT queued for PlanetBids because document_prefetch
     // (via getAuthenticatedManifest) already extracts and stores bid items in
@@ -507,13 +593,15 @@ async function persistScannedCandidate({ supabase, source_id, source_name, porta
         : { queued: true };
     }
 
-    return { state: 'new', candidate: inserted, metadataChanged: true, preparation: { queued: false, duplicate: false, skipped: true, reason: 'oml_scan_no_auto_trigger' }, bidItemTask, portalIntelligenceTask, documentPrefetchTask };
+    return { state: 'new', candidate: inserted, metadataChanged: true, preparation: { queued: false, duplicate: false, skipped: true, reason: 'oml_scan_no_auto_trigger' }, bidItemTask, portalIntelligenceTask, documentPrefetchTask, titleRecoveryTask };
   }
 
   const safePortalFields = safePortalRefreshFields(existing, portalFields);
   const metadataChanged = changedPortalMetadata(existing, safePortalFields);
+  const relevanceFields = calEprocureRelevanceFields(portal_type, safePortalFields, existing);
   const updatePayload = {
     ...safePortalFields,
+    ...relevanceFields,
     last_metadata_refreshed_at: now,
     last_metadata_changed_at: metadataChanged ? now : existing.last_metadata_changed_at,
     metadata_refresh_count: (existing.metadata_refresh_count ?? 0) + 1,
@@ -525,11 +613,12 @@ async function persistScannedCandidate({ supabase, source_id, source_name, porta
     .from('opportunity_candidates')
     .update(updatePayload)
     .eq('id', existing.id)
-    .select('id, source_id, source_url, portal_type, raw_title, agency, bid_due_at, crawl_data, ingestion_status, converted_project_id, analysis_status, document_acquisition_status, document_processing_status, opportunity_intelligence_status, last_metadata_changed_at, metadata_refresh_count')
+    .select('id, source_id, source_url, portal_type, raw_title, agency, bid_due_at, portal_bid_id, crawl_data, ingestion_status, converted_project_id, analysis_status, document_acquisition_status, document_processing_status, opportunity_intelligence_status, last_metadata_changed_at, metadata_refresh_count')
     .single();
   if (updateError) throw new Error(`Candidate metadata refresh failed: ${updateError.message}`);
 
   await emitPreBidDebugReport(candidate, updated, 'UPDATE', supabase, sourceTaskId);
+  await maybeQueueCaleprocureTitleRecovery({ supabase, candidateRow: updated, triggerReason, log });
 
   // OML: scan-time refreshes no longer auto-queue F2/F3/F4 prep, even when
   // metadata changes. Re-analysis after a metadata change is the user's call,
@@ -1257,7 +1346,7 @@ async function claimNextTask() {
     .from('agent_tasks')
     .select('*')
     .eq('status', 'pending')
-    .in('task_type', ['planetbids_scan', 'planetbids_candidate_recovery', 'qualification_rebuild', 'qualification_candidate_fanout', 'caltrans_scan', 'lacounty_dpw_scan', 'lacmta_scan', 'caleprocure_scan', 'opengov_scan', 'bid_item_scan', 'portal_intelligence', 'document_prefetch', 'project_analysis', 'document_processing', 'project_intelligence'])
+    .in('task_type', ['planetbids_scan', 'planetbids_candidate_recovery', 'caleprocure_title_recovery', 'qualification_rebuild', 'qualification_candidate_fanout', 'caltrans_scan', 'lacounty_dpw_scan', 'lacmta_scan', 'caleprocure_scan', 'opengov_scan', 'bid_item_scan', 'portal_intelligence', 'document_prefetch', 'project_analysis', 'document_processing', 'project_intelligence'])
     .order('priority', { ascending: false })
     .order('created_at', { ascending: true })
     .limit(1)
@@ -1372,6 +1461,8 @@ async function processTask(task) {
       } finally {
         await releasePlanetBidsLock(workerId, log);
       }
+    } else if (task.task_type === 'caleprocure_title_recovery') {
+      result = await runCaleprocureTitleRecovery({ task, supabase, log: (msg) => console.log(`[${ts()}] [title-recovery:${task.payload?.candidate_id ?? 'unknown'}] ${msg}`) });
     } else if (task.task_type === 'qualification_rebuild') {
       result = await runQualificationRebuild({ task, supabase, log: (msg) => console.log(`[${ts()}] ${msg}`) });
     } else if (task.task_type === 'qualification_candidate_fanout') {
@@ -1404,6 +1495,8 @@ async function processTask(task) {
 
     const taskResult = task.task_type === 'planetbids_candidate_recovery'
       ? { ...result, phase: 'planetbids_candidate_recovery_v1' }
+      : task.task_type === 'caleprocure_title_recovery'
+      ? { ...result, phase: 'caleprocure_title_recovery_v1' }
       : task.task_type === 'qualification_rebuild'
       ? { ...result, phase: 'qualification_rebuild_v1' }
       : task.task_type === 'qualification_candidate_fanout'
@@ -1524,7 +1617,7 @@ async function processTask(task) {
           intelligence_status: result.project_intelligence_task_id ? 'queued' : 'not_generated',
         };
 
-    const taskError = ['planetbids_candidate_recovery', 'qualification_rebuild', 'qualification_candidate_fanout'].includes(task.task_type)
+    const taskError = ['planetbids_candidate_recovery', 'caleprocure_title_recovery', 'qualification_rebuild', 'qualification_candidate_fanout'].includes(task.task_type)
       ? null
       : task.task_type === 'project_analysis'
       ? (result.acquisition_status === 'failed' ? result.errorSummary : null)
