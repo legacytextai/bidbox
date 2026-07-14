@@ -504,21 +504,37 @@ const Opportunities = () => {
     }
   }, [toast, mapRow]);
 
+  // Auth gate: redirect unauthenticated users. Runs whenever the auth status
+  // itself changes — NOT on every render — so a token refresh event that
+  // produces a new `user` object reference for the same id doesn't retrigger
+  // the bootstrap load.
   useEffect(() => {
-    const checkAuth = async () => {
-      if (!authReady) return;
-      if (!user) { navigate("/auth"); return; }
-      setLoading(true);
-      setCandidates([]);
-      setPursuitByCandidate(new Map());
-      setQualificationByCandidate(new Map());
-      setSavedCandidateIds(new Set());
-      setAgencyFilter([]);
-      loadCandidates();
+    if (!authReady) return;
+    if (!user) navigate("/auth");
+  }, [authReady, user, navigate]);
 
-      // Rehydrate active scan panel if there are non-terminal portal scan
-      // tasks still running in the background (survives reloads/navigation).
-      // Portal-agnostic: matches any "<portal>_scan" task type.
+  // Bootstrap load: runs exactly once per authenticated user id. Deliberately
+  // does NOT depend on `loadCandidates` identity — that dep was the cause of
+  // the "stuck on Loading opportunities..." bug: any dep churn re-flipped
+  // `setLoading(true)` and stacked overlapping loads.
+  const bootstrappedForUserRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!authReady || !user) return;
+    if (bootstrappedForUserRef.current === user.id) return;
+    bootstrappedForUserRef.current = user.id;
+
+    setLoading(true);
+    setCandidates([]);
+    setPursuitByCandidate(new Map());
+    setQualificationByCandidate(new Map());
+    setSavedCandidateIds(new Set());
+    setAgencyFilter([]);
+    void loadCandidates();
+
+    // Rehydrate active scan panel if there are non-terminal portal scan
+    // tasks still running in the background (survives reloads/navigation).
+    // Portal-agnostic: matches any "<portal>_scan" task type.
+    (async () => {
       const sinceIso = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
       const { data: activeTasks } = await supabase
         .from("agent_tasks")
@@ -528,16 +544,27 @@ const Opportunities = () => {
         .gte("created_at", sinceIso);
       if (activeTasks && activeTasks.length > 0) {
         setActiveScanTaskIds(activeTasks.map((t: any) => t.id));
-        setScanStartedAt(
-          activeTasks
-            .map((t: any) => t.created_at)
-            .sort()[0],
-        );
+        setScanStartedAt(activeTasks.map((t: any) => t.created_at).sort()[0]);
         setScanActive(true);
       }
-    };
-    checkAuth();
-  }, [navigate, loadCandidates, user, authReady]);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally gated on user id, not loadCandidates identity
+  }, [authReady, user?.id]);
+
+  // Watchdog: if the loading spinner is somehow still up 15s after we started,
+  // surface it in the console so we get a signal next time instead of a silent hang.
+  useEffect(() => {
+    if (!loading) return;
+    const t = window.setTimeout(() => {
+      console.warn("[opps] loading watchdog tripped — still loading after 15s", {
+        userId: user?.id,
+        authReady,
+        inFlight: loadInFlightRef.current,
+      });
+    }, 15000);
+    return () => window.clearTimeout(t);
+  }, [loading, user?.id, authReady]);
+
 
   useEffect(() => {
     if (qualificationJob.job?.status !== "complete") return;
