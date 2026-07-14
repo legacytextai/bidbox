@@ -79,3 +79,9 @@ test('PlanetBids row navigation remains bounded after a second missed click', as
   assert.equal(clicks, 2);
   assert.equal(reloads, 1);
 });
+
+test('PlanetBids listing recovery remains explicitly bounded to one reload', () => {
+  const source = require('node:fs').readFileSync(require.resolve('../drivers/planetbids'), 'utf8');
+  assert.match(source, /Listing produced no usable targets — reloading once before failing/);
+  assert.match(source, /No active bidding rows found after bounded reload/);
+});

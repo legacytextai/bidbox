@@ -604,20 +604,52 @@ async function scrapePlanetBids(payload, log) {
         let detailUrlFallbacks = [];
         let extractionMode = 'dom_rows';
         if (rowCount === 0) {
-          const pageText = await page.locator('body').innerText({ timeout: 5000 }).catch(() => '');
-          const diagnostics = await captureZeroRowDiagnostics(page);
-          const foundBidsCount = parseFoundBidsCount(diagnostics.found_bids_text);
-          const noResultsText = /no\s+(open\s+)?(bid|opportunit|record)|no\s+data|nothing\s+found/i.test(pageText);
+          let pageText = await page.locator('body').innerText({ timeout: 5000 }).catch(() => '');
+          let diagnostics = await captureZeroRowDiagnostics(page);
+          let foundBidsCount = parseFoundBidsCount(diagnostics.found_bids_text);
+          let noResultsText = /no\s+(open\s+)?(bid|opportunit|record)|no\s+data|nothing\s+found/i.test(pageText);
           if (noResultsText || foundBidsCount === 0) {
             log(`[${source_name}] No active bidding rows found`);
             return;
           }
 
           await Promise.allSettled(apiExtractionTasks);
-          const domDetailUrls = await extractBidDetailUrlsFromPage(page, listing_url);
-          const apiDerivedDetailUrls = [...apiDetailUrls];
+          let domDetailUrls = await extractBidDetailUrlsFromPage(page, listing_url);
+          let apiDerivedDetailUrls = [...apiDetailUrls];
           detailUrlFallbacks = [...new Set([...domDetailUrls, ...apiDerivedDetailUrls])];
-          if (detailUrlFallbacks.length > 0) {
+
+          if (detailUrlFallbacks.length === 0) {
+            log(`[${source_name}] Listing produced no usable targets — reloading once before failing`);
+            await page.waitForTimeout(1000 + Math.floor(Math.random() * 1000));
+            await gotoListingAndWait(page, listing_url, source_name, log);
+            rowLocator = biddingRows();
+            rowCount = await rowLocator.count();
+            if (rowCount === 0 && await clickSearchIfAvailable(page, source_name, log)) {
+              rowLocator = biddingRows();
+              rowCount = await rowLocator.count();
+            }
+
+            if (rowCount === 0) {
+              pageText = await page.locator('body').innerText({ timeout: 5000 }).catch(() => '');
+              diagnostics = await captureZeroRowDiagnostics(page);
+              foundBidsCount = parseFoundBidsCount(diagnostics.found_bids_text);
+              noResultsText = /no\s+(open\s+)?(bid|opportunit|record)|no\s+data|nothing\s+found/i.test(pageText);
+              if (noResultsText || foundBidsCount === 0) {
+                log(`[${source_name}] No active bidding rows found after bounded reload`);
+                return;
+              }
+              await Promise.allSettled(apiExtractionTasks);
+              domDetailUrls = await extractBidDetailUrlsFromPage(page, listing_url);
+              apiDerivedDetailUrls = [...apiDetailUrls];
+              detailUrlFallbacks = [...new Set([...domDetailUrls, ...apiDerivedDetailUrls])];
+            } else {
+              log(`[${source_name}] Listing rows recovered after bounded reload: ${rowCount}`);
+            }
+          }
+
+          if (rowCount > 0) {
+            extractionMode = 'dom_rows';
+          } else if (detailUrlFallbacks.length > 0) {
             extractionMode = 'detail_url_fallback';
             log(
               `[${source_name}] Bidding row locator found 0 rows, but ${detailUrlFallbacks.length} ` +
