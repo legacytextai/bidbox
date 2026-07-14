@@ -181,10 +181,10 @@ const QualificationProfile = () => {
       if (!m) return [3, 0, 0];
       const num = parseInt(m[2], 10);
       if (m[1].toUpperCase() === "D") {
-        // Slot D-codes immediately after C-61
-        return [2, 61, num + 1];
+        // Slot D-codes immediately after C-61, ordered numerically
+        return [2, 61, num];
       }
-      return [2, num, 0];
+      return [2, num, -1];
     };
 
     const sorted = [...trades].sort((a, b) => {
