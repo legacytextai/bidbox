@@ -169,6 +169,19 @@ async function waitForDocumentReady(page, timeout = 30000) {
   ).then(() => true).catch(() => false);
 }
 
+async function waitForPlanetBidsDetailNavigation(page, timeout = 25000) {
+  try {
+    // PlanetBids detail pages can keep subresources open long after the route
+    // and DOM are usable. Requiring the default `load` state turns a successful
+    // click into a timeout and leaves the scan stranded on the detail route.
+    await page.waitForURL('**/bo-detail/**', { waitUntil: 'domcontentloaded', timeout });
+  } catch (error) {
+    // If the route changed successfully, detail readiness below is the
+    // authoritative content check. Only rethrow when navigation never landed.
+    if (!/\/bo-detail\/\d+/.test(page.url())) throw error;
+  }
+}
+
 async function waitForDetailReadiness(page, targetBidId, apiMetadataByBidId, timeout = Number(process.env.PLANETBIDS_SCAN_DETAIL_TIMEOUT_MS ?? 15000)) {
   const started = Date.now();
   while (Date.now() - started < timeout) {
@@ -655,7 +668,7 @@ async function scrapePlanetBids(payload, log) {
 
               log(`[${source_name}] Clicking row ${i + 1}/${targetCount}`);
               await rows.nth(i).click();
-              await page.waitForURL('**/bo-detail/**', { timeout: 25000 });
+              await waitForPlanetBidsDetailNavigation(page);
               await page.waitForTimeout(1000 + Math.floor(Math.random() * 1000)); // FIX 4: jitter
             }
 
@@ -1315,4 +1328,5 @@ module.exports = {
   parseBidDueDate,
   parseEstimatedValue,
   parseEstimatedValueDetails,
+  waitForPlanetBidsDetailNavigation,
 };
