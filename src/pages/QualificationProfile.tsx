@@ -11,7 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { CA_COUNTIES } from "@/lib/californiaRegions";
-import { LICENSE_CLASSES } from "@/lib/licenseClasses";
+import { fetchTradeTypes, groupTradesByCategory, type TradeType } from "@/lib/tradeTypes";
 import { ALL_NAICS_CODES, NAICS_SECTORS } from "@/lib/naicsCodes";
 import { ChevronDown, X, Loader2, Check } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
