@@ -498,8 +498,8 @@ const Opportunities = () => {
           ),
         ]);
 
-        if (savedResult.status === "fulfilled" && !savedResult.value.error) {
-          setSavedCandidateIds(new Set((savedResult.value.data ?? []).map((r: any) => r.opportunity_candidate_id).filter(Boolean)));
+        if (savedResult.status === "fulfilled" && !(savedResult.value as any)?.error) {
+          setSavedCandidateIds(new Set(((savedResult.value as any)?.data ?? []).map((r: any) => r.opportunity_candidate_id).filter(Boolean)));
         } else if (savedResult.status === "rejected") {
           console.warn("[opps] saved opportunities skipped", savedResult.reason);
         }
@@ -511,8 +511,8 @@ const Opportunities = () => {
           console.warn("[opps] pursuits skipped", pursuitsResult.reason);
         }
 
-        if (qualificationResult.status === "fulfilled" && !qualificationResult.value.error) {
-          setQualificationByCandidate(new Map((qualificationResult.value.data ?? []).map((row: any) => [
+        if (qualificationResult.status === "fulfilled" && !(qualificationResult.value as any)?.error) {
+          setQualificationByCandidate(new Map(((qualificationResult.value as any)?.data ?? []).map((row: any) => [
             row.opportunity_candidate_id,
             { status: row.status, primary_reason: row.primary_reason, reasons: row.reasons ?? [] },
           ])));
@@ -1074,7 +1074,7 @@ const Opportunities = () => {
     const pursuitProjectId = pursuitByCandidate.get(candidate.id)?.project_id ?? null;
     const onCalendar = Boolean(pursuitProjectId) ||
       (candidate.status === "converted" && !!candidate.converted_project_id);
-    const estimatedValue = formatEstimatedValue(candidate.crawl_data, candidate.estimated_value);
+    const estimatedValue = formatEstimatedValue(candidate.crawl_data);
     const goToOpportunity = () => {
       sessionStorage.setItem(
         SCROLL_ANCHOR_KEY,
