@@ -8,7 +8,7 @@ import { Layout } from "@/components/Layout";
 import { formatInProjectTimezone } from "@/lib/timezoneUtils";
 import { useSubscription } from "@/hooks/useSubscription";
 import { ENFORCE_FREE_PROJECT_LIMIT, FREE_PROJECT_LIMIT } from "@/lib/featureFlags";
-import { resolveEstimatedValue } from "@/lib/opportunityDomain";
+import { resolveEstimatedValue, resolveEstimatedValueRaw } from "@/lib/opportunityDomain";
 
 
 interface Project {
@@ -22,7 +22,9 @@ interface Project {
   pursuit_status: string | null;
   submission_count?: number;
   estimated_value_display?: string | null;
+  estimated_value_raw?: number | null;
 }
+
 
 type TabKey = "all" | "live" | "submitted" | "passed";
 
