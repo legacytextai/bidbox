@@ -13,6 +13,9 @@ export interface VisibilityCandidate {
   ingestion_status?: string | null;
   ingestion_issue_reason?: string | null;
   raw_title?: string | null;
+  // Triage status: qualification rebuilds only evaluate "pending" candidates,
+  // so only pending candidates can have a legitimate evaluation gap.
+  status?: string | null;
 }
 
 const LEGACY_GLOBAL_REASONS = [
@@ -31,9 +34,17 @@ export function isQuarantined(candidate: VisibilityCandidate): boolean {
   return !String(candidate.raw_title ?? "").trim();
 }
 
+export const NOT_YET_EVALUATED_REASON =
+  "Not yet evaluated against your Bid Profile";
+
 export function getStoredFilterReasons(
   candidate: VisibilityCandidate,
   qualification?: StoredQualification | null,
+  // Pass true when the viewer has an active qualification result set. A
+  // candidate with no row in that set is an evaluation gap and must fail
+  // closed (filtered), never render as a profile match. Defaults to false so
+  // accounts without a Bid Profile keep seeing the globally valid inventory.
+  hasActiveQualifications = false,
 ): string[] {
   if (candidate.global_exclusion_reason) return [candidate.global_exclusion_reason];
 
@@ -56,6 +67,12 @@ export function getStoredFilterReasons(
   if (qualification?.status === "red") {
     const reasons = qualification.reasons?.filter(Boolean) ?? [];
     return reasons.length ? reasons : [qualification.primary_reason];
+  }
+
+  // Converted or manually triaged candidates are explicit user decisions and
+  // are intentionally outside the rebuild's scope — never fail them closed.
+  if (hasActiveQualifications && !qualification && (candidate.status ?? "pending") === "pending") {
+    return [NOT_YET_EVALUATED_REASON];
   }
   return [];
 }

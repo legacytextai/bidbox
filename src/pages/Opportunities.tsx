@@ -1052,10 +1052,14 @@ const Opportunities = () => {
 
   // Global validity and the authenticated user's qualification are distinct.
   // Quarantined ingestion artifacts never render as normal opportunities.
+  // When the user has an active qualification set, candidates missing from it
+  // fail closed into the Filtered Out population (evaluation gap ≠ match).
+  const hasActiveQualifications = qualificationByCandidate.size > 0;
+
   const { visibleCards, filteredOutCards } = useMemo(() => {
     const isFilteredOut = (candidate: Candidate) =>
       activeFilter === "all" &&
-      getStoredFilterReasons(candidate, qualificationByCandidate.get(candidate.id)).length > 0;
+      getStoredFilterReasons(candidate, qualificationByCandidate.get(candidate.id), hasActiveQualifications).length > 0;
 
     const visible: Candidate[] = [];
     const filteredOut: Candidate[] = [];
@@ -1070,7 +1074,7 @@ const Opportunities = () => {
     filteredOut.sort(cmp);
 
     return { visibleCards: visible, filteredOutCards: filteredOut };
-  }, [filtered, activeFilter, sortKey, buildComparator, qualificationByCandidate]);
+  }, [filtered, activeFilter, sortKey, buildComparator, qualificationByCandidate, hasActiveQualifications]);
 
   const hasActiveFacetFilters = agencyFilter.length > 0;
 
@@ -1081,14 +1085,14 @@ const Opportunities = () => {
   const tabCounts = useMemo(() => {
     const isHiddenFromMainAll = (candidate: Candidate) =>
       isQuarantined(candidate) ||
-      getStoredFilterReasons(candidate, qualificationByCandidate.get(candidate.id)).length > 0;
+      getStoredFilterReasons(candidate, qualificationByCandidate.get(candidate.id), hasActiveQualifications).length > 0;
     const matching = candidates.filter(matchesFacets);
     return {
       all: matching.filter((c) => !isClosedCandidate(c) && !isHiddenFromMainAll(c)).length,
       saved: matching.filter((c) => !isClosedCandidate(c) && savedCandidateIds.has(c.id)).length,
       closed: matching.filter(isClosedCandidate).length,
     };
-  }, [candidates, matchesFacets, savedCandidateIds, qualificationByCandidate]);
+  }, [candidates, matchesFacets, savedCandidateIds, qualificationByCandidate, hasActiveQualifications]);
 
   const renderCard = (candidate: Candidate, _index: number, navIds?: string[]) => {
     // Dual-read: pursuit linkage first, legacy converted columns as fallback.
@@ -1107,7 +1111,7 @@ const Opportunities = () => {
       );
     };
     const saved = savedCandidateIds.has(candidate.id);
-    const filterReasons = getStoredFilterReasons(candidate, qualificationByCandidate.get(candidate.id));
+    const filterReasons = getStoredFilterReasons(candidate, qualificationByCandidate.get(candidate.id), hasActiveQualifications);
     const storedQualification = qualificationByCandidate.get(candidate.id);
     const countyVerified = Boolean(getCandidateCounty(candidate));
 

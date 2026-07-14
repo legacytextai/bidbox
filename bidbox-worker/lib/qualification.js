@@ -63,6 +63,20 @@ function result(candidate, status, primaryReason, score) {
   };
 }
 
+// A county field may hold a multi-county string ("Riverside, San Bernardino").
+// Match any listed county against the profile's targets, case-insensitively.
+function countyTokens(county) {
+  return String(county ?? '')
+    .split(/[,;/&]|\band\b/i)
+    .map((token) => token.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function matchesTargetCounties(county, targetCounties) {
+  const targets = targetCounties.map((item) => item.toLowerCase());
+  return countyTokens(county).some((token) => targets.includes(token));
+}
+
 function qualifyCandidate(candidate, profile, now = Date.now()) {
   const county = candidate.county ?? AGENCY_COUNTY[candidate.agency ?? ''] ?? null;
   const value = Number(candidate.estimated_value) > 0
@@ -80,8 +94,16 @@ function qualifyCandidate(candidate, profile, now = Date.now()) {
     if (Number.isFinite(due) && due < now) return result(candidate, 'red', 'Bid closed', 0);
   }
   const targetCounties = profile.target_counties ?? [];
-  if (county && targetCounties.length > 0 && !targetCounties.some((item) => item.toLowerCase() === county.toLowerCase())) {
+  if (county && targetCounties.length > 0 && !matchesTargetCounties(county, targetCounties)) {
     return result(candidate, 'red', `Location outside target counties (${county})`, 10);
+  }
+  // Fail closed on location: when the profile targets specific counties, an
+  // opportunity with no reliable county evidence must not surface as a match.
+  // A statewide agency or an unparsed portal record is an evaluation gap, not
+  // evidence the work is in the target counties. (Profiles with no county
+  // selection keep the legacy yellow "County not verified" treatment below.)
+  if (!county && targetCounties.length > 0) {
+    return result(candidate, 'red', `County not verified — cannot confirm location within target counties (${targetCounties.join(', ')})`, 10);
   }
   if (value !== null && profile.min_project_value !== null && value < profile.min_project_value) {
     return result(candidate, 'red', `Project value (${formatDollar(value)}) below minimum (${formatDollar(profile.min_project_value)})`, 10);
@@ -112,7 +134,7 @@ function qualifyCandidate(candidate, profile, now = Date.now()) {
 
   const positives = [];
   let score = 70;
-  if (county && targetCounties.some((item) => item.toLowerCase() === county.toLowerCase())) {
+  if (county && matchesTargetCounties(county, targetCounties)) {
     positives.push(`County in target list (${county})`);
     score += 10;
   }
