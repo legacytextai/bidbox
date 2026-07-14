@@ -70,10 +70,11 @@ async function waitForAuthoritativeDetail(page, targetBidId, apiMatches, apiDiag
   throw Object.assign(new Error('PlanetBids detail readiness timeout'), { diagnostics });
 }
 
-async function recoverFromPortal(candidate, log) {
+async function recoverFromPortal(candidate, log, metrics = null) {
   const targetBidId = String(candidate.portal_bid_id ?? candidate.crawl_data?.bid_id ?? '').trim();
   if (!targetBidId) throw Object.assign(new Error('candidate has no stable PlanetBids identifier'), { code: 'missing_stable_identifier' });
   const created = await createBrowserbasePage(log);
+  if (metrics) metrics.browserbase_sessions++;
   const { browser, page } = created;
   const apiMatches = [];
   const apiDiagnostics = { observed: 0, last_status: null, last_url: null };
@@ -127,12 +128,13 @@ async function recoverFromPortal(candidate, log) {
   }
 }
 
-async function recoverFromListingApi(supabase, candidate, log) {
+async function recoverFromListingApi(supabase, candidate, log, metrics = null) {
   const targetBidId = String(candidate.portal_bid_id ?? candidate.crawl_data?.bid_id ?? '').trim();
   if (!targetBidId || !candidate.source_id) return null;
   const { data: source } = await supabase.from('opportunity_sources').select('listing_url').eq('id', candidate.source_id).maybeSingle();
   if (!source?.listing_url) return null;
   const { browser, page } = await createBrowserbasePage(log);
+  if (metrics) metrics.browserbase_sessions++;
   const matches = [];
   try {
     page.on('response', (response) => {
@@ -205,13 +207,14 @@ async function runPlanetBidsCandidateRecovery({ task, supabase, log = console.lo
   const before = { raw_title: candidate.raw_title, bid_due_at: candidate.bid_due_at, agency: candidate.agency, county: candidate.county, ingestion_status: candidate.ingestion_status };
   let recovered = null;
   let portalError = null;
+  const metrics = { browserbase_sessions: 0 };
   const started = Date.now();
   try {
-    recovered = await recoverFromPortal(candidate, log);
+    recovered = await recoverFromPortal(candidate, log, metrics);
   } catch (error) {
     portalError = error;
     log(`portal recovery failed candidate=${candidateId} code=${error.code}: ${error.message}`);
-    recovered = await recoverFromListingApi(supabase, candidate, log).catch((listingError) => {
+    recovered = await recoverFromListingApi(supabase, candidate, log, metrics).catch((listingError) => {
       log(`listing recovery failed candidate=${candidateId}: ${listingError.message}`);
       return null;
     });
@@ -254,7 +257,7 @@ async function runPlanetBidsCandidateRecovery({ task, supabase, log = console.lo
       diagnostics: recovered?.diagnostics ?? portalError?.diagnostics ?? {},
     });
     if (auditError) throw new Error(`candidate recovery audit failed: ${auditError.message}`);
-    if (successful) {
+    if (successful && task.payload?.suppress_qualification_fanout !== true) {
       await supabase.from('agent_tasks').insert({ task_type: 'qualification_candidate_fanout', status: 'pending', priority: 6, trigger_reason: 'candidate_recovered', payload: { candidate_id: candidate.id, metadata_version: candidate.metadata_version } });
     }
   }
@@ -263,6 +266,7 @@ async function runPlanetBidsCandidateRecovery({ task, supabase, log = console.lo
     unresolved: successful ? 0 : 1, source: recovered?.extraction_source ?? null,
     title_found: recovered?.raw_title ?? null, bid_due_at_found: recovered?.bid_due_at ?? null,
     status_found: recovered?.status ?? null, error_code: code, exhausted,
+    browserbase_sessions: metrics.browserbase_sessions,
     would_update: fieldsChanged.length > 0, fields_changed: fieldsChanged,
     runtime_ms: Date.now() - started, diagnostics: recovered?.diagnostics ?? portalError?.diagnostics ?? {},
   };

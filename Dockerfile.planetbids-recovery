@@ -1,0 +1,7 @@
+FROM node:22-slim
+WORKDIR /app
+COPY bidbox-worker/package.json .
+RUN npm install --omit=dev
+COPY bidbox-worker/lib/planetbids-historical-recovery.js ./lib/planetbids-historical-recovery.js
+COPY bidbox-worker/scripts/run-planetbids-historical-recovery.js ./scripts/run-planetbids-historical-recovery.js
+CMD ["node", "scripts/run-planetbids-historical-recovery.js"]
