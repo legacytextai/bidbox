@@ -103,7 +103,11 @@ export const OpportunityCard = ({
         {/* Title + actions */}
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-base text-foreground leading-snug">
+            <h3
+              className={`text-base text-foreground leading-snug ${
+                viewed ? "font-normal" : "font-semibold"
+              }`}
+            >
               {candidate.raw_title ?? "Untitled Opportunity"}
             </h3>
             {candidate.agency && (
