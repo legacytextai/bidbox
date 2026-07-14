@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Layout } from "@/components/Layout";
 import { Button } from "@/components/ui/button";
@@ -156,6 +156,7 @@ const QualificationProfile = () => {
   const saving = saveStage === "saving";
   const [profile, setProfile] = useState<ProfileRow>(EMPTY_PROFILE);
   const [userId, setUserId] = useState<string | null>(null);
+  const saveInFlight = useRef(false);
   const qualification = useQualificationJob(userId);
 
   const countyOptions = useMemo(
@@ -219,6 +220,8 @@ const QualificationProfile = () => {
   }, [load]);
 
   const handleSave = async () => {
+    if (saveInFlight.current) return;
+    saveInFlight.current = true;
     setSaveStage("saving");
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -290,6 +293,8 @@ const QualificationProfile = () => {
       });
       setSaveStage("idle");
       return;
+    } finally {
+      saveInFlight.current = false;
     }
     setSaveStage("done");
     setTimeout(() => setSaveStage("idle"), 1500);
