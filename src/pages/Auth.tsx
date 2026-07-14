@@ -27,7 +27,10 @@ const Auth = () => {
   const [searchParams] = useSearchParams();
   const emailFromUrl = searchParams.get("email") || "";
   const nextPath = safeNext(searchParams.get("next"));
-  const [isLogin, setIsLogin] = useState(searchParams.get("mode") === "login" || !emailFromUrl);
+  const modeParam = searchParams.get("mode");
+  const [isLogin, setIsLogin] = useState(
+    modeParam === "signup" ? false : modeParam === "login" ? true : !emailFromUrl
+  );
   const [email, setEmail] = useState(emailFromUrl);
   const [password, setPassword] = useState("");
   const [companyName, setCompanyName] = useState("");
