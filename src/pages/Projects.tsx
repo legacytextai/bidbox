@@ -81,6 +81,25 @@ const Projects = () => {
       return Number.isNaN(t) || t >= now;
     });
   }, [projects, activeTab]);
+
+  const tabSummary = useMemo(() => {
+    const count = filteredProjects.length;
+    const total = filteredProjects.reduce(
+      (sum, p) => sum + (typeof p.estimated_value_raw === "number" ? p.estimated_value_raw : 0),
+      0,
+    );
+    const hasAnyEstimate = filteredProjects.some(
+      (p) => typeof p.estimated_value_raw === "number" && p.estimated_value_raw > 0,
+    );
+    let totalDisplay: string | null = null;
+    if (hasAnyEstimate) {
+      if (total >= 1_000_000) totalDisplay = `$${(total / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+      else if (total >= 1_000) totalDisplay = `$${Math.round(total / 1_000)}K`;
+      else totalDisplay = `$${total.toLocaleString("en-US")}`;
+    }
+    return { count, totalDisplay };
+  }, [filteredProjects]);
+
   const navigate = useNavigate();
   const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
