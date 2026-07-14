@@ -8,6 +8,7 @@ import { Layout } from "@/components/Layout";
 import { formatInProjectTimezone } from "@/lib/timezoneUtils";
 import { useSubscription } from "@/hooks/useSubscription";
 import { ENFORCE_FREE_PROJECT_LIMIT, FREE_PROJECT_LIMIT } from "@/lib/featureFlags";
+import { resolveEstimatedValue } from "@/lib/opportunityDomain";
 
 
 interface Project {
@@ -20,6 +21,7 @@ interface Project {
   is_ready_to_bid: boolean | null;
   pursuit_status: string | null;
   submission_count?: number;
+  estimated_value_display?: string | null;
 }
 
 type TabKey = "all" | "live" | "submitted" | "passed";
@@ -124,7 +126,8 @@ const Projects = () => {
         public_token,
         timezone,
         is_ready_to_bid,
-        pursuit_status
+        pursuit_status,
+        source_opportunity_candidate:opportunity_candidates!source_opportunity_candidate_id(estimated_value, crawl_data)
       `)
       .order("bid_due_at", { ascending: true });
 
@@ -140,13 +143,18 @@ const Projects = () => {
 
     // Get submission counts for all projects
     const projectsWithCounts = await Promise.all(
-      (data || []).map(async (project) => {
+      (data || []).map(async (project: any) => {
         const { data: count } = await supabase.rpc('get_submission_count', {
           p_project_id: project.id
         });
+        const cand = project.source_opportunity_candidate;
+        const estimated_value_display = cand
+          ? resolveEstimatedValue(cand.crawl_data, cand.estimated_value)
+          : null;
         return {
           ...project,
-          submission_count: count || 0
+          submission_count: count || 0,
+          estimated_value_display,
         };
       })
     );
@@ -276,6 +284,14 @@ const Projects = () => {
                     })()}
                   </div>
                 </div>
+
+                {/* Engineer's estimate — matches Opportunities card treatment */}
+                {project.estimated_value_display && (
+                  <p className="text-2xl font-bold text-foreground leading-none mb-3">
+                    {project.estimated_value_display}
+                  </p>
+                )}
+
 
                 {/* Bid due + countdown — anchored above CTA */}
                 {(() => {
