@@ -97,6 +97,23 @@ const OpportunityReport = () => {
   const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
 
+  // Mark this opportunity as viewed whenever the dossier is opened — this
+  // captures Prev/Next arrow navigation in addition to direct card clicks.
+  useEffect(() => {
+    if (!id) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase.auth.getUser();
+      if (cancelled) return;
+      const uid = data.user?.id;
+      if (!uid) return;
+      const { addViewedId } = await import("@/lib/viewedOpportunities");
+      addViewedId(window.localStorage, uid, id);
+    })();
+    return () => { cancelled = true; };
+  }, [id]);
+
+
   const activeTab = (searchParams.get("tab") as TabKey) ?? "overview";
   const setTab = (tab: TabKey) => {
     setSearchParams((prev) => {
