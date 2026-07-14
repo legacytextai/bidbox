@@ -474,7 +474,7 @@ const OpportunityReport = () => {
   const queuePostCalendarPreparation = async (candidateId: string) => {
     if (report?.id || analysisWorkActive) return { queued: false, skipped: true };
 
-    // Check for active tasks before inserting (idempotent guard).
+    // Check for active tasks before invoking the trusted queue path.
     const { data: activeTasks } = await supabase
       .from("agent_tasks")
       .select("id")
@@ -484,55 +484,15 @@ const OpportunityReport = () => {
       .limit(1);
     if ((activeTasks ?? []).length > 0) return { queued: false, skipped: true };
 
-    const requestedAt = new Date().toISOString();
-    const { data: { session } } = await supabase.auth.getSession();
-    const userId = session?.user?.id ?? null;
-
-    const { data: task, error: taskError } = await supabase
-      .from("agent_tasks")
-      .insert({
-        task_type: "project_analysis",
-        status: "pending",
-        priority: 0,
-        trigger_reason: "force_prepare",
-        refresh_window: requestedAt.slice(0, 13),
-        payload: {
-          candidate_id: candidateId,
-          source_id: (candidate as any)?.source_id ?? null,
-          source_name: candidate?.agency ?? "Unknown source",
-          source_url: candidate?.source_url ?? null,
-          portal_type: candidate?.portal_type ?? null,
-          agency: candidate?.agency ?? null,
-          raw_title: candidate?.raw_title ?? null,
-          bid_due_at: candidate?.bid_due_at ?? null,
-          requested_by: userId,
-          requested_at: requestedAt,
-          trigger_reason: "force_prepare",
-          intelligence_tier: "opportunity",
-          phase: "f5_opportunity_preparation",
-          next_phase: "f2_document_acquisition",
-          intelligence_status: "queued",
-        },
-      })
-      .select("id")
-      .single();
-
-    if (taskError) throw new Error(taskError.message ?? "Failed to queue preparation");
-
-    await supabase.from("opportunity_candidates").update({
-      analysis_task_id: task.id,
-      analysis_requested_at: requestedAt,
-      analysis_error: null,
-      analysis_requested_by: userId,
-      document_acquisition_status: "queued",
-      document_acquisition_error: null,
-      opportunity_lifecycle_status: "opportunity_intelligence_queued",
-      opportunity_intelligence_status: "queued",
-      opportunity_intelligence_task_id: task.id,
-      opportunity_intelligence_error: null,
-    }).eq("id", candidateId);
-
-    return { queued: true, skipped: false, taskId: task.id };
+    // Trusted Edge Function authenticates the caller, queues the task, and
+    // performs shared-candidate state writes with the service role.
+    const { data, error } = await supabase.functions.invoke("manage-opportunity-intelligence", {
+      body: { action: "force_prepare", candidate_id: candidateId },
+    });
+    if (error || data?.success === false) {
+      throw new Error(data?.error ?? error?.message ?? "Failed to queue preparation");
+    }
+    return { queued: true, skipped: false, taskId: data?.task_id };
   };
 
   const handleAddToCalendar = async () => {
@@ -559,23 +519,12 @@ const OpportunityReport = () => {
       });
 
       const syncCandidateLink = async (projectId: string) => {
-        const { error: updateError } = await sb
-          .from("opportunity_candidates")
-          .update({ status: "converted", converted_project_id: projectId, opportunity_lifecycle_status: "added_to_calendar" })
-          .eq("id", candidate.id);
-        if (updateError) throw updateError;
-        // Dual-write to the tenant boundary (fail-soft; the legacy columns
-        // above stay authoritative until the cleanup phase).
-        await upsertPursuit(candidate.id, { stage: "estimating", project_id: projectId });
+        const linked = await upsertPursuit(candidate.id, { stage: "estimating", project_id: projectId });
+        if (!linked) throw new Error("Failed to link this opportunity to your company project");
         setCandidate((cur) => cur ? { ...cur, status: "converted", converted_project_id: projectId, opportunity_lifecycle_status: "added_to_calendar" } : cur);
       };
 
       const findExistingProject = async () => {
-        const { data: fresh } = await sb.from("opportunity_candidates").select("converted_project_id").eq("id", candidate.id).maybeSingle();
-        if (fresh?.converted_project_id) {
-          const { data: p } = await sb.from("projects").select("id, origin, source_opportunity_candidate_id, opportunity_intelligence_report_id, bid_due_at, county").eq("id", fresh.converted_project_id).maybeSingle();
-          return p;
-        }
         const { data: p } = await sb.from("projects").select("id, origin, source_opportunity_candidate_id, opportunity_intelligence_report_id, bid_due_at, county").eq("origin", "opportunity_intelligence").eq("source_opportunity_candidate_id", candidate.id).maybeSingle();
         return p;
       };

@@ -209,28 +209,16 @@ export function useOpportunityDossier(id: string | undefined): UseOpportunityDos
 
     // Resolve linked project for bid due overrides
     let proj: DossierLinkedProject = { bidDueAt: null, bidDueOverrideAt: null, bidDueOverrideSource: null, bidDueOverrideReason: null };
-    const projectFields = "bid_due_at, bid_due_override_at, bid_due_override_source, bid_due_override_reason";
-    if (candRes.data?.converted_project_id) {
-      const pRes = await sb.from("projects").select(projectFields).eq("id", candRes.data.converted_project_id).maybeSingle();
-      if (pRes.data) {
-        proj = {
-          bidDueAt: pRes.data.bid_due_at ?? null,
-          bidDueOverrideAt: pRes.data.bid_due_override_at ?? null,
-          bidDueOverrideSource: pRes.data.bid_due_override_source ?? null,
-          bidDueOverrideReason: pRes.data.bid_due_override_reason ?? null,
-        };
-      }
-    }
-    if (!proj.bidDueAt) {
-      const pRes = await sb.from("projects").select(projectFields).eq("origin", "opportunity_intelligence").eq("source_opportunity_candidate_id", id).maybeSingle();
-      if (pRes.data) {
-        proj = {
-          bidDueAt: pRes.data.bid_due_at ?? null,
-          bidDueOverrideAt: pRes.data.bid_due_override_at ?? null,
-          bidDueOverrideSource: pRes.data.bid_due_override_source ?? null,
-          bidDueOverrideReason: pRes.data.bid_due_override_reason ?? null,
-        };
-      }
+    const projectFields = "id, bid_due_at, bid_due_override_at, bid_due_override_source, bid_due_override_reason";
+    const linkedProjectRes = await sb.from("projects").select(projectFields).eq("origin", "opportunity_intelligence").eq("source_opportunity_candidate_id", id).maybeSingle();
+    const tenantProjectId = linkedProjectRes.data?.id ?? null;
+    if (linkedProjectRes.data) {
+      proj = {
+        bidDueAt: linkedProjectRes.data.bid_due_at ?? null,
+        bidDueOverrideAt: linkedProjectRes.data.bid_due_override_at ?? null,
+        bidDueOverrideSource: linkedProjectRes.data.bid_due_override_source ?? null,
+        bidDueOverrideReason: linkedProjectRes.data.bid_due_override_reason ?? null,
+      };
     }
 
     let findingRows: DossierFinding[] = [];
@@ -253,7 +241,9 @@ export function useOpportunityDossier(id: string | undefined): UseOpportunityDos
       citationRows = (citationsRes.data ?? []) as DossierCitation[];
     }
 
-    setCandidate(candRes.data as DossierCandidate);
+    // The project link is tenant-owned. Ignore the legacy global candidate
+    // pointer and derive it through project RLS for the signed-in user.
+    setCandidate({ ...candRes.data, converted_project_id: tenantProjectId } as DossierCandidate);
     setReport((reportRes.data ?? null) as DossierReport | null);
     setDocuments((docsRes.data ?? []) as DossierDocument[]);
     setBidItems((bidItemsRes.data ?? []) as DossierBidItem[]);

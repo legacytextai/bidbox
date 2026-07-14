@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FileText, FileSpreadsheet, FileImage, File as FileIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { supabase } from "@/integrations/supabase/client";
 
 interface ProjectFile {
   id: string;
@@ -32,25 +33,31 @@ const getFileIcon = (fileName: string) => {
   }
 };
 
-const getFilePreviewUrl = (fileUrl: string): string => {
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-  return `${supabaseUrl}/storage/v1/object/public/project-files/${fileUrl}`;
-};
-
 const FilePreview = ({ files }: FilePreviewProps) => {
   const [selectedFileIndex, setSelectedFileIndex] = useState(0);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const selectedFile = files[selectedFileIndex] ?? null;
+  const selectedFileUrl = selectedFile?.file_url ?? null;
+  const isPdf = Boolean(selectedFile?.file_name.toLowerCase().endsWith('.pdf'));
 
-  if (files.length === 0) {
+  useEffect(() => {
+    let cancelled = false;
+    setPreviewUrl(null);
+    if (!isPdf || !selectedFileUrl) return () => { cancelled = true; };
+    supabase.storage.from("project-files").createSignedUrl(selectedFileUrl, 3600)
+      .then(({ data, error }) => {
+        if (!cancelled && !error) setPreviewUrl(data?.signedUrl ?? null);
+      });
+    return () => { cancelled = true; };
+  }, [isPdf, selectedFileUrl]);
+
+  if (!selectedFile) {
     return (
       <div className="flex items-center justify-center h-64 text-muted-foreground">
         No files to preview
       </div>
     );
   }
-
-  const selectedFile = files[selectedFileIndex];
-  const isPdf = selectedFile.file_name.toLowerCase().endsWith('.pdf');
-  const previewUrl = getFilePreviewUrl(selectedFile.file_url);
 
   return (
     <div className="flex gap-4 h-[500px]">
@@ -75,7 +82,7 @@ const FilePreview = ({ files }: FilePreviewProps) => {
 
       {/* Right: Preview Pane */}
       <div className="flex-1 border border-border rounded-lg bg-muted/20">
-        {isPdf ? (
+        {isPdf && previewUrl ? (
           <iframe
             src={previewUrl}
             className="w-full h-full rounded-lg"

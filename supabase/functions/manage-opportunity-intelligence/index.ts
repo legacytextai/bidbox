@@ -194,6 +194,18 @@ async function deleteAnalysis(adminClient: any, candidateId: string, userId: str
   let deletedProject: Record<string, unknown> | null = null;
   if (candidate.converted_project_id) {
     deletedProject = await deleteOpportunityProject(adminClient, candidate.converted_project_id, userId);
+  } else {
+    // New calendar links are tenant-scoped through projects/pursuits and no
+    // longer mutate the shared candidate's converted_project_id.
+    const { data: ownedProject, error: ownedProjectError } = await adminClient
+      .from("projects")
+      .select("id")
+      .eq("gc_id", userId)
+      .eq("origin", "opportunity_intelligence")
+      .eq("source_opportunity_candidate_id", candidateId)
+      .maybeSingle();
+    if (ownedProjectError) throw new Error(`Linked project lookup failed: ${ownedProjectError.message}`);
+    if (ownedProject?.id) deletedProject = await deleteOpportunityProject(adminClient, ownedProject.id, userId);
   }
 
   const { error: bidItemDeleteError } = await adminClient

@@ -913,26 +913,19 @@ const Opportunities = () => {
 
   const handleNotesSave = async (id: string) => {
     const note = notes[id] ?? "";
-    // Dual-write: pursuits (tenant boundary) + legacy candidate column.
-    // Legacy stays authoritative until the cleanup phase; pursuit write is
-    // fail-soft and never blocks the save.
-    const { error } = await supabase
-      .from("opportunity_candidates")
-      .update({ review_notes: note || null })
-      .eq("id", id);
-    if (error) {
+    // Notes are tenant-owned state. Never write them to the shared canonical
+    // opportunity row; pursuits is protected by company-scoped RLS.
+    const wrote = await upsertPursuit(id, { triage_notes: note || null });
+    if (!wrote) {
       toast({ title: "Error", description: "Failed to save notes", variant: "destructive" });
       return;
     }
-    const wrote = await upsertPursuit(id, { triage_notes: note || null });
-    if (wrote) {
-      setPursuitByCandidate((prev) => {
-        const next = new Map(prev);
-        const existing = next.get(id);
-        if (existing) next.set(id, { ...existing, triage_notes: note || null });
-        return next;
-      });
-    }
+    setPursuitByCandidate((prev) => {
+      const next = new Map(prev);
+      const existing = next.get(id);
+      if (existing) next.set(id, { ...existing, triage_notes: note || null });
+      return next;
+    });
   };
 
   const handleToggleSaved = async (candidate: Candidate) => {
