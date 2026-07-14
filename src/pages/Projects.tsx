@@ -258,6 +258,16 @@ const Projects = () => {
             ))}
           </div>
 
+          {tabSummary.count > 0 && (
+            <p className="text-sm text-muted-foreground mb-6">
+              {tabSummary.count} {tabSummary.count === 1 ? "project" : "projects"}
+              {tabSummary.totalDisplay
+                ? <> · <span className="font-medium text-foreground">{tabSummary.totalDisplay}</span> total estimate</>
+                : <> · Estimate not available</>}
+            </p>
+          )}
+
+
           {filteredProjects.length === 0 && (
             <p className="text-sm text-muted-foreground mb-6">No projects in this tab.</p>
           )}
