@@ -13,6 +13,7 @@ const { acquireCaltransDocuments } = require('./drivers/caltrans_documents');
 const { acquireOpenGovDocuments } = require('./drivers/opengov_documents');
 const { acquireCalEprocureDocuments } = require('./drivers/caleprocure_documents');
 const { classifyIngestionCandidate } = require('./lib/opportunity-policy');
+const { agencyRegistryFromRows, COUNTY_FIPS, DEFAULT_AGENCIES, resolveCandidateGeography } = require('./lib/geography');
 const { runPlanetBidsCandidateRecovery } = require('./drivers/planetbids_recovery');
 const { runQualificationCandidateFanout, runQualificationRebuild } = require('./drivers/qualification_jobs');
 const {
@@ -28,6 +29,22 @@ const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
+
+let geographyAgencyRegistry = DEFAULT_AGENCIES;
+async function refreshGeographyAgencyRegistry() {
+  const { data, error } = await supabase.from('agency_jurisdictions')
+    .select('normalized_agency_name, aliases, county_fips, jurisdiction_scope, confidence, active')
+    .eq('active', true);
+  // Older deployments do not have the additive shadow schema yet. Keep the
+  // built-in fixed-source safety set until the migration is applied.
+  if (error) return;
+  const countyNamesByFips = Object.fromEntries(Object.entries(COUNTY_FIPS).map(([name, fips]) => [`06${fips}`, name]));
+  geographyAgencyRegistry = agencyRegistryFromRows((data ?? []).map((row) => ({
+    ...row, county_names:(row.county_fips ?? []).map((fips) => countyNamesByFips[fips]).filter(Boolean),
+  })));
+}
+void refreshGeographyAgencyRegistry();
+setInterval(() => void refreshGeographyAgencyRegistry(), 5 * 60 * 1000).unref();
 
 const IDLE_POLL_INTERVAL_MS = 30000;
 const CLAIM_RETRY = Symbol('claim-retry');
@@ -124,6 +141,10 @@ function changedPortalMetadata(existing, next) {
 
 function portalOwnedCandidateFields({ source_id, source_name, portal_type, candidate }) {
   const ingestion = classifyIngestionCandidate(portal_type, candidate);
+  const geography = resolveCandidateGeography(
+    { ...candidate, portal_type, agency: candidate.agency ?? source_name },
+    { agencyRegistry:geographyAgencyRegistry },
+  );
   return {
     source_id,
     source_url: candidate.source_url,
@@ -145,6 +166,15 @@ function portalOwnedCandidateFields({ source_id, source_name, portal_type, candi
     ingestion_status: ingestion.status,
     ingestion_issue_code: ingestion.code,
     ingestion_issue_reason: ingestion.reason,
+    // Additive shadow fields only. Active visibility continues to use the
+    // versioned qualification table until geography gates are approved.
+    resolved_county_fips: geography.counties.map((county) => county.fips),
+    geography_resolution_status: geography.status,
+    geography_confidence: geography.confidence,
+    geography_primary_source: geography.primary_source,
+    geography_resolution_version: geography.version,
+    geography_resolved_at: new Date().toISOString(),
+    geography_shadow: true,
   };
 }
 

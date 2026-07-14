@@ -34,6 +34,7 @@ import { getStoredFilterReasons, isQuarantined, type StoredQualification } from 
 import { useAuth } from "@/hooks/useAuth";
 import { toZonedTime } from "date-fns-tz";
 import { useQualificationJob } from "@/hooks/useQualificationJob";
+import { fetchAllPages } from "@/lib/paginatedRows";
 
 // Transient (per-tab) anchor for restoring list position when navigating back
 // from a detail page. Session-only by design — never persisted across browser
@@ -91,6 +92,13 @@ interface Candidate {
   global_exclusion_code: string | null;
   global_exclusion_reason: string | null;
   canonical_candidate_id: string | null;
+}
+
+interface QualificationRow {
+  opportunity_candidate_id: string;
+  status: StoredQualification["status"];
+  primary_reason: string;
+  reasons: string[] | null;
 }
 
 const FILTERS: { label: string; value: string }[] = [
@@ -491,14 +499,16 @@ const Opportunities = () => {
             "saved opportunities",
           ),
           withTimeout(fetchCompanyPursuits(), "company pursuits"),
-          withTimeout(
+          fetchAllPages<QualificationRow>((from, to) => withTimeout(
             (supabase as any)
               .from("user_opportunity_qualifications")
               .select("opportunity_candidate_id, status, primary_reason, reasons")
               .eq("user_id", session.user.id)
-              .eq("active", true),
-            "user opportunity qualifications",
-          ),
+              .eq("active", true)
+              .order("opportunity_candidate_id", { ascending: true })
+              .range(from, to),
+            `user opportunity qualifications page ${from / 1000 + 1}`,
+          )),
         ]);
 
         if (savedResult.status === "fulfilled" && !(savedResult.value as any)?.error) {
@@ -514,13 +524,15 @@ const Opportunities = () => {
           console.warn("[opps] pursuits skipped", pursuitsResult.reason);
         }
 
-        if (qualificationResult.status === "fulfilled" && !(qualificationResult.value as any)?.error) {
-          setQualificationByCandidate(new Map(((qualificationResult.value as any)?.data ?? []).map((row: any) => [
+        if (qualificationResult.status === "fulfilled") {
+          setQualificationByCandidate(new Map(qualificationResult.value.map((row) => [
             row.opportunity_candidate_id,
             { status: row.status, primary_reason: row.primary_reason, reasons: row.reasons ?? [] },
           ])));
-        } else if (qualificationResult.status === "rejected") {
-          console.warn("[opps] qualifications skipped", qualificationResult.reason);
+        } else {
+          // Fail closed: never turn a partial/missing qualification map into
+          // apparent matches. The outer handler preserves the prior good state.
+          throw qualificationResult.reason;
         }
       }
 
