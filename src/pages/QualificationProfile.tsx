@@ -156,6 +156,7 @@ const QualificationProfile = () => {
   const saving = saveStage === "saving";
   const [profile, setProfile] = useState<ProfileRow>(EMPTY_PROFILE);
   const [userId, setUserId] = useState<string | null>(null);
+  const [trades, setTrades] = useState<TradeType[]>([]);
   const saveInFlight = useRef(false);
   const qualification = useQualificationJob(userId);
 
@@ -164,14 +165,23 @@ const QualificationProfile = () => {
     [],
   );
 
-  const licenseOptions = useMemo(
-    () =>
-      LICENSE_CLASSES.map((l) => ({
-        value: l.code,
-        label: `Class ${l.code} — ${l.name}`,
-      })),
-    [],
-  );
+  const licenseOptions = useMemo(() => {
+    // Group by category (parents + C-61 D-code children nested after C-61),
+    // matching the ordering used by the Subs Network and project workspace selectors.
+    const grouped = groupTradesByCategory(trades);
+    const ordered: TradeType[] = [];
+    Object.keys(grouped)
+      .sort((a, b) => a.localeCompare(b))
+      .forEach((category) => {
+        ordered.push(...grouped[category]);
+      });
+    return ordered.map((t) => ({
+      value: t.code,
+      label: t.parent_code
+        ? `Class ${t.code} — ${t.name}`
+        : `Class ${t.code} — ${t.name}`,
+    }));
+  }, [trades]);
 
   const naicsOptions = useMemo(
     () =>
