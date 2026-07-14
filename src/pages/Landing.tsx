@@ -409,7 +409,7 @@ const Landing = () => {
                 <li>Requirements extracted and source-linked: bonds, licensing, job walks, deadlines</li>
                 <li>Bid Rooms: send subs everything in one link, see who opened the plans</li>
               </ul>
-              <a className="btn btn-primary" href="#trial-form" onClick={scrollToTrialForm}>Start free trial</a>
+              <a className="btn btn-primary" href="/auth?mode=signup" onClick={(e) => { e.preventDefault(); navigate("/auth?mode=signup"); }}>Start free trial</a>
             </div>
           </div>
           <p className="p-foot">14-day free trial · Cancel anytime before day 14 and pay nothing</p>
