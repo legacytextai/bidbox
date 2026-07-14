@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { ADMIN_NAV } from "@/components/admin/adminNav";
-import bidboxLogo from "@/assets/bidbox-logo.png";
+import bidboxLogo from "@/assets/bidbox-logo-app.png";
 import {
   Sidebar,
   SidebarContent,
