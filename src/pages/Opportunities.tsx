@@ -380,6 +380,7 @@ const Opportunities = () => {
   const { user, authReady } = useAuth();
   const qualificationJob = useQualificationJob(user?.id);
   const completedQualificationJob = useRef<string | null>(null);
+  const lastObservedQualificationJob = useRef<{ id: string; status: string } | null>(null);
 
   const mapRow = useCallback((row: any): Candidate => ({
     id: row.id,
@@ -643,9 +644,24 @@ const Opportunities = () => {
 
 
   useEffect(() => {
-    if (qualificationJob.job?.status !== "complete") return;
-    if (completedQualificationJob.current === qualificationJob.job.id) return;
-    completedQualificationJob.current = qualificationJob.job.id;
+    const job = qualificationJob.job;
+    if (!job?.id) return;
+
+    const previous = lastObservedQualificationJob.current;
+    lastObservedQualificationJob.current = { id: job.id, status: job.status };
+
+    if (job.status !== "complete") return;
+    if (completedQualificationJob.current === job.id) return;
+
+    // If the latest job is already complete when the page mounts, it is
+    // historical state, not a new completion. Mark it as seen so navigating to
+    // /opportunities doesn't show "Opportunities updated" every time.
+    if (previous?.id !== job.id || previous.status === "complete") {
+      completedQualificationJob.current = job.id;
+      return;
+    }
+
+    completedQualificationJob.current = job.id;
     void loadCandidates({ silent: true });
     toast({ title: "Opportunities updated", description: "Your latest Bid Profile results are now active." });
   }, [qualificationJob.job?.id, qualificationJob.job?.status, loadCandidates, toast]);
