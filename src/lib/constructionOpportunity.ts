@@ -14,6 +14,7 @@ export interface ConstructionClassification {
 
 export interface ConstructionCandidate {
   portal_type?: string | null;
+  portal_bid_id?: string | null;
   raw_title?: string | null;
   scope_text?: string | null;
   portal_summary?: string | null;
@@ -149,7 +150,7 @@ const DEFINITIVE_NON_CONSTRUCTION: EvidenceRule[] = [
   },
   {
     reason: "Consulting or professional-services engagement rather than a construction contract",
-    pattern: /\b(?:construction management|project management) services?\b|\b(?:construction management|project management)\b.{0,60}\b(?:consulting|consultant|professional|support) services?\b|\b(?:architectural|engineering|design|consulting|consultant|professional|financial|marketing|advertising) services?\b/,
+    pattern: /\b(?:construction management|project management) services?\b|\b(?:construction management|project management)\b.{0,60}\b(?:consulting|consultant|professional|support) services?\b|\b(?:architectural|engineering|design|consulting|consultant|professional|financial|marketing|advertising) services?\b|\b(?:ceqa|nepa|environmental compliance|environmental review|assessment review|audit program)\b/,
   },
   {
     reason: "Janitorial or custodial services without construction scope",
@@ -158,6 +159,13 @@ const DEFINITIVE_NON_CONSTRUCTION: EvidenceRule[] = [
   {
     reason: "Printing, uniforms, or office-supply procurement",
     pattern: /\b(?:printing|mailing|uniforms?|office supplies|linen services?)\b/,
+  },
+];
+
+const ROUTINE_NON_CONSTRUCTION: EvidenceRule[] = [
+  {
+    reason: "Routine analysis or interceptor maintenance without a material project scope",
+    pattern: /\b(?:oil analysis|grease interceptor services?)\b/,
   },
 ];
 
@@ -176,13 +184,13 @@ const GOODS_ONLY: EvidenceRule[] = [
   },
 ];
 
-const PHYSICAL_ASSET = "(?:storm ?drains?|sewers?|wastewater|water mains?|water lines?|pipelines?|utilities|electrical systems?|mechanical systems?|roofs?|roofing|fences?|fencing|hvac|sidewalks?|curbs?|gutters?|roads?|roadways?|streets?|bridges?|drainage|buildings?|facilities|pump stations?|parks?|playgrounds?)";
+const PHYSICAL_ASSET = "(?:storm ?drains?|sewers?|wastewater|water mains?|water lines?|pipelines?|utilities|electrical systems?|mechanical systems?|fire[- ]?(?:life safety|suppression|sprinkler|alarm) systems?|roofs?|roofing|fences?|fencing|hvac|sidewalks?|curbs?|gutters?|roads?|roadways?|streets?|bridges?|drainage|buildings?|facilities|pump stations?|parks?|playgrounds?)";
 const PHYSICAL_ACTION = "(?:construct(?:ion)?|reconstruct(?:ion)?|install(?:ation|ing)?|replace(?:ment|ing)?|repair(?:ing)?|rehabilitat(?:e|ion|ing)|renovat(?:e|ion|ing)|improv(?:e|ement|ing)s?|upgrade|moderniz(?:e|ation|ing)|modif(?:y|ication))";
 
 const STRONG_CONSTRUCTION: EvidenceRule[] = [
   {
-    reason: "Explicit construction/public-works delivery method",
-    pattern: /\b(?:public works|construction|design[- ]build|job order contract(?:ing)?|joc|cm[- ]?at[- ]?risk)\b/,
+    reason: "Explicit public-works delivery method",
+    pattern: /\b(?:public works|design[- ]build|job order contract(?:ing)?|joc|cm[- ]?at[- ]?risk)\b/,
   },
   {
     reason: "Physical construction or civil-work activity",
@@ -201,23 +209,64 @@ const STRONG_CONSTRUCTION: EvidenceRule[] = [
     pattern: /\b(?:concrete sidewalk|curb and gutter|road paving|roadway excavation|utility relocation|underground utilities|water main replacement|storm ?drain rehabilitation)\b/,
   },
   {
+    reason: "Civil grade-separation or rail-infrastructure project",
+    pattern: /\b(?:grade separation|rail(?:way)? bridge|at[- ]grade crossing)\b/,
+  },
+  {
     reason: "Supply-and-install scope tied to physical infrastructure",
     pattern: new RegExp(`\\bsupply and install\\b.{0,90}\\b${PHYSICAL_ASSET}\\b|\\b${PHYSICAL_ASSET}\\b.{0,90}\\bsupply and install\\b`, "i"),
   },
 ];
 
-function classificationText(candidate: ConstructionCandidate): string {
+const SOURCE_AUTHORED_CONSTRUCTION_PROJECT = /\b(?:new|library|building|facility|site|civil|infrastructure|road|bridge|project)\b.{0,50}\bconstruction\b|\bconstruction\b.{0,50}\b(?:project|work|contract|site|facility|building|infrastructure)\b/;
+const RAIL_TECHNICAL_SYSTEM = /\b(?:wayside|rail(?:way)?|corridor|station|rail facility)\b.{0,100}\b(?:intrusion detection|signal|safety|communications?)\s+systems?\b|\b(?:intrusion detection|signal|safety|communications?)\s+systems?\b.{0,100}\b(?:wayside|rail(?:way)?|corridor|station|rail facility)\b/;
+const RAIL_TECHNICAL_ACTION = /\b(?:install(?:ation|ing)?|integrat(?:e|ion|ing)|upgrade|replace(?:ment|ing)?|rehabilitat(?:e|ion|ing)|deploy(?:ment|ing)?)\b/;
+const LACMTA_PART_SOLICITATION = /^(?:RQ|MM|MA|DR|SD)\d/i;
+const LACMTA_COMPONENT_TITLE = /\b(?:accumulator|antenna|appliance|assembly|asm|backhoe|ball joint|batter(?:y|ies)|brakes?|brush(?:es)?|broom|camera|clamp|cleaner|component|consumables?|cylinder|door|drag link|exhaust tube|fender|flooring|gasket|glass|gloves?|harness|lamp|light|lifts?|module|monitor|motor|parts?|pump|resistor|rotors?|screw|seat|tensioner|treadle|valve|vehicle|windshield|wear indicator)\b/;
+
+function normalizedValues(values: unknown[]): string {
+  return values.map(normalize).filter(Boolean).join(" ");
+}
+
+function sourceAuthoredText(candidate: ConstructionCandidate): string {
   const crawl = candidate.crawl_data ?? {};
-  return [
+  return normalizedValues([
     candidate.raw_title,
     candidate.scope_text,
-    candidate.portal_summary,
     crawl.description,
     crawl.scope,
     crawl.scope_text,
     crawl.project_description,
+  ]);
+}
+
+function classificationText(candidate: ConstructionCandidate, sourceText: string): string {
+  const crawl = candidate.crawl_data ?? {};
+  return normalizedValues([
+    sourceText,
+    candidate.portal_summary,
     crawl.summary,
-  ].map(normalize).filter(Boolean).join(" ");
+  ]);
+}
+
+function hasRailTechnicalSystemProject(text: string): boolean {
+  return RAIL_TECHNICAL_SYSTEM.test(text) && RAIL_TECHNICAL_ACTION.test(text);
+}
+
+function hasSourceAuthoredPhysicalProjectScope(sourceText: string): boolean {
+  return SOURCE_AUTHORED_CONSTRUCTION_PROJECT.test(sourceText)
+    || STRONG_CONSTRUCTION.some(({ pattern }) => pattern.test(sourceText))
+    || hasRailTechnicalSystemProject(sourceText);
+}
+
+function lacmtaPartsOnlyReason(candidate: ConstructionCandidate, sourceText: string): string | null {
+  if (candidate.portal_type !== "lacmta") return null;
+  if (!LACMTA_PART_SOLICITATION.test(String(candidate.portal_bid_id ?? ""))) return null;
+  if (!LACMTA_COMPONENT_TITLE.test(normalize(candidate.raw_title))) return null;
+  // A generated summary can call a component "installation". Only an
+  // explicit source-authored project scope may override this parts signal.
+  if (hasSourceAuthoredPhysicalProjectScope(sourceText)) return null;
+  return "LACMTA component RFQ with a specific parts/commodity title and no source-authored physical project scope";
 }
 
 export function classifyConstructionOpportunity(
@@ -252,7 +301,8 @@ export function classifyConstructionOpportunity(
     };
   }
 
-  const text = classificationText(candidate);
+  const sourceText = sourceAuthoredText(candidate);
+  const text = classificationText(candidate, sourceText);
   if (!text) {
     return {
       isConstruction: false,
@@ -270,20 +320,55 @@ export function classifyConstructionOpportunity(
     };
   }
 
-  const goodsOnly = GOODS_ONLY.find(({ pattern }) => pattern.test(text));
-  const construction = STRONG_CONSTRUCTION.find(({ pattern }) => pattern.test(text));
-  if (construction && !goodsOnly) {
+  const routineNegative = ROUTINE_NON_CONSTRUCTION.find(({ pattern }) => pattern.test(text));
+  if (routineNegative) {
     return {
-      isConstruction: true,
+      isConstruction: false,
       confidence: "strong",
-      reasons: [construction.reason],
+      reasons: [routineNegative.reason],
     };
   }
+
+  const lacmtaPartsOnly = lacmtaPartsOnlyReason(candidate, sourceText);
+  if (lacmtaPartsOnly) {
+    return {
+      isConstruction: false,
+      confidence: "strong",
+      reasons: [lacmtaPartsOnly],
+    };
+  }
+
+  const goodsOnly = GOODS_ONLY.find(({ pattern }) => pattern.test(text));
   if (goodsOnly) {
     return {
       isConstruction: false,
       confidence: "strong",
       reasons: [goodsOnly.reason],
+    };
+  }
+
+  if (hasRailTechnicalSystemProject(text)) {
+    return {
+      isConstruction: true,
+      confidence: "strong",
+      reasons: ["Rail/wayside technical-system project with installation, integration, or deployment context"],
+    };
+  }
+
+  if (SOURCE_AUTHORED_CONSTRUCTION_PROJECT.test(sourceText)) {
+    return {
+      isConstruction: true,
+      confidence: "strong",
+      reasons: ["Source-authored construction project or contract context"],
+    };
+  }
+
+  const construction = STRONG_CONSTRUCTION.find(({ pattern }) => pattern.test(text));
+  if (construction) {
+    return {
+      isConstruction: true,
+      confidence: "strong",
+      reasons: [construction.reason],
     };
   }
 

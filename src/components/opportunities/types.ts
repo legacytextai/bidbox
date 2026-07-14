@@ -13,6 +13,7 @@ export interface Candidate {
   id: string;
   source_url: string;
   portal_type: string | null;
+  portal_bid_id: string | null;
   raw_title: string | null;
   agency: string | null;
   bid_due_at: string | null;
