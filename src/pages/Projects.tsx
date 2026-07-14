@@ -285,6 +285,14 @@ const Projects = () => {
                   </div>
                 </div>
 
+                {/* Engineer's estimate — matches Opportunities card treatment */}
+                {project.estimated_value_display && (
+                  <p className="text-2xl font-bold text-foreground leading-none mb-3">
+                    {project.estimated_value_display}
+                  </p>
+                )}
+
+
                 {/* Bid due + countdown — anchored above CTA */}
                 {(() => {
                   const parts = formatBidDateParts(project.bid_due_at, tz);
