@@ -369,115 +369,138 @@ const Opportunities = () => {
     canonical_candidate_id: row.canonical_candidate_id ?? null,
   }), []);
 
+  const loadInFlightRef = useRef(false);
+
   const loadCandidates = useCallback(async (opts?: { silent?: boolean }) => {
     const silent = opts?.silent === true;
-    const { data: { session } } = await supabase.auth.getSession();
-    // Paginated fetch — REQUIRED. A single unranged `.select()` is silently
-    // capped at Supabase/PostgREST's default 1000-row limit. Once
-    // opportunity_candidates crossed 1000 rows (nightly multi-portal scans), an
-    // unpaginated fetch ordered by created_at DESC returned only the 1000 NEWEST
-    // rows and silently dropped the oldest — including saved and project-backing
-    // candidates — so the Saved tab (which filters this client-side array)
-    // rendered empty and old opportunities vanished from "All". We loop with an
-    // explicit page size until a short page is returned, with a hard safety
-    // ceiling so a runaway table can never paginate forever.
-    const PAGE_SIZE = 1000;
-    const MAX_CANDIDATE_ROWS = 50000; // safety ceiling, far above realistic volume
-    const data: any[] = [];
-    for (let from = 0; ; from += PAGE_SIZE) {
-      const { data: page, error } = await supabase
-        .from("opportunity_candidates")
-        .select("*, opportunity_sources(name, last_scanned_at)")
-        .order("created_at", { ascending: false })
-        .range(from, from + PAGE_SIZE - 1);
-
-      if (error) {
-        if (!silent) {
-          toast({ title: "Error", description: "Failed to load opportunities", variant: "destructive" });
-          setLoading(false);
-        }
-        return;
-      }
-
-      const batch = page ?? [];
-      data.push(...batch);
-      if (batch.length < PAGE_SIZE) break; // last (short) page reached — all rows loaded
-      if (data.length >= MAX_CANDIDATE_ROWS) {
-        console.warn(`[opps] candidate pagination hit the ${MAX_CANDIDATE_ROWS}-row safety ceiling; some rows may be omitted`);
-        break;
-      }
-    }
-
-    const rows: Candidate[] = (data || []).map(mapRow);
-    let pursuits = new Map<string, PursuitLite>();
-    if (session) {
-      setSavedCandidateIds(new Set());
-      setQualificationByCandidate(new Map());
-      const { data: savedRows, error: savedError } = await (supabase as any)
-        .from("saved_opportunities")
-        .select("opportunity_candidate_id")
-        .eq("user_id", session.user.id);
-      if (!savedError) {
-        setSavedCandidateIds(new Set((savedRows ?? []).map((r: any) => r.opportunity_candidate_id).filter(Boolean)));
-      }
-      pursuits = await fetchCompanyPursuits();
-      setPursuitByCandidate(pursuits);
-      const { data: qualificationRows, error: qualificationError } = await (supabase as any)
-        .from("user_opportunity_qualifications")
-        .select("opportunity_candidate_id, status, primary_reason, reasons")
-        .eq("user_id", session.user.id)
-        .eq("active", true);
-      if (!qualificationError) {
-        setQualificationByCandidate(new Map((qualificationRows ?? []).map((row: any) => [
-          row.opportunity_candidate_id,
-          { status: row.status, primary_reason: row.primary_reason, reasons: row.reasons ?? [] },
-        ])));
-      }
-    }
-
-    if (silent) {
-      // Diff against previous state for instrumentation; only log when polling
-      // actually fixed something Realtime would normally have handled.
-      setCandidates((prev) => {
-        const prevById = new Map(prev.map((c) => [c.id, c]));
-        const changedIds: string[] = [];
-        for (const r of rows) {
-          const p = prevById.get(r.id);
-          if (
-            !p ||
-            p.document_acquisition_status !== r.document_acquisition_status ||
-            p.document_processing_status !== r.document_processing_status ||
-            p.analysis_status !== r.analysis_status ||
-            p.status !== r.status ||
-            p.converted_project_id !== r.converted_project_id
-          ) {
-            changedIds.push(r.id);
-          }
-        }
-        if (changedIds.length > 0) {
-          console.info("[opps] polling applied diff", { changedIds });
-        }
-        return rows;
-      });
-    } else {
-      setCandidates(rows);
-    }
-
-    const scannedDates: string[] = (data || [])
-      .map((r: any) => r.opportunity_sources?.last_scanned_at)
-      .filter(Boolean);
-    if (scannedDates.length > 0) {
-      setLastScannedAt(scannedDates.sort().reverse()[0]);
-    }
-
+    // Non-silent loads are the ones that flip the page-level loading spinner.
+    // Guard against re-entrancy so a bounced bootstrap effect (auth listener
+    // ticks, dep churn) can't stack overlapping loads and race the final
+    // setLoading(false) into never firing.
     if (!silent) {
-      const initialNotes: Record<string, string> = {};
-      // Dual-read: pursuit notes take precedence; legacy column is the fallback.
-      rows.forEach((r) => {
-        initialNotes[r.id] = pursuits.get(r.id)?.triage_notes ?? r.review_notes ?? "";
-      });
-      setNotes(initialNotes);
-      setLoading(false);
+      if (loadInFlightRef.current) return;
+      loadInFlightRef.current = true;
+    }
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      // Paginated fetch — REQUIRED. A single unranged `.select()` is silently
+      // capped at Supabase/PostgREST's default 1000-row limit. Once
+      // opportunity_candidates crossed 1000 rows (nightly multi-portal scans), an
+      // unpaginated fetch ordered by created_at DESC returned only the 1000 NEWEST
+      // rows and silently dropped the oldest — including saved and project-backing
+      // candidates — so the Saved tab (which filters this client-side array)
+      // rendered empty and old opportunities vanished from "All". We loop with an
+      // explicit page size until a short page is returned, with a hard safety
+      // ceiling so a runaway table can never paginate forever.
+      const PAGE_SIZE = 1000;
+      const MAX_CANDIDATE_ROWS = 50000; // safety ceiling, far above realistic volume
+      const data: any[] = [];
+      for (let from = 0; ; from += PAGE_SIZE) {
+        const { data: page, error } = await supabase
+          .from("opportunity_candidates")
+          .select("*, opportunity_sources(name, last_scanned_at)")
+          .order("created_at", { ascending: false })
+          .range(from, from + PAGE_SIZE - 1);
+
+        if (error) {
+          if (!silent) {
+            toast({ title: "Error", description: "Failed to load opportunities", variant: "destructive" });
+          }
+          return;
+        }
+
+        const batch = page ?? [];
+        data.push(...batch);
+        if (batch.length < PAGE_SIZE) break; // last (short) page reached — all rows loaded
+        if (data.length >= MAX_CANDIDATE_ROWS) {
+          console.warn(`[opps] candidate pagination hit the ${MAX_CANDIDATE_ROWS}-row safety ceiling; some rows may be omitted`);
+          break;
+        }
+      }
+
+      const rows: Candidate[] = (data || []).map(mapRow);
+      let pursuits = new Map<string, PursuitLite>();
+      if (session) {
+        setSavedCandidateIds(new Set());
+        setQualificationByCandidate(new Map());
+        const { data: savedRows, error: savedError } = await (supabase as any)
+          .from("saved_opportunities")
+          .select("opportunity_candidate_id")
+          .eq("user_id", session.user.id);
+        if (!savedError) {
+          setSavedCandidateIds(new Set((savedRows ?? []).map((r: any) => r.opportunity_candidate_id).filter(Boolean)));
+        }
+        pursuits = await fetchCompanyPursuits();
+        setPursuitByCandidate(pursuits);
+        const { data: qualificationRows, error: qualificationError } = await (supabase as any)
+          .from("user_opportunity_qualifications")
+          .select("opportunity_candidate_id, status, primary_reason, reasons")
+          .eq("user_id", session.user.id)
+          .eq("active", true);
+        if (!qualificationError) {
+          setQualificationByCandidate(new Map((qualificationRows ?? []).map((row: any) => [
+            row.opportunity_candidate_id,
+            { status: row.status, primary_reason: row.primary_reason, reasons: row.reasons ?? [] },
+          ])));
+        }
+      }
+
+      if (silent) {
+        // Diff against previous state for instrumentation; only log when polling
+        // actually fixed something Realtime would normally have handled.
+        setCandidates((prev) => {
+          const prevById = new Map(prev.map((c) => [c.id, c]));
+          const changedIds: string[] = [];
+          for (const r of rows) {
+            const p = prevById.get(r.id);
+            if (
+              !p ||
+              p.document_acquisition_status !== r.document_acquisition_status ||
+              p.document_processing_status !== r.document_processing_status ||
+              p.analysis_status !== r.analysis_status ||
+              p.status !== r.status ||
+              p.converted_project_id !== r.converted_project_id
+            ) {
+              changedIds.push(r.id);
+            }
+          }
+          if (changedIds.length > 0) {
+            console.info("[opps] polling applied diff", { changedIds });
+          }
+          return rows;
+        });
+      } else {
+        setCandidates(rows);
+      }
+
+      const scannedDates: string[] = (data || [])
+        .map((r: any) => r.opportunity_sources?.last_scanned_at)
+        .filter(Boolean);
+      if (scannedDates.length > 0) {
+        setLastScannedAt(scannedDates.sort().reverse()[0]);
+      }
+
+      if (!silent) {
+        const initialNotes: Record<string, string> = {};
+        // Dual-read: pursuit notes take precedence; legacy column is the fallback.
+        rows.forEach((r) => {
+          initialNotes[r.id] = pursuits.get(r.id)?.triage_notes ?? r.review_notes ?? "";
+        });
+        setNotes(initialNotes);
+      }
+    } catch (err) {
+      console.error("[opps] loadCandidates failed", err);
+      if (!silent) {
+        toast({ title: "Error", description: "Failed to load opportunities", variant: "destructive" });
+      }
+    } finally {
+      // ALWAYS release the spinner and the in-flight guard so a thrown error
+      // or an unexpected early return can never leave the page pinned to the
+      // "Loading opportunities..." placeholder.
+      if (!silent) {
+        setLoading(false);
+        loadInFlightRef.current = false;
+      }
     }
   }, [toast, mapRow]);
 
