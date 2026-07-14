@@ -69,18 +69,27 @@ const Projects = () => {
   const [activeTab, setActiveTab] = useState<TabKey>("live");
 
   const filteredProjects = useMemo(() => {
+    const now = Date.now();
+    const isPastDue = (p: Project) => {
+      if (!p.bid_due_at) return false;
+      const t = new Date(p.bid_due_at).getTime();
+      return !Number.isNaN(t) && t < now;
+    };
     if (activeTab === "all") return projects;
     if (activeTab === "submitted") return projects.filter((p) => p.pursuit_status === "submitted");
-    if (activeTab === "passed") return projects.filter((p) => p.pursuit_status === "passed");
-    // live: not past bid date AND not passed
-    const now = Date.now();
+    if (activeTab === "passed") {
+      // Explicitly passed OR past bid due and never marked submitted
+      return projects.filter(
+        (p) => p.pursuit_status === "passed" || (isPastDue(p) && p.pursuit_status !== "submitted"),
+      );
+    }
+    // live: not past bid date AND not passed AND not submitted
     return projects.filter((p) => {
-      if (p.pursuit_status === "passed") return false;
-      if (!p.bid_due_at) return true;
-      const t = new Date(p.bid_due_at).getTime();
-      return Number.isNaN(t) || t >= now;
+      if (p.pursuit_status === "passed" || p.pursuit_status === "submitted") return false;
+      return !isPastDue(p);
     });
   }, [projects, activeTab]);
+
 
   const tabSummary = useMemo(() => {
     const count = filteredProjects.length;
