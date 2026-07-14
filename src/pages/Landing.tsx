@@ -115,7 +115,7 @@ const Landing = () => {
           </button>
           <nav className="nav-links" id="navlinks">
             <a href="#how" onClick={(e) => anchorClick(e, "how")}>How it works</a>
-            <a href="#pricing" onClick={(e) => anchorClick(e, "pricing")}>Pricing</a>
+            <a href="/auth?mode=signup" onClick={(e) => { e.preventDefault(); navigate("/auth?mode=signup"); }}>Pricing</a>
             <a href="#report" onClick={(e) => anchorClick(e, "report")}>What's bidding</a>
             <a
               href="/auth"
@@ -124,7 +124,7 @@ const Landing = () => {
             >
               Log in
             </a>
-            <a className="btn btn-primary" href="#pricing" onClick={(e) => anchorClick(e, "pricing")}>
+            <a className="btn btn-primary" href="/auth?mode=signup" onClick={(e) => { e.preventDefault(); navigate("/auth?mode=signup"); }}>
               Start free trial
             </a>
           </nav>
@@ -143,7 +143,7 @@ const Landing = () => {
               flags the requirements, and gets you ready for bid day.
             </p>
             <div className="cta-row">
-              <a className="btn btn-primary" href="#pricing" onClick={(e) => anchorClick(e, "pricing")}>Start free trial</a>
+              <a className="btn btn-primary" href="/auth?mode=signup" onClick={(e) => { e.preventDefault(); navigate("/auth?mode=signup"); }}>Start free trial</a>
               <a className="btn btn-ghost" href="#how" onClick={(e) => anchorClick(e, "how")}>See how it works</a>
             </div>
             <span className="micro">Set up in minutes · 14-day free trial · Your counties, your trades</span>
@@ -298,7 +298,7 @@ const Landing = () => {
               <div className="s-vig" aria-hidden="true"><span className="s-chip orange">ADDENDUM FLAGGED</span><span className="s-chip dark">BID DAY · READY ✓</span></div>
             </div>
           </div>
-          <a className="btn btn-primary" href="#pricing" onClick={(e) => anchorClick(e, "pricing")}>Start free trial</a>
+          <a className="btn btn-primary" href="/auth?mode=signup" onClick={(e) => { e.preventDefault(); navigate("/auth?mode=signup"); }}>Start free trial</a>
         </div>
       </section>
 
@@ -396,7 +396,7 @@ const Landing = () => {
                 <li>Pipeline and deadline calendar</li>
                 <li>Addenda and job walk alerts</li>
               </ul>
-              <a className="btn btn-ghost" href="#trial-form" onClick={scrollToTrialForm}>Start free trial</a>
+              <a className="btn btn-ghost" href="/auth?mode=signup" onClick={(e) => { e.preventDefault(); navigate("/auth?mode=signup"); }}>Start free trial</a>
             </div>
             <div className="pcard featured">
               <span className="badge">MOST GCs CHOOSE COMMAND</span>
@@ -409,7 +409,7 @@ const Landing = () => {
                 <li>Requirements extracted and source-linked: bonds, licensing, job walks, deadlines</li>
                 <li>Bid Rooms: send subs everything in one link, see who opened the plans</li>
               </ul>
-              <a className="btn btn-primary" href="#trial-form" onClick={scrollToTrialForm}>Start free trial</a>
+              <a className="btn btn-primary" href="/auth?mode=signup" onClick={(e) => { e.preventDefault(); navigate("/auth?mode=signup"); }}>Start free trial</a>
             </div>
           </div>
           <p className="p-foot">14-day free trial · Cancel anytime before day 14 and pay nothing</p>
@@ -493,7 +493,7 @@ const Landing = () => {
             <div>
               <h4>Product</h4>
               <a href="#how" onClick={(e) => anchorClick(e, "how")}>How it works</a>
-              <a href="#pricing" onClick={(e) => anchorClick(e, "pricing")}>Pricing</a>
+              <a href="/auth?mode=signup" onClick={(e) => { e.preventDefault(); navigate("/auth?mode=signup"); }}>Pricing</a>
               <a
                 href="/auth"
                 onClick={(e) => { e.preventDefault(); navigate("/auth"); }}
