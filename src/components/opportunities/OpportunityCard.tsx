@@ -52,7 +52,7 @@ export interface OpportunityCardProps {
   saved: boolean;
   onCalendar: boolean;
   filterReasons: string[];
-  highlight?: boolean;
+  viewed?: boolean;
   onToggleSaved: (candidate: Candidate) => void;
   // Fired synchronously when the user activates the card's project-detail
   // path (card click, keyboard activation, or the View Project CTA), just
@@ -66,7 +66,7 @@ export const OpportunityCard = ({
   saved,
   onCalendar,
   filterReasons,
-  highlight,
+  viewed,
   onToggleSaved,
   onOpen,
 }: OpportunityCardProps) => {
@@ -96,14 +96,18 @@ export const OpportunityCard = ({
           goToOpportunity();
         }
       }}
-      className={`border border-border rounded-lg p-6 flex flex-col gap-3 cursor-pointer hover:border-blue-300 hover:shadow-sm transition focus:outline-none focus:ring-2 focus:ring-blue-300 bg-card ${highlight ? "ring-2 ring-bidbox-blue ring-offset-2 ring-offset-background" : ""}`}
+      className="border border-border rounded-lg p-6 flex flex-col gap-3 cursor-pointer hover:border-blue-300 hover:shadow-sm transition focus:outline-none focus:ring-2 focus:ring-blue-300 bg-card"
     >
       {/* Top content — grows to push button to bottom */}
       <div className="flex-1 flex flex-col gap-3">
         {/* Title + actions */}
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-base text-foreground leading-snug">
+            <h3
+              className={`text-base text-foreground leading-snug ${
+                viewed ? "font-normal" : "font-semibold"
+              }`}
+            >
               {candidate.raw_title ?? "Untitled Opportunity"}
             </h3>
             {candidate.agency && (

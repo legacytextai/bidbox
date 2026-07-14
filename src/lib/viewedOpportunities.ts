@@ -14,7 +14,7 @@ export interface ViewedStorage {
   setItem(key: string, value: string): void;
 }
 
-const VIEWED_KEY_PREFIX = "bidbox:opportunities:viewed:v1:";
+const VIEWED_KEY_PREFIX = "bidbox:opportunities:viewed:v2:";
 
 // Generous ceiling relative to current inventory; oldest entries are evicted
 // first once exceeded.
