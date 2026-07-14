@@ -298,7 +298,7 @@ const Landing = () => {
               <div className="s-vig" aria-hidden="true"><span className="s-chip orange">ADDENDUM FLAGGED</span><span className="s-chip dark">BID DAY · READY ✓</span></div>
             </div>
           </div>
-          <a className="btn btn-primary" href="#pricing" onClick={(e) => anchorClick(e, "pricing")}>Start free trial</a>
+          <a className="btn btn-primary" href="/auth?mode=signup" onClick={(e) => { e.preventDefault(); navigate("/auth?mode=signup"); }}>Start free trial</a>
         </div>
       </section>
 
