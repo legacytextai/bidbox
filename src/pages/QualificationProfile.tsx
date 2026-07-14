@@ -198,7 +198,9 @@ const QualificationProfile = () => {
 
     return sorted.map((t) => ({
       value: t.code,
-      label: `Class ${t.code} — ${t.name}`,
+      label: t.parent_code === "C-61"
+        ? `\u00A0\u00A0\u00A0\u00A0↳ Class ${t.code} — ${t.name}`
+        : `Class ${t.code} — ${t.name}`,
     }));
   }, [trades]);
 
