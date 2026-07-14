@@ -990,6 +990,7 @@ const Opportunities = () => {
           (candidate.status === "converted" && !!candidate.converted_project_id)
         }
         filterReasons={getStoredFilterReasons(candidate, qualificationByCandidate.get(candidate.id), hasActiveQualifications)}
+        viewed={viewedIds.has(candidate.id)}
         onToggleSaved={handleToggleSaved}
         onOpen={handleCardOpen}
       />
