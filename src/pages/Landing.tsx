@@ -396,7 +396,7 @@ const Landing = () => {
                 <li>Pipeline and deadline calendar</li>
                 <li>Addenda and job walk alerts</li>
               </ul>
-              <a className="btn btn-ghost" href="#trial-form" onClick={scrollToTrialForm}>Start free trial</a>
+              <a className="btn btn-ghost" href="/auth?mode=signup" onClick={(e) => { e.preventDefault(); navigate("/auth?mode=signup"); }}>Start free trial</a>
             </div>
             <div className="pcard featured">
               <span className="badge">MOST GCs CHOOSE COMMAND</span>
