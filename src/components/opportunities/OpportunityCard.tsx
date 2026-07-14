@@ -66,7 +66,7 @@ export const OpportunityCard = ({
   saved,
   onCalendar,
   filterReasons,
-  highlight,
+  viewed,
   onToggleSaved,
   onOpen,
 }: OpportunityCardProps) => {
@@ -96,7 +96,7 @@ export const OpportunityCard = ({
           goToOpportunity();
         }
       }}
-      className={`border border-border rounded-lg p-6 flex flex-col gap-3 cursor-pointer hover:border-blue-300 hover:shadow-sm transition focus:outline-none focus:ring-2 focus:ring-blue-300 bg-card ${highlight ? "ring-2 ring-bidbox-blue ring-offset-2 ring-offset-background" : ""}`}
+      className="border border-border rounded-lg p-6 flex flex-col gap-3 cursor-pointer hover:border-blue-300 hover:shadow-sm transition focus:outline-none focus:ring-2 focus:ring-blue-300 bg-card"
     >
       {/* Top content — grows to push button to bottom */}
       <div className="flex-1 flex flex-col gap-3">
