@@ -124,7 +124,7 @@ const Landing = () => {
             >
               Log in
             </a>
-            <a className="btn btn-primary" href="/auth?mode=signup" onClick={(e) => { e.preventDefault(); closeMenu(); navigate("/auth?mode=signup"); }}>
+            <a className="btn btn-primary" href="/auth?mode=signup" onClick={(e) => { e.preventDefault(); navigate("/auth?mode=signup"); }}>
               Start free trial
             </a>
           </nav>
