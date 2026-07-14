@@ -126,7 +126,8 @@ const Projects = () => {
         public_token,
         timezone,
         is_ready_to_bid,
-        pursuit_status
+        pursuit_status,
+        source_opportunity_candidate:opportunity_candidates!source_opportunity_candidate_id(estimated_value, crawl_data)
       `)
       .order("bid_due_at", { ascending: true });
 
@@ -142,13 +143,18 @@ const Projects = () => {
 
     // Get submission counts for all projects
     const projectsWithCounts = await Promise.all(
-      (data || []).map(async (project) => {
+      (data || []).map(async (project: any) => {
         const { data: count } = await supabase.rpc('get_submission_count', {
           p_project_id: project.id
         });
+        const cand = project.source_opportunity_candidate;
+        const estimated_value_display = cand
+          ? resolveEstimatedValue(cand.crawl_data, cand.estimated_value)
+          : null;
         return {
           ...project,
-          submission_count: count || 0
+          submission_count: count || 0,
+          estimated_value_display,
         };
       })
     );
