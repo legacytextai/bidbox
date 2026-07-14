@@ -182,6 +182,25 @@ async function waitForPlanetBidsDetailNavigation(page, timeout = 25000) {
   }
 }
 
+async function openPlanetBidsRowWithRetry({ rows, index, reloadListing, page, log = () => {}, attempts = 2 }) {
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    const currentRows = rows();
+    if (index >= await currentRows.count()) return false;
+    try {
+      await currentRows.nth(index).click();
+      await waitForPlanetBidsDetailNavigation(page);
+      return true;
+    } catch (error) {
+      lastError = error;
+      if (attempt >= attempts) break;
+      log(`Row ${index + 1} navigation missed (attempt ${attempt}/${attempts}) — reloading listing and retrying once`);
+      await reloadListing();
+    }
+  }
+  throw lastError;
+}
+
 async function waitForDetailReadiness(page, targetBidId, apiMetadataByBidId, timeout = Number(process.env.PLANETBIDS_SCAN_DETAIL_TIMEOUT_MS ?? 15000)) {
   const started = Date.now();
   while (Date.now() - started < timeout) {
@@ -659,16 +678,21 @@ async function scrapePlanetBids(payload, log) {
               await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
               await page.waitForTimeout(1000 + Math.floor(Math.random() * 1000));
             } else {
-              const rows = biddingRows();
-              const currentCount = await rows.count();
-              if (i >= currentCount) {
+              log(`[${source_name}] Clicking row ${i + 1}/${targetCount}`);
+              const opened = await openPlanetBidsRowWithRetry({
+                rows: biddingRows,
+                index: i,
+                page,
+                log: (message) => log(`[${source_name}] ${message}`),
+                reloadListing: async () => {
+                  await gotoListingAndWait(page, listing_url, source_name, log);
+                  await page.waitForTimeout(500 + Math.floor(Math.random() * 500));
+                },
+              });
+              if (!opened) {
                 log(`[${source_name}] Row ${i}: no longer present — skipping`);
                 continue;
               }
-
-              log(`[${source_name}] Clicking row ${i + 1}/${targetCount}`);
-              await rows.nth(i).click();
-              await waitForPlanetBidsDetailNavigation(page);
               await page.waitForTimeout(1000 + Math.floor(Math.random() * 1000)); // FIX 4: jitter
             }
 
@@ -1328,5 +1352,6 @@ module.exports = {
   parseBidDueDate,
   parseEstimatedValue,
   parseEstimatedValueDetails,
+  openPlanetBidsRowWithRetry,
   waitForPlanetBidsDetailNavigation,
 };
