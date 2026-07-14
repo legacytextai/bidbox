@@ -166,20 +166,39 @@ const QualificationProfile = () => {
   );
 
   const licenseOptions = useMemo(() => {
-    // Group by category (parents + C-61 D-code children nested after C-61),
-    // matching the ordering used by the Subs Network and project workspace selectors.
-    const grouped = groupTradesByCategory(trades);
-    const ordered: TradeType[] = [];
-    Object.keys(grouped)
-      .sort((a, b) => a.localeCompare(b))
-      .forEach((category) => {
-        ordered.push(...grouped[category]);
-      });
-    return ordered.map((t) => ({
+    // Order: Class A, Class B, then Class C-# ascending. C-61 D-code children
+    // sit directly after C-61, keeping the specialty subclassifications together
+    // at the bottom of the C-list.
+    const rank = (code: string): [number, number, number] => {
+      if (code === "A") return [0, 0, 0];
+      if (code.startsWith("B")) {
+        // B, then B-2, B-3, etc.
+        const sub = code === "B" ? 0 : parseInt(code.slice(2), 10) || 0;
+        return [1, 0, sub];
+      }
+      // C-<num> or D-<num> (C-61 children)
+      const m = code.match(/^([CD])-?(\d+)$/i);
+      if (!m) return [3, 0, 0];
+      const num = parseInt(m[2], 10);
+      if (m[1].toUpperCase() === "D") {
+        // Slot D-codes immediately after C-61
+        return [2, 61, num + 1];
+      }
+      return [2, num, 0];
+    };
+
+    const sorted = [...trades].sort((a, b) => {
+      const ra = rank(a.code);
+      const rb = rank(b.code);
+      for (let i = 0; i < ra.length; i++) {
+        if (ra[i] !== rb[i]) return ra[i] - rb[i];
+      }
+      return a.code.localeCompare(b.code);
+    });
+
+    return sorted.map((t) => ({
       value: t.code,
-      label: t.parent_code
-        ? `Class ${t.code} — ${t.name}`
-        : `Class ${t.code} — ${t.name}`,
+      label: `Class ${t.code} — ${t.name}`,
     }));
   }, [trades]);
 
