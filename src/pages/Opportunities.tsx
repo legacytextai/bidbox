@@ -1231,7 +1231,7 @@ const Opportunities = () => {
                   </div>
                 ) : (
                   <OpportunityGrid>
-                    {(currentTabList ?? []).map((c, index) => renderCandidateCard(c, currentTabNavIds, index < 3 && !viewedIds.has(c.id)))}
+                    {(currentTabList ?? []).map((c) => renderCandidateCard(c, currentTabNavIds))}
                   </OpportunityGrid>
                 )}
                 {activeTab === "all" && tabLists.allFilteredOut.length > 0 && (
