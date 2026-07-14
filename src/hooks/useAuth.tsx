@@ -1,4 +1,4 @@
-import { useState, useEffect, createContext, useContext, ReactNode, useRef } from "react";
+import { useState, useEffect, useMemo, createContext, useContext, ReactNode, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
 import { useQueryClient } from "@tanstack/react-query";
@@ -52,8 +52,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return () => subscription.unsubscribe();
   }, [queryClient]);
 
+  // Memoize the context value so consumers don't see a new object reference
+  // on every AuthProvider render — otherwise downstream `useEffect` hooks that
+  // depend on `user` re-fire on unrelated auth-listener ticks (e.g. TOKEN_REFRESHED)
+  // and can pin pages to a `loading===true` state.
+  const value = useMemo(() => ({ user, loading, authReady }), [user, loading, authReady]);
   return (
-    <AuthContext.Provider value={{ user, loading, authReady }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
