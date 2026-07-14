@@ -14,7 +14,7 @@ const { acquireOpenGovDocuments } = require('./drivers/opengov_documents');
 const { acquireCalEprocureDocuments } = require('./drivers/caleprocure_documents');
 const { classifyIngestionCandidate } = require('./lib/opportunity-policy');
 const { classifyCalEprocureRelevance, isPlaceholderEventTitle, NON_PUBLIC_WORKS_EXCLUSION_CODE, shouldPreserveExistingTitle } = require('./lib/caleprocure-quality');
-const { agencyRegistryFromRows, COUNTY_FIPS, DEFAULT_AGENCIES, resolveCandidateGeography } = require('./lib/geography');
+const { agencyRegistryFromRows, COUNTY_FIPS, DEFAULT_AGENCIES, geographyShadowFields, resolveCandidateGeography } = require('./lib/geography');
 const { runPlanetBidsCandidateRecovery } = require('./drivers/planetbids_recovery');
 const { claimedPayload, heartbeatPayload, leaseFor } = require('./lib/planetbids-task-lease');
 const { runCaleprocureTitleRecovery } = require('./drivers/caleprocure_title_recovery');
@@ -34,7 +34,12 @@ const supabase = createClient(
 );
 
 let geographyAgencyRegistry = DEFAULT_AGENCIES;
+let geographyShadowSchemaAvailable = false;
 async function refreshGeographyAgencyRegistry() {
+  const { error: shadowSchemaError } = await supabase.from('opportunity_candidates')
+    .select('id, resolved_county_fips, geography_resolution_status, geography_confidence, geography_primary_source, geography_resolution_version, geography_resolved_at, geography_shadow')
+    .limit(1);
+  geographyShadowSchemaAvailable = !shadowSchemaError;
   const { data, error } = await supabase.from('agency_jurisdictions')
     .select('normalized_agency_name, aliases, county_fips, jurisdiction_scope, confidence, active')
     .eq('active', true);
@@ -217,15 +222,9 @@ function portalOwnedCandidateFields({ source_id, source_name, portal_type, candi
     ingestion_status: ingestion.status,
     ingestion_issue_code: ingestion.code,
     ingestion_issue_reason: ingestion.reason,
-    // Additive shadow fields only. Active visibility continues to use the
-    // versioned qualification table until geography gates are approved.
-    resolved_county_fips: geography.counties.map((county) => county.fips),
-    geography_resolution_status: geography.status,
-    geography_confidence: geography.confidence,
-    geography_primary_source: geography.primary_source,
-    geography_resolution_version: geography.version,
-    geography_resolved_at: new Date().toISOString(),
-    geography_shadow: true,
+    // Additive shadow fields only. If the disabled shadow migration has not
+    // been applied, omit them so core multi-portal ingestion remains healthy.
+    ...geographyShadowFields(geography, geographyShadowSchemaAvailable),
   };
 }
 

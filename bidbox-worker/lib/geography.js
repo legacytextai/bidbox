@@ -155,4 +155,21 @@ function classifyGeographyMatch(resolution, targetCounties) {
   return `${resolution.status}_${matches ? 'match' : 'outside'}`;
 }
 
-module.exports = { CITY_COUNTY, COUNTY_FIPS, DEFAULT_AGENCIES, RESOLVER_VERSION, agencyRegistryFromRows, canonicalCounty, classifyGeographyMatch, collectGeographyEvidence, extractDocumentGeographyEvidence, resolveCandidateGeography };
+// Shadow geography is additive and must never become a hard dependency of the
+// shared candidate-ingestion path. Deployments can briefly lead migrations,
+// and production may intentionally leave the shadow model unapplied while the
+// feature is disabled. In either case, omit every shadow-only field.
+function geographyShadowFields(resolution, schemaAvailable) {
+  if (!schemaAvailable) return {};
+  return {
+    resolved_county_fips: resolution.counties.map((county) => county.fips),
+    geography_resolution_status: resolution.status,
+    geography_confidence: resolution.confidence,
+    geography_primary_source: resolution.primary_source,
+    geography_resolution_version: resolution.version,
+    geography_resolved_at: new Date().toISOString(),
+    geography_shadow: true,
+  };
+}
+
+module.exports = { CITY_COUNTY, COUNTY_FIPS, DEFAULT_AGENCIES, RESOLVER_VERSION, agencyRegistryFromRows, canonicalCounty, classifyGeographyMatch, collectGeographyEvidence, extractDocumentGeographyEvidence, geographyShadowFields, resolveCandidateGeography };

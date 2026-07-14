@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { agencyRegistryFromRows, classifyGeographyMatch, extractDocumentGeographyEvidence, resolveCandidateGeography } = require('../lib/geography');
+const { agencyRegistryFromRows, classifyGeographyMatch, extractDocumentGeographyEvidence, geographyShadowFields, resolveCandidateGeography } = require('../lib/geography');
 
 test('project-specific location overrides agency jurisdiction', () => {
   const result = resolveCandidateGeography({ agency:'LA Metro', project_address:'100 Main St, Riverside, CA', portal_type:'planetbids', crawl_data:{} });
@@ -53,4 +53,18 @@ test('durable agency-registry rows are compiled into resolver evidence', () => {
 test('a county mentioned only as a partner is not treated as project location', () => {
   const result = resolveCandidateGeography({ raw_title:'Statewide educator evaluation', scope_text:'The Kern County Superintendent is a program partner.', agency:'State of California', crawl_data:{} });
   assert.equal(result.status, 'unresolved');
+});
+
+test('unapplied shadow schema omits optional geography fields from ingestion', () => {
+  const resolution = resolveCandidateGeography({ county:'Riverside', crawl_data:{} });
+  assert.deepEqual(geographyShadowFields(resolution, false), {});
+});
+
+test('available shadow schema receives resolved geography without changing visibility', () => {
+  const resolution = resolveCandidateGeography({ county:'Riverside', crawl_data:{} });
+  const fields = geographyShadowFields(resolution, true);
+  assert.deepEqual(fields.resolved_county_fips, ['06065']);
+  assert.equal(fields.geography_resolution_status, 'confirmed');
+  assert.equal(fields.geography_shadow, true);
+  assert.ok(fields.geography_resolved_at);
 });
