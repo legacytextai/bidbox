@@ -143,7 +143,7 @@ const Landing = () => {
               flags the requirements, and gets you ready for bid day.
             </p>
             <div className="cta-row">
-              <a className="btn btn-primary" href="#pricing" onClick={(e) => anchorClick(e, "pricing")}>Start free trial</a>
+              <a className="btn btn-primary" href="/auth?mode=signup" onClick={(e) => { e.preventDefault(); navigate("/auth?mode=signup"); }}>Start free trial</a>
               <a className="btn btn-ghost" href="#how" onClick={(e) => anchorClick(e, "how")}>See how it works</a>
             </div>
             <span className="micro">Set up in minutes · 14-day free trial · Your counties, your trades</span>
