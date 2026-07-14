@@ -153,10 +153,14 @@ const Projects = () => {
         const estimated_value_display = cand
           ? resolveEstimatedValue(cand.crawl_data, cand.estimated_value)
           : null;
+        const estimated_value_raw = cand
+          ? resolveEstimatedValueRaw(cand.crawl_data, cand.estimated_value)
+          : null;
         return {
           ...project,
           submission_count: count || 0,
           estimated_value_display,
+          estimated_value_raw,
         };
       })
     );
