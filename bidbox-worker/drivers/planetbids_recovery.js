@@ -195,7 +195,7 @@ async function recoverFromDocuments(supabase, candidate) {
   };
 }
 
-async function runPlanetBidsCandidateRecovery({ task, supabase, log = console.log }) {
+async function runPlanetBidsCandidateRecovery({ task, supabase, log = console.log, assertLease = async () => {} }) {
   const candidateId = task.payload?.candidate_id;
   const dryRun = task.payload?.dry_run === true;
   if (!candidateId) throw new Error('planetbids_candidate_recovery task missing candidate_id');
@@ -205,6 +205,46 @@ async function runPlanetBidsCandidateRecovery({ task, supabase, log = console.lo
   const attempt = Math.max(1, Number(task.payload?.attempt_number ?? candidate.recovery_attempt_count + 1));
   const trigger = task.payload?.recovery_trigger ?? task.trigger_reason ?? 'automatic_retry';
   const before = { raw_title: candidate.raw_title, bid_due_at: candidate.bid_due_at, agency: candidate.agency, county: candidate.county, ingestion_status: candidate.ingestion_status };
+  const { data: existingAudits, error: existingAuditError } = await supabase.from('opportunity_recovery_audits')
+    .select('*').eq('agent_task_id', task.id).order('created_at', { ascending: false }).limit(1);
+  if (existingAuditError) throw new Error(`recovery audit preflight failed: ${existingAuditError.message}`);
+  const existingAudit = existingAudits?.[0];
+  if (existingAudit) {
+    const alreadyRecovered = existingAudit.outcome === 'recovered';
+    log(`task already finalized by audit ${existingAudit.id}; skipping candidate rewrite`);
+    return {
+      candidate_id: candidate.id, dry_run: dryRun, attempted: 1,
+      recovered: alreadyRecovered ? 1 : 0, unresolved: alreadyRecovered ? 0 : 1,
+      source: existingAudit.extraction_source ?? null, error_code: existingAudit.error_code ?? null,
+      exhausted: existingAudit.outcome === 'exhausted', browserbase_sessions: 0,
+      would_update: false, fields_changed: [], runtime_ms: 0,
+      diagnostics: { stale_recovery_finalized_from_audit: existingAudit.id }, already_finalized: true,
+    };
+  }
+
+  if (candidate.recovery_last_task_id === task.id && candidate.recovery_last_attempt_at) {
+    const alreadyRecovered = Boolean(String(candidate.raw_title ?? '').trim());
+    const now = new Date().toISOString();
+    const outcome = alreadyRecovered ? 'recovered' : (candidate.recovery_exhausted_at ? 'exhausted' : 'failed');
+    await assertLease();
+    const { data: reconciledAudit, error: reconcileError } = await supabase.from('opportunity_recovery_audits').insert({
+      opportunity_candidate_id: candidate.id, agent_task_id: task.id, attempt_number: attempt, trigger,
+      extraction_source: null, before_values: before, after_values: before, fields_changed: [], confidence: null,
+      outcome, error_code: candidate.recovery_last_error_code,
+      error_reason: candidate.recovery_last_error_reason,
+      diagnostics: { stale_recovery_reconciled_from_candidate_write: true, reconciled_at: now },
+    }).select('id').single();
+    if (reconcileError) throw new Error(`stale candidate-write audit reconciliation failed: ${reconcileError.message}`);
+    log(`candidate write from this task already exists; reconciled audit ${reconciledAudit.id} without rewriting`);
+    return {
+      candidate_id: candidate.id, dry_run: dryRun, attempted: 1,
+      recovered: alreadyRecovered ? 1 : 0, unresolved: alreadyRecovered ? 0 : 1,
+      source: null, error_code: candidate.recovery_last_error_code ?? null,
+      exhausted: Boolean(candidate.recovery_exhausted_at), browserbase_sessions: 0,
+      would_update: false, fields_changed: [], runtime_ms: 0,
+      diagnostics: { stale_recovery_reconciled_from_candidate_write: true }, already_finalized: true,
+    };
+  }
   let recovered = null;
   let portalError = null;
   const metrics = { browserbase_sessions: 0 };
@@ -231,6 +271,7 @@ async function runPlanetBidsCandidateRecovery({ task, supabase, log = console.lo
   const fieldsChanged = Object.keys(after).filter((field) => JSON.stringify(before[field]) !== JSON.stringify(after[field]));
 
   if (!dryRun) {
+    await assertLease();
     const now = new Date().toISOString();
     const update = successful ? {
       ...patch,
@@ -248,6 +289,7 @@ async function runPlanetBidsCandidateRecovery({ task, supabase, log = console.lo
     };
     const { error: updateError } = await supabase.from('opportunity_candidates').update(update).eq('id', candidate.id);
     if (updateError) throw new Error(`candidate recovery update failed: ${updateError.message}`);
+    await assertLease();
     const { error: auditError } = await supabase.from('opportunity_recovery_audits').insert({
       opportunity_candidate_id: candidate.id, agent_task_id: task.id, attempt_number: attempt, trigger,
       extraction_source: recovered?.extraction_source ?? null, before_values: before, after_values: after,

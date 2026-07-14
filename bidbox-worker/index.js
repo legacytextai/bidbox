@@ -15,6 +15,7 @@ const { acquireCalEprocureDocuments } = require('./drivers/caleprocure_documents
 const { classifyIngestionCandidate } = require('./lib/opportunity-policy');
 const { agencyRegistryFromRows, COUNTY_FIPS, DEFAULT_AGENCIES, resolveCandidateGeography } = require('./lib/geography');
 const { runPlanetBidsCandidateRecovery } = require('./drivers/planetbids_recovery');
+const { claimedPayload, heartbeatPayload, leaseFor } = require('./lib/planetbids-task-lease');
 const { runQualificationCandidateFanout, runQualificationRebuild } = require('./drivers/qualification_jobs');
 const {
   queueDocumentProcessingForCandidate,
@@ -78,6 +79,11 @@ const PLANETBIDS_LOCK_MAX_RETRIES = envNumber('PLANETBIDS_LOCK_MAX_WAIT_ATTEMPTS
 // After giving up the lock wait, cool down before releasing the worker so it
 // doesn't immediately re-claim the same task and hot-loop on the lock.
 const PLANETBIDS_LOCK_REQUEUE_DELAY_MS = envNumber('PLANETBIDS_LOCK_REQUEUE_DELAY_MS', 15_000);
+const PLANETBIDS_RECOVERY_LEASE_MS = Math.max(60_000, envNumber('PLANETBIDS_RECOVERY_LEASE_MS', 180_000));
+const PLANETBIDS_RECOVERY_HEARTBEAT_MS = Math.max(10_000, Math.min(
+  PLANETBIDS_RECOVERY_LEASE_MS / 3,
+  envNumber('PLANETBIDS_RECOVERY_HEARTBEAT_MS', 30_000),
+));
 
 class PlanetBidsLockTimeoutError extends Error {
   constructor(attempts) {
@@ -111,6 +117,49 @@ async function releasePlanetBidsLock(workerId, log) {
 
 function ts() {
   return new Date().toISOString();
+}
+
+function createRecoveryLeaseController(task) {
+  if (task.task_type !== 'planetbids_candidate_recovery') return null;
+  const workerId = leaseFor(task)?.worker_id;
+  if (!workerId) throw new Error(`recovery task ${task.id} was claimed without a lease`);
+  let stopped = false;
+  let lost = false;
+  let inFlight = null;
+
+  const refresh = async () => {
+    if (stopped) return !lost;
+    if (inFlight) return inFlight;
+    inFlight = (async () => {
+      const payload = heartbeatPayload(task, new Date(), PLANETBIDS_RECOVERY_LEASE_MS);
+      const { data, error } = await supabase.from('agent_tasks').update({ payload })
+        .eq('id', task.id).eq('status', 'running')
+        .contains('payload', { recovery_lease: { worker_id: workerId } })
+        .select('id,payload').maybeSingle();
+      if (error) throw new Error(`recovery lease heartbeat failed: ${error.message}`);
+      if (!data) {
+        lost = true;
+        return false;
+      }
+      task.payload = data.payload;
+      return true;
+    })().finally(() => { inFlight = null; });
+    return inFlight;
+  };
+  const timer = setInterval(() => {
+    refresh().catch((error) => console.error(`[${ts()}] Task ${task.id} heartbeat error: ${error.message}`));
+  }, PLANETBIDS_RECOVERY_HEARTBEAT_MS);
+  timer.unref();
+  return {
+    workerId,
+    async assert() {
+      if (lost || !await refresh()) throw new Error(`recovery task ${task.id} lease lost`);
+    },
+    stop() {
+      stopped = true;
+      clearInterval(timer);
+    },
+  };
 }
 
 function userFacingDocumentAcquisitionFailureMessage() {
@@ -1221,13 +1270,21 @@ async function claimNextTask() {
 
   if (!task) return null;
 
-  // Atomic claim — guard against concurrent workers
+  // Atomic claim — guard against concurrent workers. Recovery tasks carry a
+  // renewable lease in their payload so a replacement deployment can safely
+  // distinguish live work from an abandoned running row.
+  const workerId = task.task_type === 'planetbids_candidate_recovery' ? crypto.randomUUID() : null;
+  const claimPatch = {
+    status: 'running',
+    started_at: new Date().toISOString(),
+    ...(workerId ? { payload: claimedPayload(task, workerId, new Date(), PLANETBIDS_RECOVERY_LEASE_MS) } : {}),
+  };
   const { data: claimed, error: claimError } = await supabase
     .from('agent_tasks')
-    .update({ status: 'running', started_at: new Date().toISOString() })
+    .update(claimPatch)
     .eq('id', task.id)
     .eq('status', 'pending')
-    .select('id')
+    .select('*')
     .maybeSingle();
 
   if (claimError || !claimed) {
@@ -1236,7 +1293,7 @@ async function claimNextTask() {
   }
 
   console.log(`[${ts()}] Claimed task ${task.id} (${task.task_type}) source=${task.payload?.source_name}`);
-  return task;
+  return claimed;
 }
 
 // ── document_prefetch ─────────────────────────────────────────────────────────
@@ -1301,16 +1358,17 @@ async function runDocumentPrefetchTask(task, supabase) {
 }
 
 async function processTask(task) {
+  const leaseController = createRecoveryLeaseController(task);
   try {
     let result;
     if (task.task_type === 'planetbids_scan') {
       result = await runPlanetBidsScan(task, supabase);
     } else if (task.task_type === 'planetbids_candidate_recovery') {
       const log = (msg) => console.log(`[${ts()}] [recovery:${task.payload?.candidate_id ?? 'unknown'}] ${msg}`);
-      const workerId = crypto.randomUUID();
+      const workerId = leaseController.workerId;
       await acquirePlanetBidsLock(workerId, log);
       try {
-        result = await runPlanetBidsCandidateRecovery({ task, supabase, log });
+        result = await runPlanetBidsCandidateRecovery({ task, supabase, log, assertLease: () => leaseController.assert() });
       } finally {
         await releasePlanetBidsLock(workerId, log);
       }
@@ -1474,7 +1532,7 @@ async function processTask(task) {
       ? null
       : result.errorSummary;
 
-    await supabase
+    let completionQuery = supabase
       .from('agent_tasks')
       .update({
         status: 'complete',
@@ -1483,6 +1541,10 @@ async function processTask(task) {
         completed_at: new Date().toISOString(),
       })
       .eq('id', task.id);
+    if (leaseController) completionQuery = completionQuery.contains('payload', { recovery_lease: { worker_id: leaseController.workerId } });
+    const { data: completedTask, error: completionError } = await completionQuery.select('id').maybeSingle();
+    if (completionError) throw completionError;
+    if (leaseController && !completedTask) throw new Error(`recovery task ${task.id} lease lost before completion`);
 
     if (['planetbids_scan', 'caltrans_scan', 'lacounty_dpw_scan', 'lacmta_scan', 'caleprocure_scan', 'opengov_scan'].includes(task.task_type)) {
       console.log(`[${ts()}] Task ${task.id} complete: found=${result.found} new=${result.new} refreshed=${result.refreshed ?? 0} unchanged=${result.unchanged ?? 0} errors=${result.errors}`);
@@ -1498,10 +1560,12 @@ async function processTask(task) {
     // task to pending so a later worker can retry it rather than marking it failed.
     if (e instanceof PlanetBidsLockTimeoutError) {
       console.warn(`[${ts()}] Task ${task.id} requeueing (lock timeout): ${e.message}`);
-      await supabase
+      let requeueQuery = supabase
         .from('agent_tasks')
         .update({ status: 'pending', started_at: null, error: null })
         .eq('id', task.id);
+      if (leaseController) requeueQuery = requeueQuery.contains('payload', { recovery_lease: { worker_id: leaseController.workerId } });
+      await requeueQuery;
       // Brief cooldown before this worker returns to the poll loop so it does not
       // immediately re-claim the same task and hot-loop on the contended lock;
       // gives the current lock holder time to finish and release.
@@ -1561,7 +1625,7 @@ async function processTask(task) {
         })
         .eq('id', task.payload.candidate_id);
     }
-    await supabase
+    let failureQuery = supabase
       .from('agent_tasks')
       .update({
         status: 'failed',
@@ -1569,6 +1633,10 @@ async function processTask(task) {
         completed_at: new Date().toISOString(),
       })
       .eq('id', task.id);
+    if (leaseController) failureQuery = failureQuery.contains('payload', { recovery_lease: { worker_id: leaseController.workerId } });
+    await failureQuery;
+  } finally {
+    leaseController?.stop();
   }
 }
 

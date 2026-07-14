@@ -10,6 +10,12 @@ const {
   fieldRegressions,
   hashIds,
 } = require('../lib/planetbids-historical-recovery');
+const {
+  DEFAULT_LEGACY_STALE_MS,
+  DEFAULT_MAX_ATTEMPTS,
+  isLiveRecoveryTask,
+  reclaimStaleRecoveryTask,
+} = require('../lib/planetbids-task-lease');
 
 const JOB_TYPE = 'planetbids_historical_recovery_coordinator';
 const CHILD_TYPE = 'planetbids_candidate_recovery';
@@ -19,6 +25,8 @@ const MAX_ACTIVE = Math.min(2, Math.max(1, Number(process.env.HISTORICAL_RECOVER
 const EXPECTED_MANIFEST_COUNT = 583;
 const EXPECTED_MANIFEST_HASH = '19bac2090df2c8af7b054f3ad0365b31ed2cc17da54879c335de4e1859ad738f';
 const EXPECTED_WAVE1_COUNT = 100;
+const LEGACY_STALE_MS = Math.max(60_000, Number(process.env.HISTORICAL_RECOVERY_LEGACY_STALE_MS || DEFAULT_LEGACY_STALE_MS));
+const MAX_TASK_ATTEMPTS = Math.max(1, Number(process.env.HISTORICAL_RECOVERY_MAX_TASK_ATTEMPTS || DEFAULT_MAX_ATTEMPTS));
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function log(message, extra) {
@@ -165,6 +173,36 @@ async function queueCandidate(sb, job, candidate) {
   return data;
 }
 
+async function refreshAndReclaimTasks(sb, job, tasks) {
+  if (!tasks.length) return tasks;
+  const ids = tasks.map((task) => task.id);
+  let refreshed = await allRows(() => sb.from('agent_tasks').select('*').in('id', ids));
+  const events = [];
+  for (const task of refreshed) {
+    const result = await reclaimStaleRecoveryTask(sb, task, {
+      legacyStaleMs: LEGACY_STALE_MS,
+      maxAttempts: MAX_TASK_ATTEMPTS,
+    });
+    if (!['not_stale', 'lost_race'].includes(result.action)) {
+      const event = {
+        task_id: task.id,
+        candidate_id: task.payload?.candidate_id ?? null,
+        action: result.action,
+        recovered_at: new Date().toISOString(),
+      };
+      events.push(event);
+      log('reconciled stale recovery task', event);
+    }
+  }
+  if (events.length) {
+    await persist(sb, job, {
+      stale_recovery_events: [...(job.result?.stale_recovery_events || []), ...events],
+    });
+    refreshed = await allRows(() => sb.from('agent_tasks').select('*').in('id', ids));
+  }
+  return refreshed;
+}
+
 async function ensureAudit(sb, task, before, after) {
   const { data, error } = await sb.from('opportunity_recovery_audits').select('id').eq('agent_task_id', task.id).limit(1);
   if (error) throw error;
@@ -224,7 +262,10 @@ async function runWave(sb, job, waveIndex, ids) {
   const queueIds = ids.filter((id) => !alreadyQueued.has(id));
   let next = 0;
   while (next < queueIds.length || tasks.some((task) => !TERMINAL.has(task.status))) {
-    const active = tasks.filter((task) => !TERMINAL.has(task.status));
+    const reconciled = await refreshAndReclaimTasks(sb, job, tasks);
+    const byReconciledId = new Map(reconciled.map((task) => [task.id, task]));
+    for (let index = 0; index < tasks.length; index++) if (byReconciledId.has(tasks[index].id)) tasks[index] = byReconciledId.get(tasks[index].id);
+    const active = tasks.filter((task) => isLiveRecoveryTask(task, new Date(), LEGACY_STALE_MS));
     while (next < queueIds.length && active.length < MAX_ACTIVE) {
       const row = before[queueIds[next++]];
       const task = await queueCandidate(sb, job, row);
@@ -236,11 +277,11 @@ async function runWave(sb, job, waveIndex, ids) {
     if (!tasks.some((task) => !TERMINAL.has(task.status))) break;
     await sleep(POLL_MS);
     const taskIds = tasks.map((task) => task.id);
-    const refreshed = await allRows(() => sb.from('agent_tasks').select('*').in('id', taskIds));
+    const refreshed = await refreshAndReclaimTasks(sb, job, await allRows(() => sb.from('agent_tasks').select('*').in('id', taskIds)));
     const byId = new Map(refreshed.map((task) => [task.id, task]));
     for (let index = 0; index < tasks.length; index++) if (byId.has(tasks[index].id)) tasks[index] = byId.get(tasks[index].id);
     const completed = tasks.filter((task) => TERMINAL.has(task.status)).length;
-    await persist(sb, job, { state: 'wave_running', queued_in_wave: tasks.length, completed_in_wave: completed, active_task_ids: tasks.filter((task) => !TERMINAL.has(task.status)).map((task) => task.id) });
+    await persist(sb, job, { state: 'wave_running', queued_in_wave: tasks.length, completed_in_wave: completed, active_task_ids: tasks.filter((task) => isLiveRecoveryTask(task, new Date(), LEGACY_STALE_MS)).map((task) => task.id) });
   }
 
   const afterRows = await candidateRows(sb, ids);
