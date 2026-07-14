@@ -350,4 +350,8 @@ async function main() {
   }
 }
 
-main().catch((error) => { console.error(error.stack || error.message); process.exit(1); });
+main().catch((error) => {
+  console.error(error.stack || error.message || String(error));
+  console.error(JSON.stringify({ name: error.name, message: error.message, details: error.details, hint: error.hint, code: error.code, cause: error.cause?.message || error.cause || null }));
+  process.exit(1);
+});
