@@ -1187,7 +1187,7 @@ const Opportunities = () => {
                     <OpportunitySectionHeader
                       title="Unpriced Opportunities"
                       count={tabLists.forYouUnpriced.length}
-                      description="These opportunities match your selected geography, but BidBox has not confirmed an engineer's estimate. Review the bid documents to determine project size."
+                      description="These opportunities match your selected geography, but no confirmed engineer's estimate. Review bid documents to determine project size."
                     />
                   </div>
                   {tabLists.forYouUnpriced.length === 0 ? (
