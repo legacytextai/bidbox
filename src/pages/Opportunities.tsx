@@ -979,7 +979,7 @@ const Opportunities = () => {
     }
   }, [markViewed, activeTab]);
 
-  const renderCandidateCard = (candidate: Candidate, navIds?: string[], highlight?: boolean) => (
+  const renderCandidateCard = (candidate: Candidate, navIds?: string[]) => (
     <ViewedCardWrapper key={candidate.id} viewed={viewedIds.has(candidate.id)}>
       <OpportunityCard
         candidate={candidate}
@@ -990,7 +990,7 @@ const Opportunities = () => {
           (candidate.status === "converted" && !!candidate.converted_project_id)
         }
         filterReasons={getStoredFilterReasons(candidate, qualificationByCandidate.get(candidate.id), hasActiveQualifications)}
-        highlight={highlight}
+        viewed={viewedIds.has(candidate.id)}
         onToggleSaved={handleToggleSaved}
         onOpen={handleCardOpen}
       />
