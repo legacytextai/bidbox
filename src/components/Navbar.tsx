@@ -99,7 +99,7 @@ const Navbar = () => {
                 Sign In
               </Button>
               <Button
-                onClick={() => navigate("/auth")}
+                onClick={() => navigate("/auth?mode=signup")}
                 className="w-full bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90"
               >
                 Start Free Trial

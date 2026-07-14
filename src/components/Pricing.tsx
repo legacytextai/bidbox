@@ -52,11 +52,8 @@ const Pricing = () => {
     },
   ];
 
-  const scrollToSection = (id: string) => {
-    const element = document.getElementById(id);
-    if (element) {
-      element.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
+  const goToSignup = () => {
+    window.location.href = "/auth?mode=signup";
   };
 
   return (
@@ -136,7 +133,7 @@ const Pricing = () => {
 
               {/* CTA Button */}
               <Button
-                onClick={() => scrollToSection("cta")}
+                onClick={goToSignup}
                 className={`w-full mb-8 ${plan.popular ? "bg-white text-[hsl(var(--bidbox-blue))] hover:bg-white/90" : "bg-[hsl(var(--bidbox-blue))] text-white hover:bg-[hsl(var(--bidbox-blue))]/90"}`}
                 size="lg"
               >
