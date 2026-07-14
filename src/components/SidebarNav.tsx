@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { ADMIN_NAV } from "@/components/admin/adminNav";
-import bidboxLogo from "@/assets/bidbox-logo-app.png";
+import bidboxLogo from "@/assets/bidbox-logo.png";
 import {
   Sidebar,
   SidebarContent,
@@ -59,8 +59,8 @@ const AppSidebar = ({ onNavigate }: SidebarNavProps) => {
 
   return (
     <Sidebar>
-      <div className="px-4 py-6 border-b border-border flex items-center justify-start">
-        <img src={bidboxLogo} alt="BidBox" className="h-36 w-auto object-contain" />
+      <div className="px-4 py-4 border-b border-border flex items-center justify-center">
+        <img src={bidboxLogo} alt="BidBox" className="w-full h-auto max-h-16 object-contain" />
       </div>
 
       <SidebarContent>
