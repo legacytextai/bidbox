@@ -227,6 +227,7 @@ const QualificationProfile = () => {
 
   useEffect(() => {
     load();
+    fetchTradeTypes("CA").then(setTrades).catch(() => setTrades([]));
   }, [load]);
 
   const handleSave = async () => {
