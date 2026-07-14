@@ -620,7 +620,7 @@ See `docs/agent-architecture-task-list.md` for implementation tasks.
 Scanning no longer auto-triggers the F2→F3→F4 pipeline. Portal metadata
 (title, agency, bid date, estimated value, county) is persisted immediately;
 intelligence pipeline starts only when a human clicks "Analyze Project."
-See `docs/initiatives/oml-opportunity-metadata-layer.md` for full design.
+See `docs/initiatives/completed/oml-opportunity-metadata-layer.md` for full design.
 See `docs/archive/v1-auto-analysis-pipeline.md` for the preserved v1 architecture.
 
 Validated production chain for F3:

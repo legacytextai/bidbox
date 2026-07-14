@@ -97,7 +97,7 @@ LA County Department of Public Works is one of the largest public works agencies
 
 From an estimator's perspective, LA County DPW bids are high-priority. Missing one is costly. Having BidBox surface them automatically — with portal summaries, bid items, and project intelligence — is direct product value for any GC operating in Southern California.
 
-The OML architecture doc (`docs/initiatives/oml-opportunity-metadata-layer.md`) explicitly notes that a manual walkthrough of "PlanetBids, Caltrans, LA County DPW, LACDA, and RAMPLA" was conducted during OML design. LA County DPW was confirmed to expose enough metadata at the portal detail page level to support OML-grade intelligence without requiring document analysis.
+The OML architecture doc (`docs/initiatives/completed/oml-opportunity-metadata-layer.md`) explicitly notes that a manual walkthrough of "PlanetBids, Caltrans, LA County DPW, LACDA, and RAMPLA" was conducted during OML design. LA County DPW was confirmed to expose enough metadata at the portal detail page level to support OML-grade intelligence without requiring document analysis.
 
 ### How It Fits the Source Acquisition Strategy
 
@@ -207,7 +207,7 @@ Both paths are viable but neither has been confirmed or mapped.
 
 - **RAMPLA exists and aggregates LA County DPW solicitations.** The system already recognizes `rampla.org` as a portal type in `src/lib/platformDetection.ts` (type `'ramp'`) and in `supabase/functions/crawl-project/index.ts`. The pattern `/rampla\.org/i` was added to platform detection at some point in the project's history, suggesting RAMPLA was examined before as a potential data source.
 
-- **LA County DPW was manually walked through during OML design.** The OML initiative doc (`docs/initiatives/oml-opportunity-metadata-layer.md`) lists LA County DPW explicitly as one of the portals examined: *"Manual walkthroughs of PlanetBids, Caltrans, LA County DPW, LACDA, and RAMPLA confirmed that the information visible on a portal detail page — title, agency, bid due date, estimated value, county, scope text — is sufficient for a human estimating coordinator to decide whether to spend an hour pursuing a project."* This means someone on the team has seen the portal detail page and confirmed it contains OML-grade metadata.
+- **LA County DPW was manually walked through during OML design.** The OML initiative doc (`docs/initiatives/completed/oml-opportunity-metadata-layer.md`) lists LA County DPW explicitly as one of the portals examined: *"Manual walkthroughs of PlanetBids, Caltrans, LA County DPW, LACDA, and RAMPLA confirmed that the information visible on a portal detail page — title, agency, bid due date, estimated value, county, scope text — is sufficient for a human estimating coordinator to decide whether to spend an hour pursuing a project."* This means someone on the team has seen the portal detail page and confirmed it contains OML-grade metadata.
 
 - **The portal is custom/agency-direct.** LA County DPW is explicitly listed in the E3 roadmap entry as an "agency-direct driver for high-value custom portals" — not a known SaaS platform. The `.aspx` URL confirms ASP.NET stack.
 

@@ -1,7 +1,7 @@
 # [SUPERSEDED] V1 Auto-Analysis Pipeline
 
 **Status:** [SUPERSEDED by OML] — archived 2026-06-30  
-**Superseded by:** [OML — Opportunity Metadata Layer](../initiatives/oml-opportunity-metadata-layer.md)
+**Superseded by:** [OML — Opportunity Metadata Layer](../initiatives/completed/oml-opportunity-metadata-layer.md)
 
 This document preserves the v1 architecture for historical context.
 Do not implement from this document. See the OML initiative for current design.

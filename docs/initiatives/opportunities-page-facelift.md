@@ -6,7 +6,7 @@ Document type: Initiative document
 Implementation plan: `docs/initiatives/opportunities-page-facelift-implementation-plan.md`
 Task list: `docs/initiatives/opportunities-page-facelift-task-list.md`
 Branch: `phase1-opportunity-intelligence`
-Related: `docs/initiatives/oml-opportunity-metadata-layer.md` (normalized metadata columns), `docs/initiatives/opportunity-intelligence-mvp.md` (discovery → intelligence loop), `docs/initiatives/f5-opportunity-project-workspace.md` (workspace evolution)
+Related: `docs/initiatives/completed/oml-opportunity-metadata-layer.md` (normalized metadata columns), `docs/initiatives/opportunity-intelligence-mvp.md` (discovery → intelligence loop), `docs/initiatives/f5-opportunity-project-workspace.md` (workspace evolution)
 
 ---
 
