@@ -29,13 +29,15 @@ Keep this `tasks.md` file focused on broad product implementation history and ap
 - Replaced the Opportunities list `select *` query with a lean list-only projection to avoid shipping full `crawl_data` JSON for every candidate on initial load.
 - Added client-side timeouts around the initial auth/session read and follow-up saved/pursuit/qualification reads so optional side data cannot pin `/opportunities` on the loading screen.
 - Made saved opportunities, pursuits, and qualifications fail-soft during bootstrap; the list now renders even if one side query is slow.
+- Fixed the repeated "Opportunities updated" toast by only notifying when a qualification job transitions to complete while the page is open, not when a historical completed job is loaded on navigation.
 
 **How to test**:
 - Hard-refresh `/opportunities` while signed in and confirm the opportunity cards render instead of staying on "Loading opportunities...".
 - Confirm Saved badges/counts still populate after load and saving/unsaving an opportunity still works.
+- Navigate away from `/opportunities`, click back into Opportunities, and confirm the "Opportunities updated" toast does not appear for an already-completed Bid Profile job.
 
 **Next step**:
-- If the page still hangs, inspect the `[opps] ... skipped` warnings to identify the exact slow backend read.
+- If a new Bid Profile rebuild is queued while the page is open, confirm the toast appears only once when that new job completes.
 
 ### 2026-01-18: Bid Readiness Checklist
 
