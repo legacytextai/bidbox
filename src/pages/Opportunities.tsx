@@ -363,6 +363,7 @@ const Opportunities = () => {
   const [pursuitByCandidate, setPursuitByCandidate] = useState<Map<string, PursuitLite>>(new Map());
   const [qualificationByCandidate, setQualificationByCandidate] = useState<Map<string, StoredQualification>>(new Map());
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState("all");
   const [sortKey, setSortKey] = useState<SortKey>("due_asc");
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
@@ -440,6 +441,7 @@ const Opportunities = () => {
       if (loadInFlightRef.current) return;
       loadInFlightRef.current = true;
     }
+    if (!silent) setLoadError(null);
     try {
       const { data: { session } } = await withTimeout(supabase.auth.getSession(), "auth session");
       // Paginated fetch — REQUIRED. A single unranged `.select()` is silently
@@ -568,6 +570,7 @@ const Opportunities = () => {
     } catch (err) {
       console.error("[opps] loadCandidates failed", err);
       if (!silent) {
+        setLoadError(err instanceof Error ? err.message : "Failed to load opportunities");
         toast({ title: "Error", description: "Failed to load opportunities", variant: "destructive" });
       }
     } finally {
@@ -763,24 +766,14 @@ const Opportunities = () => {
     }
   }, [loading]);
 
-  useEffect(() => {
-    if (!hasActiveCandidates) return;
-    const tick = async () => {
-      if (document.hidden) return;
-      if (pollInFlightRef.current) return;
-      pollInFlightRef.current = true;
-      console.info("[opps] polling refresh", { activeCount });
-      try {
-        await loadCandidates({ silent: true });
-      } finally {
-        pollInFlightRef.current = false;
-      }
-    };
-    const intervalId = window.setInterval(tick, POLLING_INTERVAL_MS);
-    return () => {
-      window.clearInterval(intervalId);
-    };
-  }, [hasActiveCandidates, activeCount, loadCandidates]);
+  // Full-dataset polling intentionally removed: Realtime channel
+  // (`opportunity-candidates-feed`) streams INSERT/UPDATE events, and the
+  // qualification job hook polls its own row. Refreshing every candidate row
+  // every 7s was flooding the network and could re-race the loading spinner.
+  // Qualification job completion triggers a single silent refresh in the
+  // effect above (see `qualificationJob.job` watcher). Do not reintroduce a
+  // dataset-wide interval without explicit product approval.
+  void pollInFlightRef; void hasActiveCandidates; void activeCount;
 
   // Realtime: stream agent_tasks INSERTs into the panel as soon as scan-opportunities queues them
   useEffect(() => {
@@ -1181,20 +1174,6 @@ const Opportunities = () => {
               </span>
             </div>
           )}
-          <div className="flex flex-wrap gap-1.5">
-            {qualificationJob.hasBidProfile && !storedQualification && (
-              <Badge variant="outline" className="text-[10px] text-muted-foreground">Not yet evaluated</Badge>
-            )}
-            {qualificationJob.hasBidProfile && !countyVerified && (
-              <Badge variant="outline" className="text-[10px] text-amber-700 border-amber-300 bg-amber-50">County not verified</Badge>
-            )}
-            {storedQualification?.status === "yellow" && storedQualification.reasons
-              .filter((reason) => reason !== "County not verified" && reason !== "County unknown")
-              .slice(0, 2)
-              .map((reason) => (
-                <Badge key={reason} variant="outline" className="text-[10px] text-amber-700 border-amber-300 bg-amber-50">{reason}</Badge>
-              ))}
-          </div>
 
           {filterReasons.length > 0 && (
             <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-950">
@@ -1260,6 +1239,22 @@ const Opportunities = () => {
         {loading ? (
           <div className="flex items-center justify-center min-h-[calc(100vh-4rem)]">
             <p className="text-muted-foreground">Loading opportunities...</p>
+          </div>
+        ) : loadError ? (
+          <div className="flex flex-col items-center justify-center gap-3 min-h-[calc(100vh-4rem)] text-center px-6">
+            <p className="text-sm text-muted-foreground max-w-md">
+              We couldn't load opportunities. {loadError}
+            </p>
+            <button
+              onClick={() => {
+                setLoading(true);
+                void loadCandidates();
+              }}
+              className="inline-flex items-center gap-2 rounded-md border border-input bg-background px-3 py-1.5 text-sm font-medium hover:bg-accent"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              Retry
+            </button>
           </div>
         ) : (
           <div className="p-8">
