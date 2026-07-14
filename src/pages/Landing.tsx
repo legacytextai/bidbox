@@ -115,7 +115,7 @@ const Landing = () => {
           </button>
           <nav className="nav-links" id="navlinks">
             <a href="#how" onClick={(e) => anchorClick(e, "how")}>How it works</a>
-            <a href="/auth?mode=signup" onClick={(e) => { e.preventDefault(); navigate("/auth?mode=signup"); }}>Pricing</a>
+            <a href="#pricing" onClick={(e) => anchorClick(e, "pricing")}>Pricing</a>
             <a href="#report" onClick={(e) => anchorClick(e, "report")}>What's bidding</a>
             <a
               href="/auth"
@@ -493,7 +493,7 @@ const Landing = () => {
             <div>
               <h4>Product</h4>
               <a href="#how" onClick={(e) => anchorClick(e, "how")}>How it works</a>
-              <a href="/auth?mode=signup" onClick={(e) => { e.preventDefault(); navigate("/auth?mode=signup"); }}>Pricing</a>
+              <a href="#pricing" onClick={(e) => anchorClick(e, "pricing")}>Pricing</a>
               <a
                 href="/auth"
                 onClick={(e) => { e.preventDefault(); navigate("/auth"); }}
