@@ -66,6 +66,7 @@ export const OpportunityCard = ({
   saved,
   onCalendar,
   filterReasons,
+  viewed,
   onToggleSaved,
   onOpen,
 }: OpportunityCardProps) => {
