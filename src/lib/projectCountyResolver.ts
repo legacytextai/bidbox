@@ -1,4 +1,4 @@
-import { isValidCACounty } from "@/lib/californiaRegions";
+import { isValidCACounty } from "./californiaRegions.ts";
 
 const CITY_TO_COUNTY: Record<string, string> = {
   alhambra: "Los Angeles",

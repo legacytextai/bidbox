@@ -3,7 +3,7 @@
 // rather than duplicating formatting logic inline.
 
 import type { PortalType } from "./platformDetection";
-import { resolveProjectCounty } from "./projectCountyResolver";
+import { resolveProjectCounty } from "./projectCountyResolver.ts";
 
 type SupportedPortalType = Exclude<PortalType, "unknown">;
 

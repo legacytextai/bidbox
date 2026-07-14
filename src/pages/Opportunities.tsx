@@ -3,8 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, ExternalLink, RefreshCw, ChevronDown, Check, Filter, CalendarCheck2, Bookmark, Info } from "lucide-react";
-import { resolveEstimatedValue, resolvePortalStyle } from "@/lib/opportunityDomain";
+import { Building2, RefreshCw, ChevronDown, Check, Filter, SlidersHorizontal } from "lucide-react";
 import { fetchCompanyPursuits, upsertPursuit, type PursuitLite } from "@/lib/tenant";
 import { Layout } from "@/components/Layout";
 import {
@@ -29,70 +28,34 @@ import {
 } from "@/components/ui/command";
 import { Badge } from "@/components/ui/badge";
 import { ActiveScansPanel } from "@/components/ActiveScansPanel";
-import { formatProjectDateTime, formatInProjectTimezone } from "@/lib/timezoneUtils";
-import { getStoredFilterReasons, isQuarantined, type StoredQualification } from "@/lib/opportunityVisibility";
+import { getStoredFilterReasons, type StoredQualification } from "@/lib/opportunityVisibility";
 import { useAuth } from "@/hooks/useAuth";
-import { toZonedTime } from "date-fns-tz";
 import { useQualificationJob } from "@/hooks/useQualificationJob";
 import { fetchAllPages } from "@/lib/paginatedRows";
-
-// Transient (per-tab) anchor for restoring list position when navigating back
-// from a detail page. Session-only by design — never persisted across browser
-// sessions. Survives a hard refresh of the detail page because it lives in
-// sessionStorage rather than component/router state.
-const SCROLL_ANCHOR_KEY = "bidbox:opportunities:scrollAnchor";
-
-type CandidateStatus = "pending" | "red" | "yellow" | "green" | "converted";
-type AutoStatus = "green" | "yellow" | "red" | null;
-type AnalysisStatus = "not_requested" | "queued" | "analyzing" | "ready" | "failed";
-type DocumentAcquisitionStatus = "not_requested" | "queued" | "acquiring" | "acquired" | "failed";
-type DocumentProcessingStatus = "not_requested" | "queued" | "processing" | "processed" | "partial" | "failed";
-
-interface Candidate {
-  id: string;
-  source_url: string;
-  portal_type: string | null;
-  raw_title: string | null;
-  agency: string | null;
-  bid_due_at: string | null;
-  scope_text: string | null;
-  status: CandidateStatus;
-  review_notes: string | null;
-  converted_project_id: string | null;
-  created_at: string;
-  source_name: string | null;
-  auto_status: AutoStatus;
-  auto_status_reason: string | null;
-  qualification_score: number | null;
-  qualified_at: string | null;
-  crawl_data: any | null;
-  estimated_value: number | null;
-  county: string | null;
-  analysis_status: AnalysisStatus;
-  analysis_task_id: string | null;
-  analysis_requested_at: string | null;
-  analysis_started_at: string | null;
-  analysis_completed_at: string | null;
-  analysis_error: string | null;
-  document_acquisition_status: DocumentAcquisitionStatus;
-  document_acquisition_started_at: string | null;
-  document_acquisition_completed_at: string | null;
-  document_acquisition_error: string | null;
-  document_processing_status: DocumentProcessingStatus;
-  document_processing_started_at: string | null;
-  document_processing_completed_at: string | null;
-  document_processing_error: string | null;
-  opportunity_lifecycle_status?: string | null;
-  opportunity_intelligence_status?: string | null;
-  opportunity_intelligence_task_id?: string | null;
-  opportunity_intelligence_ready_at?: string | null;
-  opportunity_intelligence_error?: string | null;
-  ingestion_status: string;
-  ingestion_issue_reason: string | null;
-  global_exclusion_code: string | null;
-  global_exclusion_reason: string | null;
-  canonical_candidate_id: string | null;
-}
+import { OpportunityCard } from "@/components/opportunities/OpportunityCard";
+import { ViewedCardWrapper } from "@/components/opportunities/ViewedCardWrapper";
+import { OpportunityTabs } from "@/components/opportunities/OpportunityTabs";
+import {
+  OpportunityGrid,
+  OpportunitySectionEmpty,
+  OpportunitySectionHeader,
+} from "@/components/opportunities/OpportunityGrid";
+import { SCROLL_ANCHOR_KEY, type Candidate, type AnalysisStatus, type AutoStatus, type CandidateStatus, type DocumentAcquisitionStatus, type DocumentProcessingStatus } from "@/components/opportunities/types";
+import {
+  getCandidateCounty,
+  isAllTabFilteredOutMember,
+  isAllTabMember,
+  isClosedTabMember,
+  isSavedTabMember,
+  type OpportunityTab,
+} from "@/lib/opportunityTabs";
+import {
+  classifyForYouSection,
+  EMPTY_BID_PROFILE,
+  type BidProfileParams,
+} from "@/lib/bidProfileMatching";
+import { useOpportunitiesPageState } from "@/hooks/useOpportunitiesPageState";
+import { useViewedOpportunities } from "@/hooks/useViewedOpportunities";
 
 interface QualificationRow {
   opportunity_candidate_id: string;
@@ -101,32 +64,12 @@ interface QualificationRow {
   reasons: string[] | null;
 }
 
-const FILTERS: { label: string; value: string }[] = [
-  { label: "All", value: "all" },
-  { label: "Saved", value: "saved" },
-  { label: "Closed", value: "closed" },
-];
-
-const isClosedCandidate = (c: { bid_due_at: string | null }) => {
-  if (!c.bid_due_at) return false;
-  const t = new Date(c.bid_due_at).getTime();
-  return !isNaN(t) && t < Date.now();
-};
-
-const AUTO_RANK: Record<string, number> = {
-  green: 0,
-  yellow: 1,
-  null: 2,
-  red: 3,
-};
-
 // Active-state definitions for the realtime safety-net polling fallback.
 // Extend these lists as new long-running agent statuses (e.g. F3/F4: processing,
 // extracting, chunking, generating) are introduced.
 const ACTIVE_DOCUMENT_STATUSES: DocumentAcquisitionStatus[] = ["queued", "acquiring"];
 const ACTIVE_DOCUMENT_PROCESSING_STATUSES: DocumentProcessingStatus[] = ["queued", "processing"];
 const ACTIVE_ANALYSIS_STATUSES: AnalysisStatus[] = ["queued", "analyzing"];
-const POLLING_INTERVAL_MS = 7000;
 const QUERY_TIMEOUT_MS = 10000;
 
 const OPPORTUNITY_LIST_SELECT = `
@@ -146,6 +89,8 @@ const OPPORTUNITY_LIST_SELECT = `
   qualification_score,
   qualified_at,
   estimated_value,
+  estimated_value_low,
+  estimated_value_high,
   county,
   analysis_status,
   analysis_task_id,
@@ -184,38 +129,6 @@ function withTimeout<T>(promise: PromiseLike<T>, label: string, timeoutMs = QUER
   });
 }
 
-function formatBidDate(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return "—";
-  return formatInProjectTimezone(
-    d.toISOString(),
-    "America/Los_Angeles",
-    "MM/dd/yyyy"
-  );
-}
-
-function daysUntilBidDue(iso: string | null): { text: string; colorClass: string } | null {
-  if (!iso) return null;
-  const due = new Date(iso);
-  if (isNaN(due.getTime())) return null;
-  const nowYmd = formatInProjectTimezone(new Date().toISOString(), "America/Los_Angeles", "yyyy-MM-dd");
-  const dueYmd = formatInProjectTimezone(due.toISOString(), "America/Los_Angeles", "yyyy-MM-dd");
-  const toUTC = (ymd: string) =>
-    Date.UTC(Number(ymd.slice(0, 4)), Number(ymd.slice(5, 7)) - 1, Number(ymd.slice(8, 10)));
-  const days = Math.round((toUTC(dueYmd) - toUTC(nowYmd)) / 86_400_000);
-  if (days < 0) return { text: "Closed", colorClass: "text-muted-foreground" };
-  if (days === 0) return { text: "Today", colorClass: "text-red-600" };
-  if (days === 1) return { text: "Tomorrow", colorClass: "text-red-600" };
-  if (days <= 3) return { text: `${days} days`, colorClass: "text-red-600" };
-  if (days <= 7) return { text: `${days} days`, colorClass: "text-amber-500" };
-  return { text: `${days} days`, colorClass: "text-green-600" };
-}
-
-function formatEstimatedValue(crawlData: any): string | null {
-  return resolveEstimatedValue(crawlData);
-}
-
 function timeAgo(iso: string | null): string {
   if (!iso) return "never";
   const diff = Date.now() - new Date(iso).getTime();
@@ -225,17 +138,7 @@ function timeAgo(iso: string | null): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-function isBidClosed(iso: string | null): boolean {
-  if (!iso) return false;
-  const d = new Date(iso);
-  return !isNaN(d.getTime()) && d.getTime() < Date.now();
-}
-
 const NO_VALUE_SENTINEL = "__none__";
-
-
-
-const PT_TZ = "America/Los_Angeles";
 
 type SortKey = "due_asc" | "due_desc" | "added_desc" | "added_asc";
 
@@ -245,24 +148,6 @@ const SORT_OPTIONS: { label: string; value: SortKey }[] = [
   { label: "Recently Added", value: "added_desc" },
   { label: "Oldest Added", value: "added_asc" },
 ];
-
-
-function getCandidateCounty(c: { county?: string | null; crawl_data: any | null }): string | null {
-  const v = c.county ?? c.crawl_data?.county;
-  return typeof v === "string" && v.trim() ? v.trim() : null;
-}
-
-function compareByDueAsc(a: Candidate, b: Candidate): number {
-  const aDue = a.bid_due_at ? new Date(a.bid_due_at).getTime() : null;
-  const bDue = b.bid_due_at ? new Date(b.bid_due_at).getTime() : null;
-  if (aDue === null && bDue === null) {
-    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-  }
-  if (aDue === null) return 1;
-  if (bDue === null) return -1;
-  if (aDue !== bDue) return aDue - bDue;
-  return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-}
 
 interface FacetMultiSelectProps {
   label: string;
@@ -370,9 +255,11 @@ const Opportunities = () => {
   // candidates (dual-read; legacy candidate columns remain the fallback).
   const [pursuitByCandidate, setPursuitByCandidate] = useState<Map<string, PursuitLite>>(new Map());
   const [qualificationByCandidate, setQualificationByCandidate] = useState<Map<string, StoredQualification>>(new Map());
+  // Operational Bid Profile parameters (geography + project size). Licensing
+  // and NAICS exist on the profile but do not participate in filtering.
+  const [bidProfile, setBidProfile] = useState<BidProfileParams>(EMPTY_BID_PROFILE);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [activeFilter, setActiveFilter] = useState("all");
   const [sortKey, setSortKey] = useState<SortKey>("due_asc");
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [scanLoading, setScanLoading] = useState(false);
@@ -383,13 +270,14 @@ const Opportunities = () => {
   const [activeScanTaskIds, setActiveScanTaskIds] = useState<string[]>([]);
   const [scanStartedAt, setScanStartedAt] = useState<string | null>(null);
   const [scanActive, setScanActive] = useState(false);
-  const [analyzingId, setAnalyzingId] = useState<string | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user, authReady } = useAuth();
   const qualificationJob = useQualificationJob(user?.id);
   const completedQualificationJob = useRef<string | null>(null);
   const lastObservedQualificationJob = useRef<{ id: string; status: string } | null>(null);
+  const { activeTab, setActiveTab } = useOpportunitiesPageState();
+  const { viewedIds, markViewed } = useViewedOpportunities(user?.id);
 
   const mapRow = useCallback((row: any): Candidate => ({
     id: row.id,
@@ -410,6 +298,8 @@ const Opportunities = () => {
     qualified_at: row.qualified_at ?? null,
     crawl_data: row.crawl_data ?? (row.estimated_value ? { estimated_value: row.estimated_value } : null),
     estimated_value: row.estimated_value ?? null,
+    estimated_value_low: row.estimated_value_low ?? null,
+    estimated_value_high: row.estimated_value_high ?? null,
     county: row.county ?? row.crawl_data?.county ?? null,
     analysis_status: (row.analysis_status ?? "not_requested") as AnalysisStatus,
     analysis_task_id: row.analysis_task_id ?? null,
@@ -490,7 +380,7 @@ const Opportunities = () => {
       const rows: Candidate[] = (data || []).map(mapRow);
       let pursuits = new Map<string, PursuitLite>();
       if (session) {
-        const [savedResult, pursuitsResult, qualificationResult] = await Promise.allSettled([
+        const [savedResult, pursuitsResult, qualificationResult, profileResult] = await Promise.allSettled([
           withTimeout(
             (supabase as any)
               .from("saved_opportunities")
@@ -509,6 +399,14 @@ const Opportunities = () => {
               .range(from, to),
             `user opportunity qualifications page ${from / 1000 + 1}`,
           )),
+          withTimeout(
+            (supabase as any)
+              .from("gc_qualification_profiles")
+              .select("target_counties, min_project_value, max_project_value")
+              .eq("profile_id", session.user.id)
+              .maybeSingle(),
+            "bid profile",
+          ),
         ]);
 
         if (savedResult.status === "fulfilled" && !(savedResult.value as any)?.error) {
@@ -533,6 +431,22 @@ const Opportunities = () => {
           // Fail closed: never turn a partial/missing qualification map into
           // apparent matches. The outer handler preserves the prior good state.
           throw qualificationResult.reason;
+        }
+
+        if (profileResult.status === "fulfilled" && !(profileResult.value as any)?.error) {
+          const profileRow = (profileResult.value as any)?.data;
+          // No profile row is a legitimate empty profile (no restriction).
+          setBidProfile({
+            targetCounties: profileRow?.target_counties ?? [],
+            minProjectValue: profileRow?.min_project_value ?? null,
+            maxProjectValue: profileRow?.max_project_value ?? null,
+          });
+        } else {
+          // Fail closed like qualifications: a failed profile read must not
+          // silently render For You with the wrong parameters.
+          throw profileResult.status === "rejected"
+            ? profileResult.reason
+            : new Error("bid profile load failed");
         }
       }
 
@@ -620,6 +534,7 @@ const Opportunities = () => {
     setPursuitByCandidate(new Map());
     setQualificationByCandidate(new Map());
     setSavedCandidateIds(new Set());
+    setBidProfile(EMPTY_BID_PROFILE);
     setAgencyFilter([]);
     void loadCandidates();
 
@@ -864,53 +779,6 @@ const Opportunities = () => {
     }
   };
 
-  const handleAnalyzeProject = async (candidate: Candidate) => {
-    setAnalyzingId(candidate.id);
-    try {
-      const { data, error } = await supabase.functions.invoke("analyze-project", {
-        body: { candidate_id: candidate.id },
-      });
-      if (error) throw error;
-      if (data?.success === false) {
-        throw new Error(data?.error ?? "Failed to queue analysis");
-      }
-
-      setCandidates((prev) =>
-        prev.map((c) =>
-          c.id === candidate.id
-            ? {
-                ...c,
-                analysis_status: (data?.analysis_status ?? "queued") as AnalysisStatus,
-                analysis_task_id: data?.task_id ?? c.analysis_task_id,
-                analysis_requested_at: new Date().toISOString(),
-                analysis_error: null,
-                document_acquisition_status: (data?.document_acquisition_status ?? "queued") as DocumentAcquisitionStatus,
-                document_acquisition_error: null,
-                opportunity_lifecycle_status: "opportunity_intelligence_queued",
-                opportunity_intelligence_status: "queued",
-                opportunity_intelligence_task_id: data?.task_id ?? c.opportunity_intelligence_task_id,
-                opportunity_intelligence_error: null,
-              }
-            : c,
-        ),
-      );
-
-      toast({
-        title: data?.duplicate ? "Analysis already queued" : "Analysis queued",
-        description: data?.message ?? "BidBox will acquire documents and prepare Project Intelligence.",
-      });
-      await loadCandidates({ silent: true });
-    } catch (e: any) {
-      toast({
-        title: "Analysis failed",
-        description: e?.message ?? "Failed to queue analysis",
-        variant: "destructive",
-      });
-    } finally {
-      setAnalyzingId(null);
-    }
-  };
-
   const handleNotesSave = async (id: string) => {
     const note = notes[id] ?? "";
     // Notes are tenant-owned state. Never write them to the shared canonical
@@ -1011,22 +879,6 @@ const Opportunities = () => {
     [agencyFilter],
   );
 
-  // Filter by tab + agency facet.
-  const filtered = useMemo(
-    () =>
-      candidates.filter((c) => {
-        const closed = isClosedCandidate(c);
-        if (activeFilter === "closed") {
-          if (!closed) return false;
-        } else {
-          if (closed) return false;
-          if (activeFilter === "saved" && !savedCandidateIds.has(c.id)) return false;
-        }
-        return matchesFacets(c);
-      }),
-    [candidates, activeFilter, matchesFacets, savedCandidateIds],
-  );
-
   const buildComparator = useCallback((key: SortKey) => {
     return (a: Candidate, b: Candidate): number => {
       if (key === "added_desc") return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
@@ -1043,204 +895,116 @@ const Opportunities = () => {
     };
   }, []);
 
-  // Global validity and the authenticated user's qualification are distinct.
-  // Quarantined ingestion artifacts never render as normal opportunities.
-  // When the user has an active qualification set, candidates missing from it
-  // fail closed into the Filtered Out population (evaluation gap ≠ match).
-  const hasActiveQualifications = qualificationByCandidate.size > 0;
+  // Tab membership — single source of truth for BOTH rendered lists and badge
+  // counts, built from the shared pure predicates (src/lib/opportunityTabs.ts,
+  // src/lib/bidProfileMatching.ts). Per-user qualification output
+  // (user_opportunity_qualifications) deliberately plays no role here: it only
+  // feeds the existing card-internal "Filtered out" messaging.
+  const tabLists = useMemo(() => {
+    const all: Candidate[] = [];
+    const allFilteredOut: Candidate[] = [];
+    const saved: Candidate[] = [];
+    const closed: Candidate[] = [];
+    const forYouConfirmed: Candidate[] = [];
+    const forYouUnpriced: Candidate[] = [];
 
-  const { visibleCards, filteredOutCards } = useMemo(() => {
-    const isFilteredOut = (candidate: Candidate) =>
-      activeFilter === "all" &&
-      getStoredFilterReasons(candidate, qualificationByCandidate.get(candidate.id), hasActiveQualifications).length > 0;
-
-    const visible: Candidate[] = [];
-    const filteredOut: Candidate[] = [];
-    for (const c of filtered) {
-      if (isQuarantined(c)) continue;
-      if (isFilteredOut(c)) filteredOut.push(c);
-      else visible.push(c);
+    for (const c of candidates) {
+      if (!matchesFacets(c)) continue;
+      if (isClosedTabMember(c)) {
+        closed.push(c);
+        continue;
+      }
+      if (isSavedTabMember(c, savedCandidateIds)) saved.push(c);
+      if (isAllTabMember(c)) {
+        all.push(c);
+        // For You: same globally valid, canonical, open inventory as All,
+        // filtered directly by the operational Bid Profile parameters and
+        // split into confirmed-price vs unpriced sections.
+        const section = classifyForYouSection(c, bidProfile);
+        if (section === "confirmed") forYouConfirmed.push(c);
+        else if (section === "unpriced") forYouUnpriced.push(c);
+      } else if (isAllTabFilteredOutMember(c)) {
+        allFilteredOut.push(c);
+      }
     }
 
+    // The selected sort applies independently within each list/section; the
+    // two For You sections are never intermixed.
     const cmp = buildComparator(sortKey);
-    visible.sort(cmp);
-    filteredOut.sort(cmp);
+    all.sort(cmp);
+    allFilteredOut.sort(cmp);
+    saved.sort(cmp);
+    closed.sort(cmp);
+    forYouConfirmed.sort(cmp);
+    forYouUnpriced.sort(cmp);
 
-    return { visibleCards: visible, filteredOutCards: filteredOut };
-  }, [filtered, activeFilter, sortKey, buildComparator, qualificationByCandidate, hasActiveQualifications]);
+    return { all, allFilteredOut, saved, closed, forYouConfirmed, forYouUnpriced };
+  }, [candidates, matchesFacets, savedCandidateIds, bidProfile, sortKey, buildComparator]);
+
+  const tabCounts: Record<OpportunityTab, number> = useMemo(() => ({
+    all: tabLists.all.length,
+    "for-you": tabLists.forYouConfirmed.length + tabLists.forYouUnpriced.length,
+    saved: tabLists.saved.length,
+    closed: tabLists.closed.length,
+  }), [tabLists]);
 
   const hasActiveFacetFilters = agencyFilter.length > 0;
 
-  // Ordered ID list for the current visible set — passed as nav context when
-  // navigating to the detail page so Prev/Next arrows stay within this view.
-  const visibleCardIds = useMemo(() => visibleCards.map((c) => c.id), [visibleCards]);
+  // Global validity and the authenticated user's qualification are distinct.
+  // The qualification map feeds only the card-internal messaging below.
+  const hasActiveQualifications = qualificationByCandidate.size > 0;
 
-  const tabCounts = useMemo(() => {
-    const isHiddenFromMainAll = (candidate: Candidate) =>
-      isQuarantined(candidate) ||
-      getStoredFilterReasons(candidate, qualificationByCandidate.get(candidate.id), hasActiveQualifications).length > 0;
-    const matching = candidates.filter(matchesFacets);
-    return {
-      all: matching.filter((c) => !isClosedCandidate(c) && !isHiddenFromMainAll(c)).length,
-      saved: matching.filter((c) => !isClosedCandidate(c) && savedCandidateIds.has(c.id)).length,
-      closed: matching.filter(isClosedCandidate).length,
-    };
-  }, [candidates, matchesFacets, savedCandidateIds, qualificationByCandidate, hasActiveQualifications]);
+  // Records viewed state on deliberate project-detail activation, and stamps
+  // the active tab onto the scroll anchor the card just wrote so returning
+  // from the detail page restores this tab. Synchronous — never delays
+  // navigation.
+  const handleCardOpen = useCallback((candidateId: string) => {
+    markViewed(candidateId);
+    try {
+      const raw = sessionStorage.getItem(SCROLL_ANCHOR_KEY);
+      if (raw) {
+        const anchor = JSON.parse(raw);
+        if (anchor?.id === candidateId) {
+          sessionStorage.setItem(SCROLL_ANCHOR_KEY, JSON.stringify({ ...anchor, tab: activeTab }));
+        }
+      }
+    } catch {
+      // Anchor stamping is best-effort; viewed state already recorded.
+    }
+  }, [markViewed, activeTab]);
 
-  const renderCard = (candidate: Candidate, _index: number, navIds?: string[]) => {
-    // Dual-read: pursuit linkage first, legacy converted columns as fallback.
-    const pursuitProjectId = pursuitByCandidate.get(candidate.id)?.project_id ?? null;
-    const onCalendar = Boolean(pursuitProjectId) ||
-      (candidate.status === "converted" && !!candidate.converted_project_id);
-    const estimatedValue = formatEstimatedValue(candidate.crawl_data);
-    const goToOpportunity = () => {
-      sessionStorage.setItem(
-        SCROLL_ANCHOR_KEY,
-        JSON.stringify({ id: candidate.id, scrollY: window.scrollY }),
-      );
-      navigate(
-        `/opportunities/${candidate.id}`,
-        navIds ? { state: { navIds } } : undefined,
-      );
-    };
-    const saved = savedCandidateIds.has(candidate.id);
-    const filterReasons = getStoredFilterReasons(candidate, qualificationByCandidate.get(candidate.id), hasActiveQualifications);
-    const storedQualification = qualificationByCandidate.get(candidate.id);
-    const countyVerified = Boolean(getCandidateCounty(candidate));
+  const renderCandidateCard = (candidate: Candidate, navIds?: string[]) => (
+    <ViewedCardWrapper key={candidate.id} viewed={viewedIds.has(candidate.id)}>
+      <OpportunityCard
+        candidate={candidate}
+        navIds={navIds}
+        saved={savedCandidateIds.has(candidate.id)}
+        onCalendar={
+          Boolean(pursuitByCandidate.get(candidate.id)?.project_id) ||
+          (candidate.status === "converted" && !!candidate.converted_project_id)
+        }
+        filterReasons={getStoredFilterReasons(candidate, qualificationByCandidate.get(candidate.id), hasActiveQualifications)}
+        onToggleSaved={handleToggleSaved}
+        onOpen={handleCardOpen}
+      />
+    </ViewedCardWrapper>
+  );
 
-    return (
-      <div
-        key={candidate.id}
-        data-candidate-id={candidate.id}
-        role="button"
-        tabIndex={0}
-        onClick={goToOpportunity}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            goToOpportunity();
-          }
-        }}
-        className="bg-card border border-border rounded-lg p-6 flex flex-col gap-3 cursor-pointer hover:border-blue-300 hover:shadow-sm transition focus:outline-none focus:ring-2 focus:ring-blue-300"
-      >
-        {/* Top content — grows to push button to bottom */}
-        <div className="flex-1 flex flex-col gap-3">
-          {/* Title + actions */}
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-base text-foreground leading-snug">
-                {candidate.raw_title ?? "Untitled Opportunity"}
-              </h3>
-              {candidate.agency && (
-                <p className="mt-2 flex items-center gap-1.5 text-sm font-medium text-foreground">
-                  <Building2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                  {candidate.agency}
-                </p>
-              )}
-              {onCalendar && (
-                <p className="mt-1.5 flex items-center gap-1 text-[10px] uppercase tracking-wide font-medium text-blue-600">
-                  <CalendarCheck2 className="h-3 w-3 shrink-0" />
-                  On Calendar
-                </p>
-              )}
-            </div>
-            <div className="flex items-center gap-1 shrink-0">
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleToggleSaved(candidate);
-                }}
-                className={`inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
-                  saved ? "text-blue-700 bg-blue-50 hover:bg-blue-100" : "text-muted-foreground hover:text-foreground hover:bg-accent"
-                }`}
-                aria-label={saved ? "Unsave opportunity" : "Save opportunity"}
-                title={saved ? "Unsave opportunity" : "Save opportunity"}
-              >
-                <Bookmark className={`h-4 w-4 ${saved ? "fill-current" : ""}`} />
-              </button>
-              <a
-                href={candidate.source_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent"
-                title="Open source page"
-                aria-label="Open source page"
-              >
-                <ExternalLink className="h-4 w-4" />
-              </a>
-            </div>
-          </div>
-
-          {/* Portal pill */}
-          {candidate.portal_type && (
-            <div className="flex items-center gap-2 flex-wrap">
-              <span
-                className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${resolvePortalStyle(candidate.portal_type)}`}
-              >
-                {candidate.portal_type}
-              </span>
-            </div>
-          )}
-
-          {filterReasons.length > 0 && (
-            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-950">
-              <p className="flex items-start gap-1.5 text-xs font-semibold">
-                <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                Filtered out: {filterReasons[0]}
-              </p>
-              {filterReasons.length > 1 && (
-                <ul className="mt-1 list-disc pl-5 text-xs">
-                  {filterReasons.slice(1).map((reason) => <li key={reason}>{reason}</li>)}
-                </ul>
-              )}
-            </div>
-          )}
-
-          {/* Estimated value — prominent */}
-          {estimatedValue && (
-            <p className="text-2xl font-bold text-foreground leading-none">{estimatedValue}</p>
-          )}
-        </div>
-
-        {/* Bid due + countdown — anchored directly above button */}
-        <div className="flex items-center gap-2">
-          <p className="text-sm text-foreground font-medium">
-            Bid Due: {formatBidDate(candidate.bid_due_at)}
-          </p>
-          {(() => {
-            const countdown = daysUntilBidDue(candidate.bid_due_at);
-            if (!countdown) return null;
-            const bgMap: Record<string, string> = {
-              "text-red-600": "bg-red-50",
-              "text-amber-500": "bg-amber-50",
-              "text-green-600": "bg-green-50",
-              "text-muted-foreground": "bg-muted",
-            };
-            return (
-              <span className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full ${bgMap[countdown.colorClass] ?? "bg-muted"} ${countdown.colorClass}`}>
-                {countdown.text}
-              </span>
-            );
-          })()}
-        </div>
-
-        {/* CTA — unified, always at bottom */}
-        <Button
-          size="sm"
-          onClick={(e) => {
-            e.stopPropagation();
-            goToOpportunity();
-          }}
-          className="w-full bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-100 shadow-none"
-        >
-          View Project
-        </Button>
-      </div>
-    );
-  };
-
+  // Ordered ID lists passed as nav context to the detail page so Prev/Next
+  // arrows stay within the rendered view.
+  const currentTabList =
+    activeTab === "all" ? tabLists.all
+    : activeTab === "saved" ? tabLists.saved
+    : activeTab === "closed" ? tabLists.closed
+    : null;
+  const forYouNavIds = useMemo(
+    () => [...tabLists.forYouConfirmed, ...tabLists.forYouUnpriced].map((c) => c.id),
+    [tabLists.forYouConfirmed, tabLists.forYouUnpriced],
+  );
+  const currentTabNavIds = useMemo(
+    () => (currentTabList ? currentTabList.map((c) => c.id) : forYouNavIds),
+    [currentTabList, forYouNavIds],
+  );
 
   return (
     <Layout showSidebar={true}>
@@ -1322,24 +1086,7 @@ const Opportunities = () => {
 
             {/* Filter tabs + sort */}
             <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-              <div className="flex gap-2 flex-wrap">
-                {FILTERS.map((f) => {
-                  const count = tabCounts[f.value as keyof typeof tabCounts];
-                  return (
-                    <button
-                      key={f.value}
-                      onClick={() => setActiveFilter(f.value)}
-                      className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                        activeFilter === f.value
-                          ? "bg-[hsl(var(--bidbox-blue))] text-white"
-                          : "bg-muted text-muted-foreground hover:bg-accent"
-                      }`}
-                    >
-                      {f.label} <span className="ml-1 opacity-70">{count}</span>
-                    </button>
-                  );
-                })}
-              </div>
+              <OpportunityTabs activeTab={activeTab} counts={tabCounts} onTabChange={setActiveTab} />
               <div className="flex items-center gap-2 flex-wrap">
                 <Popover open={sortMenuOpen} onOpenChange={setSortMenuOpen}>
                   <PopoverTrigger asChild>
@@ -1393,15 +1140,65 @@ const Opportunities = () => {
             </div>
 
             {/* Cards */}
-            {filtered.length === 0 ? (
+            {activeTab === "for-you" ? (
+              <>
+                {/* Profile guidance — a subtle note, never blocking the list */}
+                <div className="mb-6 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+                  <SlidersHorizontal className="h-3.5 w-3.5 shrink-0" />
+                  <span>
+                    Powered by your Bid Profile. Complete or adjust your profile to refine these opportunities.
+                  </span>
+                  <button
+                    onClick={() => navigate("/qualification-profile")}
+                    className="font-medium text-blue-700 hover:underline"
+                  >
+                    Adjust Bid Profile
+                  </button>
+                </div>
+
+                <section className="mb-10">
+                  <OpportunitySectionHeader
+                    title="Confirmed Price Matches"
+                    count={tabLists.forYouConfirmed.length}
+                    description="Confirmed estimates within your Bid Profile parameters."
+                  />
+                  {tabLists.forYouConfirmed.length === 0 ? (
+                    <OpportunitySectionEmpty>
+                      No confirmed-price opportunities currently fall within your selected parameters.
+                    </OpportunitySectionEmpty>
+                  ) : (
+                    <OpportunityGrid>
+                      {tabLists.forYouConfirmed.map((c) => renderCandidateCard(c, forYouNavIds))}
+                    </OpportunityGrid>
+                  )}
+                </section>
+
+                <section>
+                  <OpportunitySectionHeader
+                    title="Unpriced Opportunities"
+                    count={tabLists.forYouUnpriced.length}
+                    description="These opportunities match your selected geography, but BidBox has not confirmed an engineer's estimate. Review the bid documents to determine project size."
+                  />
+                  {tabLists.forYouUnpriced.length === 0 ? (
+                    <OpportunitySectionEmpty>
+                      No unpriced opportunities currently match your selected geography.
+                    </OpportunitySectionEmpty>
+                  ) : (
+                    <OpportunityGrid>
+                      {tabLists.forYouUnpriced.map((c) => renderCandidateCard(c, forYouNavIds))}
+                    </OpportunityGrid>
+                  )}
+                </section>
+              </>
+            ) : (currentTabList?.length ?? 0) === 0 && !(activeTab === "all" && tabLists.allFilteredOut.length > 0) ? (
               <div className="flex flex-col items-center justify-center py-24 text-center">
                 <p className="text-lg font-medium text-foreground mb-2">No opportunities found</p>
                 <p className="text-sm text-muted-foreground mb-6">
-                  {activeFilter === "all"
+                  {activeTab === "all"
                     ? "Click Refresh Now to discover and update bids from Caltrans and PlanetBids."
                     : "No opportunities in this view."}
                 </p>
-                {activeFilter === "all" && (
+                {activeTab === "all" && (
                   <Button
                     onClick={handleScanNow}
                     disabled={scanLoading}
@@ -1414,16 +1211,16 @@ const Opportunities = () => {
               </div>
             ) : (
               <>
-                {visibleCards.length === 0 ? (
+                {(currentTabList?.length ?? 0) === 0 ? (
                   <div className="text-sm text-muted-foreground py-12 text-center">
                     No opportunities match this view.
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {visibleCards.map((c, i) => renderCard(c, i, visibleCardIds))}
-                  </div>
+                  <OpportunityGrid>
+                    {(currentTabList ?? []).map((c) => renderCandidateCard(c, currentTabNavIds))}
+                  </OpportunityGrid>
                 )}
-                {activeFilter === "all" && filteredOutCards.length > 0 && (
+                {activeTab === "all" && tabLists.allFilteredOut.length > 0 && (
                   <Collapsible
                     open={filteredOutOpen}
                     onOpenChange={setFilteredOutOpen}
@@ -1433,11 +1230,13 @@ const Opportunities = () => {
                       <ChevronDown
                         className={`h-4 w-4 transition-transform ${filteredOutOpen ? "rotate-0" : "-rotate-90"}`}
                       />
-                      Filtered Out ({filteredOutCards.length})
+                      Filtered Out ({tabLists.allFilteredOut.length})
                     </CollapsibleTrigger>
                     <CollapsibleContent className="mt-4">
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 opacity-70">
-                        {filteredOutCards.map((c, i) => renderCard(c, i))}
+                      <div className="opacity-70">
+                        <OpportunityGrid>
+                          {tabLists.allFilteredOut.map((c) => renderCandidateCard(c))}
+                        </OpportunityGrid>
                       </div>
                     </CollapsibleContent>
                   </Collapsible>
