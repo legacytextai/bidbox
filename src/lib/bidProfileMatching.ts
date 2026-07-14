@@ -1,9 +1,11 @@
 // Direct Bid Profile filtering for the For You tab.
 //
-// For You is governed by the two Bid Profile parameters that are operational
-// today — geography (target_counties) and project size (min/max_project_value)
-// from gc_qualification_profiles. Licensing and NAICS exist on the profile but
-// do not participate in filtering and must not affect membership here.
+// For You is governed by affirmative construction evidence plus the two Bid
+// Profile parameters that are operational today — geography (target_counties)
+// and project size (min/max_project_value) from gc_qualification_profiles.
+// Licensing and NAICS selections on the USER profile do not participate in
+// filtering. Candidate-required contractor licenses/NAICS may be used only as
+// evidence about whether the opportunity itself is construction work.
 // Green/yellow/red qualification output (user_opportunity_qualifications) is
 // deliberately NOT consulted.
 //
@@ -21,6 +23,10 @@
 
 import { resolveEstimatedValueRaw } from "./opportunityDomain.ts";
 import { getCandidateCounty, type TabCandidate } from "./opportunityTabs.ts";
+import {
+  classifyConstructionOpportunity,
+  type ConstructionCandidate,
+} from "./constructionOpportunity.ts";
 
 export interface BidProfileParams {
   targetCounties: string[];
@@ -34,7 +40,7 @@ export const EMPTY_BID_PROFILE: BidProfileParams = {
   maxProjectValue: null,
 };
 
-export interface EstimateCandidate extends Pick<TabCandidate, "county" | "crawl_data"> {
+export interface EstimateCandidate extends Pick<TabCandidate, "county" | "crawl_data">, ConstructionCandidate {
   estimated_value?: number | null;
   estimated_value_low?: number | null;
   estimated_value_high?: number | null;
@@ -101,8 +107,8 @@ export type ForYouSection = "confirmed" | "unpriced";
 
 // Section classification for a candidate that already passed the shared base
 // membership (globally valid ∧ canonical ∧ open — see opportunityTabs.ts):
-//   - null: outside the selected geography, or priced outside the selected
-//     project-size range → not in For You at all.
+//   - null: outside the selected geography, lacks affirmative construction
+//     evidence, or is priced outside the selected project-size range.
 //   - "confirmed": usable confirmed estimate within/overlapping the range
 //     (or any confirmed estimate when no range is configured).
 //   - "unpriced": geography match with no usable confirmed estimate. The
@@ -113,6 +119,7 @@ export function classifyForYouSection(
   profile: BidProfileParams,
 ): ForYouSection | null {
   if (!matchesGeography(c, profile.targetCounties)) return null;
+  if (!classifyConstructionOpportunity(c).isConstruction) return null;
   const estimate = resolveConfirmedEstimate(c);
   if (estimate === null) return "unpriced";
   return estimateMatchesProjectSize(estimate, profile.minProjectValue, profile.maxProjectValue)

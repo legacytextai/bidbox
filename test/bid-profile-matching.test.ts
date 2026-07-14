@@ -116,44 +116,60 @@ const CONFIGURED: BidProfileParams = profile({
   maxProjectValue: 5 * M,
 });
 
+const constructionCandidate = (overrides: Record<string, unknown> = {}) => ({
+  raw_title: "Building renovation and site improvements",
+  ...overrides,
+});
+
 test("geography + size configured: priced-in-range → confirmed section", () => {
   assert.equal(
-    classifyForYouSection({ county: "Riverside", estimated_value: 2 * M }, CONFIGURED),
+    classifyForYouSection(constructionCandidate({ county: "Riverside", estimated_value: 2 * M }), CONFIGURED),
     "confirmed",
   );
 });
 
 test("geography + size configured: priced-outside-range → excluded from For You entirely", () => {
   assert.equal(
-    classifyForYouSection({ county: "Riverside", estimated_value: 9 * M }, CONFIGURED),
+    classifyForYouSection(constructionCandidate({ county: "Riverside", estimated_value: 9 * M }), CONFIGURED),
     null,
   );
 });
 
 test("geography + size configured: unpriced geography match → unpriced section, size never excludes it", () => {
-  assert.equal(classifyForYouSection({ county: "Riverside" }, CONFIGURED), "unpriced");
+  assert.equal(classifyForYouSection(constructionCandidate({ county: "Riverside" }), CONFIGURED), "unpriced");
 });
 
 test("unpriced non-geography match is excluded when counties are selected", () => {
-  assert.equal(classifyForYouSection({ county: "Kern" }, CONFIGURED), null);
-  assert.equal(classifyForYouSection({ county: null }, CONFIGURED), null);
+  assert.equal(classifyForYouSection(constructionCandidate({ county: "Kern" }), CONFIGURED), null);
+  assert.equal(classifyForYouSection(constructionCandidate({ county: null }), CONFIGURED), null);
 });
 
 test("geography only (no size range): any confirmed estimate in geography → confirmed", () => {
   const geoOnly = profile({ targetCounties: ["Riverside"] });
-  assert.equal(classifyForYouSection({ county: "Riverside", estimated_value: 90 * M }, geoOnly), "confirmed");
-  assert.equal(classifyForYouSection({ county: "Riverside" }, geoOnly), "unpriced");
-  assert.equal(classifyForYouSection({ county: "Kern", estimated_value: 2 * M }, geoOnly), null);
+  assert.equal(classifyForYouSection(constructionCandidate({ county: "Riverside", estimated_value: 90 * M }), geoOnly), "confirmed");
+  assert.equal(classifyForYouSection(constructionCandidate({ county: "Riverside" }), geoOnly), "unpriced");
+  assert.equal(classifyForYouSection(constructionCandidate({ county: "Kern", estimated_value: 2 * M }), geoOnly), null);
 });
 
 test("size only (no geography): any geography, estimate governs the section", () => {
   const sizeOnly = profile({ minProjectValue: 1 * M, maxProjectValue: 5 * M });
-  assert.equal(classifyForYouSection({ county: "Kern", estimated_value: 2 * M }, sizeOnly), "confirmed");
-  assert.equal(classifyForYouSection({ county: null, estimated_value: 9 * M }, sizeOnly), null);
-  assert.equal(classifyForYouSection({ county: null }, sizeOnly), "unpriced");
+  assert.equal(classifyForYouSection(constructionCandidate({ county: "Kern", estimated_value: 2 * M }), sizeOnly), "confirmed");
+  assert.equal(classifyForYouSection(constructionCandidate({ county: null, estimated_value: 9 * M }), sizeOnly), null);
+  assert.equal(classifyForYouSection(constructionCandidate({ county: null }), sizeOnly), "unpriced");
 });
 
-test("entirely empty profile: every record classifies as confirmed or unpriced", () => {
-  assert.equal(classifyForYouSection({ county: "Kern", estimated_value: 2 * M }, EMPTY_BID_PROFILE), "confirmed");
-  assert.equal(classifyForYouSection({ county: null }, EMPTY_BID_PROFILE), "unpriced");
+test("entirely empty profile: every construction record classifies as confirmed or unpriced", () => {
+  assert.equal(classifyForYouSection(constructionCandidate({ county: "Kern", estimated_value: 2 * M }), EMPTY_BID_PROFILE), "confirmed");
+  assert.equal(classifyForYouSection(constructionCandidate({ county: null }), EMPTY_BID_PROFILE), "unpriced");
+});
+
+test("construction gate runs before the priced/unpriced split", () => {
+  assert.equal(
+    classifyForYouSection({ county: "Riverside", raw_title: "Software subscription", estimated_value: 2 * M }, CONFIGURED),
+    null,
+  );
+  assert.equal(
+    classifyForYouSection({ county: "Riverside", raw_title: "Software subscription" }, CONFIGURED),
+    null,
+  );
 });

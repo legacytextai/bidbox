@@ -80,6 +80,9 @@ const OPPORTUNITY_LIST_SELECT = `
   agency,
   bid_due_at,
   scope_text,
+  portal_summary,
+  required_licenses,
+  required_naics,
   status,
   review_notes,
   converted_project_id,
@@ -287,6 +290,9 @@ const Opportunities = () => {
     agency: row.agency,
     bid_due_at: row.bid_due_at,
     scope_text: row.scope_text,
+    portal_summary: row.portal_summary ?? null,
+    required_licenses: row.required_licenses ?? null,
+    required_naics: row.required_naics ?? null,
     status: row.status as CandidateStatus,
     review_notes: row.review_notes,
     converted_project_id: row.converted_project_id,
@@ -918,8 +924,8 @@ const Opportunities = () => {
       if (isAllTabMember(c)) {
         all.push(c);
         // For You: same globally valid, canonical, open inventory as All,
-        // filtered directly by the operational Bid Profile parameters and
-        // split into confirmed-price vs unpriced sections.
+        // filtered directly by construction evidence plus the operational Bid
+        // Profile parameters, then split into priced vs unpriced sections.
         const section = classifyForYouSection(c, bidProfile);
         if (section === "confirmed") forYouConfirmed.push(c);
         else if (section === "unpriced") forYouUnpriced.push(c);
@@ -1173,20 +1179,27 @@ const Opportunities = () => {
                   )}
                 </section>
 
-                <section>
-                  <OpportunitySectionHeader
-                    title="Unpriced Opportunities"
-                    count={tabLists.forYouUnpriced.length}
-                    description="These opportunities match your selected geography, but BidBox has not confirmed an engineer's estimate. Review the bid documents to determine project size."
-                  />
+                <section
+                  data-testid="unpriced-opportunities-section"
+                  className="mt-14 rounded-xl border-t-4 border-slate-300 bg-slate-100/80 px-4 py-8 sm:px-6 lg:px-8"
+                >
+                  <div data-testid="unpriced-opportunities-section-header">
+                    <OpportunitySectionHeader
+                      title="Unpriced Opportunities"
+                      count={tabLists.forYouUnpriced.length}
+                      description="These opportunities match your selected geography, but BidBox has not confirmed an engineer's estimate. Review the bid documents to determine project size."
+                    />
+                  </div>
                   {tabLists.forYouUnpriced.length === 0 ? (
                     <OpportunitySectionEmpty>
-                      No unpriced opportunities currently match your selected geography.
+                      No unpriced construction opportunities currently match your selected geography.
                     </OpportunitySectionEmpty>
                   ) : (
-                    <OpportunityGrid>
-                      {tabLists.forYouUnpriced.map((c) => renderCandidateCard(c, forYouNavIds))}
-                    </OpportunityGrid>
+                    <div data-testid="unpriced-opportunities-card-grid">
+                      <OpportunityGrid>
+                        {tabLists.forYouUnpriced.map((c) => renderCandidateCard(c, forYouNavIds))}
+                      </OpportunityGrid>
+                    </div>
                   )}
                 </section>
               </>

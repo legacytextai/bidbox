@@ -17,6 +17,9 @@ export interface Candidate {
   agency: string | null;
   bid_due_at: string | null;
   scope_text: string | null;
+  portal_summary: string | null;
+  required_licenses: string[] | null;
+  required_naics: string[] | null;
   status: CandidateStatus;
   review_notes: string | null;
   converted_project_id: string | null;
