@@ -979,7 +979,7 @@ const Opportunities = () => {
     }
   }, [markViewed, activeTab]);
 
-  const renderCandidateCard = (candidate: Candidate, navIds?: string[]) => (
+  const renderCandidateCard = (candidate: Candidate, navIds?: string[], highlight?: boolean) => (
     <ViewedCardWrapper key={candidate.id} viewed={viewedIds.has(candidate.id)}>
       <OpportunityCard
         candidate={candidate}
@@ -990,7 +990,7 @@ const Opportunities = () => {
           (candidate.status === "converted" && !!candidate.converted_project_id)
         }
         filterReasons={getStoredFilterReasons(candidate, qualificationByCandidate.get(candidate.id), hasActiveQualifications)}
-        viewed={viewedIds.has(candidate.id)}
+        highlight={highlight}
         onToggleSaved={handleToggleSaved}
         onOpen={handleCardOpen}
       />
@@ -1231,7 +1231,7 @@ const Opportunities = () => {
                   </div>
                 ) : (
                   <OpportunityGrid>
-                    {(currentTabList ?? []).map((c) => renderCandidateCard(c, currentTabNavIds))}
+                    {(currentTabList ?? []).map((c, index) => renderCandidateCard(c, currentTabNavIds, index < 3 && !viewedIds.has(c.id)))}
                   </OpportunityGrid>
                 )}
                 {activeTab === "all" && tabLists.allFilteredOut.length > 0 && (

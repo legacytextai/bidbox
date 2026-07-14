@@ -52,7 +52,7 @@ export interface OpportunityCardProps {
   saved: boolean;
   onCalendar: boolean;
   filterReasons: string[];
-  viewed?: boolean;
+  highlight?: boolean;
   onToggleSaved: (candidate: Candidate) => void;
   // Fired synchronously when the user activates the card's project-detail
   // path (card click, keyboard activation, or the View Project CTA), just
@@ -66,7 +66,7 @@ export const OpportunityCard = ({
   saved,
   onCalendar,
   filterReasons,
-  viewed,
+  highlight,
   onToggleSaved,
   onOpen,
 }: OpportunityCardProps) => {
@@ -96,7 +96,7 @@ export const OpportunityCard = ({
           goToOpportunity();
         }
       }}
-      className={`border border-border rounded-lg p-6 flex flex-col gap-3 cursor-pointer hover:border-blue-300 hover:shadow-sm transition focus:outline-none focus:ring-2 focus:ring-blue-300 ${viewed ? "bg-muted/40" : "bg-card"}`}
+      className={`border border-border rounded-lg p-6 flex flex-col gap-3 cursor-pointer hover:border-blue-300 hover:shadow-sm transition focus:outline-none focus:ring-2 focus:ring-blue-300 bg-card ${highlight ? "ring-2 ring-bidbox-blue ring-offset-2 ring-offset-background" : ""}`}
     >
       {/* Top content — grows to push button to bottom */}
       <div className="flex-1 flex flex-col gap-3">
