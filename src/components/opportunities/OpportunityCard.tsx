@@ -52,6 +52,7 @@ export interface OpportunityCardProps {
   saved: boolean;
   onCalendar: boolean;
   filterReasons: string[];
+  viewed?: boolean;
   onToggleSaved: (candidate: Candidate) => void;
   // Fired synchronously when the user activates the card's project-detail
   // path (card click, keyboard activation, or the View Project CTA), just
