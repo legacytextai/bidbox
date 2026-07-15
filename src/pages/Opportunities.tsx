@@ -60,6 +60,14 @@ import {
 } from "@/lib/bidProfileMatching";
 import { useOpportunitiesPageState } from "@/hooks/useOpportunitiesPageState";
 import { useViewedOpportunities } from "@/hooks/useViewedOpportunities";
+import {
+  readCandidatesCache,
+  writeCandidatesCache,
+  readUserSideCache,
+  writeUserSideCache,
+  isFresh,
+} from "@/lib/opportunitiesCache";
+import { OpportunityGridSkeleton } from "@/components/opportunities/OpportunityCardSkeleton";
 
 interface QualificationRow {
   opportunity_candidate_id: string;
