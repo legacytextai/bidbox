@@ -76,6 +76,15 @@ const ACTIVE_DOCUMENT_PROCESSING_STATUSES: DocumentProcessingStatus[] = ["queued
 const ACTIVE_ANALYSIS_STATUSES: AnalysisStatus[] = ["queued", "analyzing"];
 const QUERY_TIMEOUT_MS = 10000;
 
+// Slim list-view select. Every removed field is fetched on-demand by the
+// detail page (`useOpportunityDossier`); grep-verified zero consumers in the
+// list-view surface (cards, opportunityDomain, opportunityTabs,
+// opportunityVisibility, bidProfileMatching, calendar helpers). MUST retain
+// portal_summary / scope_text / required_licenses / required_naics — they are
+// direct inputs to the For You construction classifier and the LA Metro
+// hardening relies on portal_summary when normalized scope_text is absent.
+// Bump OPPORTUNITIES_CACHE_VERSION in opportunitiesCache.ts when this shape
+// changes so a stale row shape cannot be resurrected from cache.
 const OPPORTUNITY_LIST_SELECT = `
   id,
   source_url,
@@ -101,24 +110,10 @@ const OPPORTUNITY_LIST_SELECT = `
   estimated_value_high,
   county,
   analysis_status,
-  analysis_task_id,
-  analysis_requested_at,
-  analysis_started_at,
-  analysis_completed_at,
-  analysis_error,
   document_acquisition_status,
-  document_acquisition_started_at,
-  document_acquisition_completed_at,
-  document_acquisition_error,
   document_processing_status,
-  document_processing_started_at,
-  document_processing_completed_at,
-  document_processing_error,
   opportunity_lifecycle_status,
   opportunity_intelligence_status,
-  opportunity_intelligence_task_id,
-  opportunity_intelligence_ready_at,
-  opportunity_intelligence_error,
   ingestion_status,
   ingestion_issue_reason,
   global_exclusion_code,
