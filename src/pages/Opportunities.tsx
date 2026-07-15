@@ -920,6 +920,7 @@ const Opportunities = () => {
 
   const handleToggleSaved = async (candidate: Candidate) => {
     const wasSaved = savedCandidateIds.has(candidate.id);
+    dirtySavedRef.current = true;
     setSavedCandidateIds((prev) => {
       const next = new Set(prev);
       if (wasSaved) next.delete(candidate.id);
