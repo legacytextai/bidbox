@@ -281,6 +281,12 @@ const Opportunities = () => {
   const [activeScanTaskIds, setActiveScanTaskIds] = useState<string[]>([]);
   const [scanStartedAt, setScanStartedAt] = useState<string | null>(null);
   const [scanActive, setScanActive] = useState(false);
+  // Per-slice readiness — drives tab-scoped first-paint gates so the "All" and
+  // "Closed" tabs paint the instant candidates are back, while "For You" waits
+  // for the bid profile and "Saved" waits for the saved-id set.
+  const [candidatesReady, setCandidatesReady] = useState(false);
+  const [savedReady, setSavedReady] = useState(false);
+  const [profileReady, setProfileReady] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user, authReady } = useAuth();
