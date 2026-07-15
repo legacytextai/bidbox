@@ -338,9 +338,16 @@ const Opportunities = () => {
   }), []);
 
   const loadInFlightRef = useRef(false);
+  // Dirty flags — flipped by local writes (toggle saved, save notes, save
+  // profile) so a late-arriving cache-revalidation slice can't clobber the
+  // user's in-progress edit. Reset each time a fresh load starts.
+  const dirtySavedRef = useRef(false);
+  const dirtyPursuitsRef = useRef(false);
+  const dirtyProfileRef = useRef(false);
 
-  const loadCandidates = useCallback(async (opts?: { silent?: boolean }) => {
+  const loadCandidates = useCallback(async (opts?: { silent?: boolean; userId?: string }) => {
     const silent = opts?.silent === true;
+    const userId = opts?.userId ?? user?.id ?? null;
     // Non-silent loads are the ones that flip the page-level loading spinner.
     // Guard against re-entrancy so a bounced bootstrap effect (auth listener
     // ticks, dep churn) can't stack overlapping loads and race the final
@@ -348,121 +355,114 @@ const Opportunities = () => {
     if (!silent) {
       if (loadInFlightRef.current) return;
       loadInFlightRef.current = true;
+      dirtySavedRef.current = false;
+      dirtyPursuitsRef.current = false;
+      dirtyProfileRef.current = false;
     }
     if (!silent) setLoadError(null);
-    try {
-      const { data: { session } } = await withTimeout(supabase.auth.getSession(), "auth session");
-      // Paginated fetch — REQUIRED. A single unranged `.select()` is silently
-      // capped at Supabase/PostgREST's default 1000-row limit. Once
-      // opportunity_candidates crossed 1000 rows (nightly multi-portal scans), an
-      // unpaginated fetch ordered by created_at DESC returned only the 1000 NEWEST
-      // rows and silently dropped the oldest — including saved and project-backing
-      // candidates — so the Saved tab (which filters this client-side array)
-      // rendered empty and old opportunities vanished from "All". We loop with an
-      // explicit page size until a short page is returned, with a hard safety
-      // ceiling so a runaway table can never paginate forever.
-      const PAGE_SIZE = 1000;
-      const MAX_CANDIDATE_ROWS = 50000; // safety ceiling, far above realistic volume
+
+    const perfMark = (label: string) => {
+      if (typeof performance !== "undefined") {
+        try { performance.mark(`opps:${label}:${silent ? "silent" : "cold"}`); } catch { /* noop */ }
+      }
+    };
+    perfMark("load-start");
+
+    // Candidate page fetcher — PostgREST's default max is 1000 rows/request
+    // (pgrst.db_max_rows unset in prod, verified 2026-07-14). Fire pages 1
+    // and 2 in parallel to shave ~one RTT off the common case where total
+    // rows are between 1000 and 2000; fall through to the sequential loop
+    // when page 2 is full.
+    const PAGE_SIZE = 1000;
+    const MAX_CANDIDATE_ROWS = 50000;
+    const fetchPage = (from: number) => withTimeout(
+      supabase
+        .from("opportunity_candidates")
+        .select(OPPORTUNITY_LIST_SELECT)
+        // Server-side ingestion filter. Quarantined rows are already excluded
+        // client-side by every tab predicate via isQuarantined, so grid
+        // membership is unchanged (delta verified 0 for All/For You/Saved/
+        // Closed/Filtered Out/globally-excluded/duplicates). Bottom Filtered
+        // Out section is unaffected because it contains globally-excluded
+        // rows, all of which are ingestion_status='valid'.
+        .eq("ingestion_status", "valid")
+        .order("created_at", { ascending: false })
+        .range(from, from + PAGE_SIZE - 1),
+      `opportunity candidates page ${from / PAGE_SIZE + 1}`,
+    );
+
+    const candidatesPromise = (async () => {
       const data: any[] = [];
-      for (let from = 0; ; from += PAGE_SIZE) {
-        const { data: page, error } = await withTimeout(supabase
-          .from("opportunity_candidates")
-          .select(OPPORTUNITY_LIST_SELECT)
-          .order("created_at", { ascending: false })
-          .range(from, from + PAGE_SIZE - 1), `opportunity candidates page ${from / PAGE_SIZE + 1}`);
-
-        if (error) {
-          if (!silent) {
-            toast({ title: "Error", description: "Failed to load opportunities", variant: "destructive" });
+      const [page1, page2] = await Promise.all([fetchPage(0), fetchPage(PAGE_SIZE)]);
+      if (page1.error) throw page1.error;
+      if (page2.error) throw page2.error;
+      const b1 = page1.data ?? [];
+      const b2 = page2.data ?? [];
+      data.push(...b1, ...b2);
+      if (b1.length === PAGE_SIZE) {
+        console.info(`[opps] page 1 returned exactly ${PAGE_SIZE} rows`);
+      }
+      // Sequential fallback if page 2 also came back full — total > 2000.
+      if (b2.length === PAGE_SIZE) {
+        console.info(`[opps] page 2 returned exactly ${PAGE_SIZE} rows — falling through to sequential paginator`);
+        for (let from = PAGE_SIZE * 2; ; from += PAGE_SIZE) {
+          const { data: page, error } = await fetchPage(from);
+          if (error) throw error;
+          const batch = page ?? [];
+          data.push(...batch);
+          if (batch.length < PAGE_SIZE) break;
+          if (data.length >= MAX_CANDIDATE_ROWS) {
+            console.warn(`[opps] candidate pagination hit the ${MAX_CANDIDATE_ROWS}-row safety ceiling; some rows may be omitted`);
+            break;
           }
-          return;
-        }
-
-        const batch = page ?? [];
-        data.push(...batch);
-        if (batch.length < PAGE_SIZE) break; // last (short) page reached — all rows loaded
-        if (data.length >= MAX_CANDIDATE_ROWS) {
-          console.warn(`[opps] candidate pagination hit the ${MAX_CANDIDATE_ROWS}-row safety ceiling; some rows may be omitted`);
-          break;
         }
       }
+      return data;
+    })();
 
-      const rows: Candidate[] = (data || []).map(mapRow);
-      let pursuits = new Map<string, PursuitLite>();
-      if (session) {
-        const [savedResult, pursuitsResult, qualificationResult, profileResult] = await Promise.allSettled([
-          withTimeout(
-            (supabase as any)
-              .from("saved_opportunities")
-              .select("opportunity_candidate_id")
-              .eq("user_id", session.user.id),
-            "saved opportunities",
-          ),
-          withTimeout(fetchCompanyPursuits(), "company pursuits"),
-          fetchAllPages<QualificationRow>((from, to) => withTimeout(
-            (supabase as any)
-              .from("user_opportunity_qualifications")
-              .select("opportunity_candidate_id, status, primary_reason, reasons")
-              .eq("user_id", session.user.id)
-              .eq("active", true)
-              .order("opportunity_candidate_id", { ascending: true })
-              .range(from, to),
-            `user opportunity qualifications page ${from / 1000 + 1}`,
-          )),
-          withTimeout(
-            (supabase as any)
-              .from("gc_qualification_profiles")
-              .select("target_counties, min_project_value, max_project_value")
-              .eq("profile_id", session.user.id)
-              .maybeSingle(),
-            "bid profile",
-          ),
-        ]);
+    // Fire user-side queries in parallel with the candidate fetch. Each is
+    // an independent slice with its own state setter; failures on individual
+    // slices don't block the grid from painting (For You still fails closed
+    // on qualification/profile error via the outer catch, matching prior
+    // behavior).
+    const userSidePromise = userId ? Promise.allSettled([
+      withTimeout(
+        (supabase as any)
+          .from("saved_opportunities")
+          .select("opportunity_candidate_id")
+          .eq("user_id", userId),
+        "saved opportunities",
+      ),
+      withTimeout(fetchCompanyPursuits(), "company pursuits"),
+      fetchAllPages<QualificationRow>((from, to) => withTimeout(
+        (supabase as any)
+          .from("user_opportunity_qualifications")
+          .select("opportunity_candidate_id, status, primary_reason, reasons")
+          .eq("user_id", userId)
+          .eq("active", true)
+          .order("opportunity_candidate_id", { ascending: true })
+          .range(from, to),
+        `user opportunity qualifications page ${from / 1000 + 1}`,
+      )),
+      withTimeout(
+        (supabase as any)
+          .from("gc_qualification_profiles")
+          .select("target_counties, min_project_value, max_project_value")
+          .eq("profile_id", userId)
+          .maybeSingle(),
+        "bid profile",
+      ),
+    ]) : Promise.resolve(null);
 
-        if (savedResult.status === "fulfilled" && !(savedResult.value as any)?.error) {
-          setSavedCandidateIds(new Set(((savedResult.value as any)?.data ?? []).map((r: any) => r.opportunity_candidate_id).filter(Boolean)));
-        } else if (savedResult.status === "rejected") {
-          console.warn("[opps] saved opportunities skipped", savedResult.reason);
-        }
+    try {
+      const data = await candidatesPromise;
+      const rows: Candidate[] = data.map(mapRow);
+      perfMark("candidates-ready");
 
-        if (pursuitsResult.status === "fulfilled") {
-          pursuits = pursuitsResult.value;
-          setPursuitByCandidate(pursuits);
-        } else {
-          console.warn("[opps] pursuits skipped", pursuitsResult.reason);
-        }
-
-        if (qualificationResult.status === "fulfilled") {
-          setQualificationByCandidate(new Map(qualificationResult.value.map((row) => [
-            row.opportunity_candidate_id,
-            { status: row.status, primary_reason: row.primary_reason, reasons: row.reasons ?? [] },
-          ])));
-        } else {
-          // Fail closed: never turn a partial/missing qualification map into
-          // apparent matches. The outer handler preserves the prior good state.
-          throw qualificationResult.reason;
-        }
-
-        if (profileResult.status === "fulfilled" && !(profileResult.value as any)?.error) {
-          const profileRow = (profileResult.value as any)?.data;
-          // No profile row is a legitimate empty profile (no restriction).
-          setBidProfile({
-            targetCounties: profileRow?.target_counties ?? [],
-            minProjectValue: profileRow?.min_project_value ?? null,
-            maxProjectValue: profileRow?.max_project_value ?? null,
-          });
-        } else {
-          // Fail closed like qualifications: a failed profile read must not
-          // silently render For You with the wrong parameters.
-          throw profileResult.status === "rejected"
-            ? profileResult.reason
-            : new Error("bid profile load failed");
-        }
-      }
-
+      // Paint candidates immediately — tabs that don't need side data ("all",
+      // "closed") can render on the very next frame while user-side slices
+      // hydrate in the background.
       if (silent) {
-        // Diff against previous state for instrumentation; only log when polling
-        // actually fixed something Realtime would normally have handled.
         setCandidates((prev) => {
           const prevById = new Map(prev.map((c) => [c.id, c]));
           const changedIds: string[] = [];
@@ -479,30 +479,102 @@ const Opportunities = () => {
               changedIds.push(r.id);
             }
           }
-          if (changedIds.length > 0) {
-            console.info("[opps] polling applied diff", { changedIds });
-          }
+          if (changedIds.length > 0) console.info("[opps] polling applied diff", { changedIds });
           return rows;
         });
       } else {
         setCandidates(rows);
       }
+      setCandidatesReady(true);
 
-      const scannedDates: string[] = (data || [])
+      const scannedDates: string[] = data
         .map((r: any) => r.opportunity_sources?.last_scanned_at)
         .filter(Boolean);
-      if (scannedDates.length > 0) {
-        setLastScannedAt(scannedDates.sort().reverse()[0]);
+      const nextLastScanned = scannedDates.length > 0
+        ? scannedDates.sort().reverse()[0]
+        : null;
+      if (nextLastScanned) setLastScannedAt(nextLastScanned);
+      writeCandidatesCache(rows, nextLastScanned);
+
+      const userSide = await userSidePromise;
+      let pursuits = new Map<string, PursuitLite>();
+      let savedSet: Set<string> | null = null;
+      let qualMap: Map<string, StoredQualification> | null = null;
+      let profileParams: BidProfileParams | null = null;
+      let hasBidProfile = false;
+
+      if (userSide && userId) {
+        const [savedResult, pursuitsResult, qualificationResult, profileResult] = userSide;
+
+        if (savedResult.status === "fulfilled" && !(savedResult.value as any)?.error) {
+          savedSet = new Set(
+            ((savedResult.value as any)?.data ?? [])
+              .map((r: any) => r.opportunity_candidate_id)
+              .filter(Boolean),
+          );
+          if (!dirtySavedRef.current) setSavedCandidateIds(savedSet);
+        } else if (savedResult.status === "rejected") {
+          console.warn("[opps] saved opportunities skipped", savedResult.reason);
+        }
+        setSavedReady(true);
+
+        if (pursuitsResult.status === "fulfilled") {
+          pursuits = pursuitsResult.value;
+          if (!dirtyPursuitsRef.current) setPursuitByCandidate(pursuits);
+        } else {
+          console.warn("[opps] pursuits skipped", pursuitsResult.reason);
+        }
+
+        if (qualificationResult.status === "fulfilled") {
+          qualMap = new Map(qualificationResult.value.map((row) => [
+            row.opportunity_candidate_id,
+            { status: row.status, primary_reason: row.primary_reason, reasons: row.reasons ?? [] },
+          ]));
+          setQualificationByCandidate(qualMap);
+        } else {
+          // Fail closed: never turn a partial/missing qualification map into
+          // apparent matches.
+          throw qualificationResult.reason;
+        }
+
+        if (profileResult.status === "fulfilled" && !(profileResult.value as any)?.error) {
+          const profileRow = (profileResult.value as any)?.data;
+          profileParams = {
+            targetCounties: profileRow?.target_counties ?? [],
+            minProjectValue: profileRow?.min_project_value ?? null,
+            maxProjectValue: profileRow?.max_project_value ?? null,
+          };
+          hasBidProfile = Boolean(profileRow);
+          if (!dirtyProfileRef.current) setBidProfile(profileParams);
+        } else {
+          throw profileResult.status === "rejected"
+            ? profileResult.reason
+            : new Error("bid profile load failed");
+        }
+        setProfileReady(true);
       }
 
       if (!silent) {
         const initialNotes: Record<string, string> = {};
-        // Dual-read: pursuit notes take precedence; legacy column is the fallback.
         rows.forEach((r) => {
           initialNotes[r.id] = pursuits.get(r.id)?.triage_notes ?? r.review_notes ?? "";
         });
         setNotes(initialNotes);
       }
+
+      if (userId && savedSet && qualMap && profileParams) {
+        writeUserSideCache(userId, {
+          saved: savedSet,
+          pursuits,
+          qualification: qualMap,
+          bidProfile: profileParams,
+          hasBidProfile,
+        });
+      }
+      perfMark("load-end");
+      try {
+        performance.measure("opps:total", `opps:load-start:${silent ? "silent" : "cold"}`, `opps:load-end:${silent ? "silent" : "cold"}`);
+      } catch { /* noop */ }
     } catch (err) {
       console.error("[opps] loadCandidates failed", err);
       if (!silent) {
@@ -510,15 +582,12 @@ const Opportunities = () => {
         toast({ title: "Error", description: "Failed to load opportunities", variant: "destructive" });
       }
     } finally {
-      // ALWAYS release the spinner and the in-flight guard so a thrown error
-      // or an unexpected early return can never leave the page pinned to the
-      // "Loading opportunities..." placeholder.
       if (!silent) {
         setLoading(false);
         loadInFlightRef.current = false;
       }
     }
-  }, [toast, mapRow]);
+  }, [toast, mapRow, user?.id]);
 
   // Auth gate: redirect unauthenticated users. Runs whenever the auth status
   // itself changes — NOT on every render — so a token refresh event that
