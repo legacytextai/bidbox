@@ -903,6 +903,7 @@ const Opportunities = () => {
 
   const handleNotesSave = async (id: string) => {
     const note = notes[id] ?? "";
+    dirtyPursuitsRef.current = true;
     // Notes are tenant-owned state. Never write them to the shared canonical
     // opportunity row; pursuits is protected by company-scoped RLS.
     const wrote = await upsertPursuit(id, { triage_notes: note || null });
