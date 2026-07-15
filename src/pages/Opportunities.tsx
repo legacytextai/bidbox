@@ -309,6 +309,9 @@ const Opportunities = () => {
     estimated_value_high: row.estimated_value_high ?? null,
     county: row.county ?? row.crawl_data?.county ?? null,
     analysis_status: (row.analysis_status ?? "not_requested") as AnalysisStatus,
+    // The fields below are not selected in OPPORTUNITY_LIST_SELECT (list view
+    // doesn't consume them). Kept on the type so the detail page's fetched
+    // rows still map through mapRow if ever needed; here they resolve to null.
     analysis_task_id: row.analysis_task_id ?? null,
     analysis_requested_at: row.analysis_requested_at ?? null,
     analysis_started_at: row.analysis_started_at ?? null,
