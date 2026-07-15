@@ -622,14 +622,43 @@ const Opportunities = () => {
     if (bootstrappedForUserRef.current === user.id) return;
     bootstrappedForUserRef.current = user.id;
 
-    setLoading(true);
-    setCandidates([]);
-    setPursuitByCandidate(new Map());
-    setQualificationByCandidate(new Map());
-    setSavedCandidateIds(new Set());
-    setBidProfile(EMPTY_BID_PROFILE);
+    // Stale-while-revalidate: seed React state from the in-memory cache so the
+    // page paints real cards instantly on warm mount, then always kick off a
+    // background revalidation. The cache module clears itself on SIGNED_OUT
+    // and account switch so cross-account leakage is impossible.
+    const cachedCandidates = readCandidatesCache();
+    const cachedUser = readUserSideCache(user.id);
+    const hasFreshCandidates = isFresh(cachedCandidates);
+    const hasFreshUser = isFresh(cachedUser);
+
+    if (cachedCandidates) {
+      setCandidates(cachedCandidates.rows);
+      if (cachedCandidates.lastScannedAt) setLastScannedAt(cachedCandidates.lastScannedAt);
+      setCandidatesReady(true);
+    } else {
+      setCandidates([]);
+      setCandidatesReady(false);
+    }
+    if (cachedUser) {
+      setSavedCandidateIds(new Set(cachedUser.saved));
+      setPursuitByCandidate(new Map(cachedUser.pursuits));
+      setQualificationByCandidate(new Map(cachedUser.qualification));
+      setBidProfile(cachedUser.bidProfile);
+      setSavedReady(true);
+      setProfileReady(true);
+    } else {
+      setPursuitByCandidate(new Map());
+      setQualificationByCandidate(new Map());
+      setSavedCandidateIds(new Set());
+      setBidProfile(EMPTY_BID_PROFILE);
+      setSavedReady(false);
+      setProfileReady(false);
+    }
+    // Hide the legacy full-page spinner as soon as any cached slice is
+    // available; the always-rendered shell + skeleton grid handles cold load.
+    setLoading(!(hasFreshCandidates && hasFreshUser));
     setAgencyFilter([]);
-    void loadCandidates();
+    void loadCandidates({ userId: user.id });
 
     // Rehydrate active scan panel if there are non-terminal portal scan
     // tasks still running in the background (survives reloads/navigation).
