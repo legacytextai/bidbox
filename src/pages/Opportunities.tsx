@@ -1139,14 +1139,22 @@ const Opportunities = () => {
     [currentTabList, forYouNavIds],
   );
 
+  // Tab-scoped first-paint gate. All/Closed paint the instant candidates are
+  // back; Saved additionally waits for the saved-id set; For You additionally
+  // waits for the Bid Profile. Qualifications and pursuits hydrate in the
+  // background and re-render in place — never a gate. Warm-cache mounts have
+  // both readiness flags true immediately.
+  const firstPaintReady = (() => {
+    if (!candidatesReady) return false;
+    if (activeTab === "saved") return savedReady;
+    if (activeTab === "for-you") return profileReady;
+    return true;
+  })();
+
   return (
     <Layout showSidebar={true}>
       <TooltipProvider delayDuration={150}>
-        {loading ? (
-          <div className="flex items-center justify-center min-h-[calc(100vh-4rem)]">
-            <p className="text-muted-foreground">Loading opportunities...</p>
-          </div>
-        ) : loadError ? (
+        {loadError ? (
           <div className="flex flex-col items-center justify-center gap-3 min-h-[calc(100vh-4rem)] text-center px-6">
             <p className="text-sm text-muted-foreground max-w-md">
               We couldn't load opportunities. {loadError}
@@ -1273,7 +1281,9 @@ const Opportunities = () => {
             </div>
 
             {/* Cards */}
-            {activeTab === "for-you" ? (
+            {!firstPaintReady ? (
+              <OpportunityGridSkeleton count={6} />
+            ) : activeTab === "for-you" ? (
               <>
                 {/* Profile guidance — a subtle note, never blocking the list */}
                 <div className="mb-6 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
