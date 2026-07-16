@@ -1,6 +1,8 @@
 # Repeated PlanetBids Nightly Scan Failures — Bug Report (2026-07-16)
 
-**Investigation only.** No code, database records, source configurations, tasks, scans, commits, pushes, deployments, publications, quarantines, or migrations were changed.
+**Investigation only** — as originally written. Nothing was changed during the investigation itself.
+
+> **Status update:** this report has since been acted on. Defect 1 (the listing-readiness race) was fixed in commit `f5441d1`. Defect 2 (the two invalid portal IDs) was resolved on 2026-07-16 — see the **Resolution Note** appended at the end, which records the production source-configuration changes made. The investigation body below is preserved unchanged.
 
 ## Bug Description
 
@@ -315,4 +317,71 @@ Aggregation (`bidbox-worker/index.js`):
 - **Why LA/Long Beach portal IDs became invalid** (retired vs. reassigned vs. targeted block) is unconfirmed — needs manual portal re-verification.
 - **Contribution of concurrency to render latency is not isolated.** Hypothesis 6 is plausible but unquantified; the fix should make it moot rather than depend on it.
 - **Prior-report correction:** the 2026-07-15 conclusion ("transient, self-heals") was wrong in mechanism and in recommendation. It correctly identified the false-positive *wording* and the dashboard defects, but attributed zero-rows to unexplained hydration flakiness instead of a driver race with a 1.5 s budget keyed on a clock endpoint. **Do not carry that report's "no action required" forward.**
-- **Risk of taking no action:** the defect is deterministic and load-sensitive. Ingestion for the PlanetBids family remains stochastic (~20–27% of sources silently skipped per wave); all 16 currently-failed sources already exceed 24 h without refresh; open bids with near-term due dates (e.g. Jurupa Valley, due 07/29/2026) may be missed, surfaced late, or shown with stale terms. Severity grows as the family grows, and the rotating cast makes it easy to keep misreading as transient.
+- **Risk of taking no action (as of the original investigation):** the defect is deterministic and load-sensitive. Ingestion for the PlanetBids family remains stochastic (~20–27% of sources silently skipped per wave); all 16 currently-failed sources already exceed 24 h without refresh; open bids with near-term due dates (e.g. Jurupa Valley, due 07/29/2026) may be missed, surfaced late, or shown with stale terms. Severity grows as the family grows, and the rotating cast makes it easy to keep misreading as transient.
+
+---
+
+# RESOLUTION NOTE — 2026-07-16 (appended; investigation history above is unchanged)
+
+This note records the resolution of **Defect 2 (the two invalid portal IDs)** only. Defect 1 (the readiness race) was fixed separately in commit `f5441d1`.
+
+## Outcome: both cities migrated off PlanetBids. Neither is a portal-ID correction.
+
+The working assumption in §Recommended immediate action — "re-verify current PlanetBids portal IDs" — was **wrong**. There are no correct PlanetBids IDs to find. Both agencies left the platform entirely.
+
+| | City of Los Angeles | City of Long Beach |
+|---|---|---|
+| Previous invalid portal ID | `23749` | `15810` |
+| Previous URL | `https://vendors.planetbids.com/portal/23749/bo/bo-search` | `https://vendors.planetbids.com/portal/15810/bo/bo-search` |
+| Still on PlanetBids? | **No** | **No** |
+| Official current platform | **RAMPLA** (Regional Alliance Marketplace for Procurement) | **Long Beach Buys** (BuySpeed) |
+| Official current URL | `https://www.rampla.org/` | `https://longbeachbuys.buyspeed.com/bso/` |
+| BidBox driver support | **None** (no RAMP driver) | **None** (no BuySpeed driver) |
+| Source UUID | `a567762b-5016-414b-aaa0-3c0fe200ec68` | `fb94f9ce-cb61-418c-bad4-999d668e7421` |
+| Resolution | Disabled, row preserved | Disabled, row preserved |
+
+## Evidence (official link chains)
+
+**City of Los Angeles** — official City page `https://lacity.gov/business/contract-city` lists exactly two vendor destinations: **RAMPLA** (`https://www.rampla.org/`, "Browse RAMPLA to find unique opportunities for your business to contract with the City of Los Angeles") and LAVSS (`https://lavss.lacity.org`, vendor self-service for payments — not solicitations). **PlanetBids is not mentioned anywhere.** `rampla.org` self-identifies as "An Official Website of the City of Los Angeles" and hosts the bid-opportunity search.
+
+**City of Long Beach** — official City page `https://www.longbeach.gov/finance/business-info/purchasing-division/` states "View Contracting Opportunities On LONG BEACH BUYS". **Every** Bids/RFP and vendor-registration link on that page resolves to `https://longbeachbuys.buyspeed.com/bso/`. The portal self-identifies as "Long Beach Buys — Promoting transparency, equity, and efficiency in Long Beach's procurement systems" and references City of Long Beach SBE certification.
+
+> **Trap worth recording:** the "ENTER LONG BEACH BUYS" anchor still carries `title="PlanetBids"` — vestigial markup from the pre-migration site. The tooltip says PlanetBids; the `href` goes to BuySpeed. Reading the tooltip instead of the href would produce a false "still on PlanetBids" conclusion.
+
+> **Second trap:** a web search surfaces `pbsystem.planetbids.com/portal/15810/bo/bo-search` titled *"California - City of Long Beach"*. That is a stale cached index entry. Fetched live, `pbsystem.planetbids.com` redirects to `vendors.planetbids.com` and returns the same `/2001` "not a valid PlanetBids agency portal" interstitial. **Both portal IDs are retired on both PlanetBids hosts** (`vendors.` and `pbsystem.`), verified 2026-07-16.
+
+## Production change applied
+
+UUID-scoped `UPDATE` on exactly two rows (guarded on name + listing_url + portal_type; each update confirmed to match exactly one row; re-read and verified after write):
+
+| Field | Before (both rows) | After (both rows) |
+|---|---|---|
+| `scan_enabled` | `true` | **`false`** |
+| `refresh_enabled` | `true` | **`false`** |
+| `last_refresh_error` | "Listing data was observed, but no usable bid detail targets were found…" | **`official_portal_migrated_unsupported: …`** (platform, official URL, evidence, verification date) |
+
+Unchanged: `id`, `name`, `portal_type`, `listing_url`, `last_refresh_status`, and all candidate rows. Nothing was deleted or inserted.
+
+`portal_type` and `listing_url` are deliberately **left at their historical PlanetBids values**. They are inaccurate as live configuration but accurate as history, and rewriting them to a RAMPLA/BuySpeed URL under `portal_type='planetbids'` would misconfigure the source for a driver that cannot read it.
+
+## Validation
+
+No scan was run for either source — running an incompatible driver against a migrated portal would prove nothing. Instead, classification was verified against `src/hooks/useAdminCoverage.ts::classifyHealth` (where `!scan_enabled` short-circuits to `disabled` before the `failed` check):
+
+- **Before:** healthy 64 · stale 1 · **failed 16** · disabled 0
+- **After:** healthy 64 · stale 1 · **failed 14** · **disabled 2**
+
+Both cities now classify as **Disabled**, not Failed. The remaining 14 failures are the Defect 1 readiness-race group, unrelated to this change.
+
+Safety checks: no duplicate `listing_url`, no duplicate source names, no other source represents either city, both city rows own **0 candidates**, and **0 candidates reference the retired portals**. Adjacent entities confirmed untouched and still enabled — Port of Los Angeles (`42217`), Port of Long Beach (`19236`), Long Beach Unified School District (`23758`), Los Angeles World Airports (`48397`).
+
+## Explicit non-claim
+
+**BidBox does not ingest City of Los Angeles or City of Long Beach solicitations, and did not before this change.** Disabling these sources stops false operational failures; it does not restore coverage. Both cities are now uncovered *and correctly reported as uncovered* rather than silently failing.
+
+## Follow-ups
+
+1. **RAMP/RAMPLA driver** for City of Los Angeles (`rampla.org`) — required to restore LA coverage. Likely also unlocks other RAMP regional partners.
+2. **BuySpeed driver** for City of Long Beach (`longbeachbuys.buyspeed.com`) — required to restore Long Beach coverage. Likely reusable for other BuySpeed/Periscope agencies.
+3. **Latent seed-replay risk:** `supabase/migrations/20260608184304_*.sql`, `20260608000001_*.sql` and related seeds insert these rows with `ON CONFLICT (listing_url) DO UPDATE` and `scan_enabled = true`. They are already applied and will not re-run, so production stays correct — but a **fresh-database replay would re-enable both broken sources**. Historical applied migrations were deliberately not edited. A future corrective migration should disable them at seed time.
+4. **Audit the remaining PlanetBids roster for other silent migrations.** Two of 76 sources had retired portal IDs; the readiness-race fix will make any others visible as persistent `invalid_planetbids_portal` errors rather than generic noise.

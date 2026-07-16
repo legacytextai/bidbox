@@ -12,6 +12,7 @@
 - **Production enabled:** The agency exists in production `opportunity_sources` with `scan_enabled = true`.
 - **Scan verified:** A worker scan has completed for the agency and either found candidates or cleanly reported zero active bidding rows.
 - **Needs review:** The source needs investigation because scans fail, portal behavior changed, or the portal URL may be stale.
+- **Disabled — migrated off PlanetBids:** The agency has been confirmed against its official procurement page to have moved to a platform BidBox does not yet have a driver for. The row is kept for history with `scan_enabled = false` so it stops producing false operational failures. BidBox is **not** ingesting this agency.
 
 Do not treat a source as “BidBox is successfully grabbing projects from this agency” until it is marked **Scan verified**.
 
@@ -50,9 +51,9 @@ Migration: `supabase/migrations/20260608000001_seed_socal_planetbids_sources.sql
 | 14 | City of Irvine | 15927 | https://vendors.planetbids.com/portal/15927/bo/bo-search | Configured in migration | Pending production apply + scan verification |
 | 15 | City of Jurupa Valley | 26879 | https://vendors.planetbids.com/portal/26879/bo/bo-search | Configured in migration | Pending production apply + scan verification |
 | 16 | City of La Canada Flintridge | 62508 | https://vendors.planetbids.com/portal/62508/bo/bo-search | Configured in migration | Pending production apply + scan verification |
-| 17 | City of Long Beach | 15810 | https://vendors.planetbids.com/portal/15810/bo/bo-search | Configured in migration | Pending production apply + scan verification |
+| 17 | City of Long Beach | ~~15810~~ (retired) | ~~https://vendors.planetbids.com/portal/15810/bo/bo-search~~ | Disabled — migrated off PlanetBids | Now uses **Long Beach Buys** (BuySpeed): https://longbeachbuys.buyspeed.com/bso/ — no BuySpeed driver. Source disabled 2026-07-16, not deleted. See `docs/analysis/repeated-planetbids-nightly-failures-bug-report-2026-07-16.md`. Distinct from #18 and Port of Long Beach (19236). |
 | 18 | Long Beach Unified School District | 23758 | https://vendors.planetbids.com/portal/23758/bo/bo-search | Configured in migration | Pending production apply + scan verification |
-| 19 | City of Los Angeles | 23749 | https://vendors.planetbids.com/portal/23749/bo/bo-search | Configured in migration | Pending production apply + scan verification |
+| 19 | City of Los Angeles | ~~23749~~ (retired) | ~~https://vendors.planetbids.com/portal/23749/bo/bo-search~~ | Disabled — migrated off PlanetBids | Now uses **RAMPLA** (Regional Alliance Marketplace for Procurement): https://www.rampla.org/ — no RAMP driver. Source disabled 2026-07-16, not deleted. See `docs/analysis/repeated-planetbids-nightly-failures-bug-report-2026-07-16.md`. Distinct from #20, #21, #22, Port of Los Angeles (42217), and LA County. |
 | 20 | Los Angeles Community College District | 21372 | https://vendors.planetbids.com/portal/21372/bo/bo-search | Configured in migration | Pending production apply + scan verification |
 | 21 | Los Angeles County Office of Education | 61954 | https://vendors.planetbids.com/portal/61954/bo/bo-search | Configured in migration | Pending production apply + scan verification |
 | 22 | Los Angeles World Airports | 48397 | https://vendors.planetbids.com/portal/48397/bo/bo-search | Configured in migration | Pending production apply + scan verification |
