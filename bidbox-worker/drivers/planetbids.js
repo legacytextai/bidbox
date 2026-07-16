@@ -143,8 +143,36 @@ function normalizeJobWalkMetadata(raw) {
   };
 }
 
+// Any 2xx from the PlanetBids API host. Used for telemetry counting and to feed
+// detail-URL extraction — never as proof that listings rendered. The Ember shell
+// fires /papi/t, /papi/server-time, /papi/oauth/refresh and several lookups
+// (/papi/bid-types, /papi/departments, …) long before /papi/bids returns, so
+// "an API responded" says nothing about whether the bid table exists yet.
 function isPlanetBidsApiResponse(res) {
   return res.url().includes('api-external.prod.planetbids.com') && res.status() >= 200 && res.status() < 300;
+}
+
+// The bid-listing payload itself. Telemetry only: a listing can paint from cache
+// without a fresh response, so this must never be a prerequisite for readiness.
+function isPlanetBidsListingResponseUrl(url) {
+  try {
+    const parsed = new URL(String(url));
+    return parsed.hostname === 'api-external.prod.planetbids.com'
+      && /^\/papi\/bids\/?$/i.test(parsed.pathname);
+  } catch {
+    return false;
+  }
+}
+
+// Boot beacons that must never imply listing readiness. `/papi/t` is a telemetry
+// ping and `/papi/server-time` a clock read; both resolve within ~1s of navigation.
+function isPlanetBidsClockOrBeaconUrl(url) {
+  try {
+    const parsed = new URL(String(url));
+    return /^\/papi\/(server-time|t)\/?$/i.test(parsed.pathname);
+  } catch {
+    return false;
+  }
 }
 
 function createBiddingRowsLocator(page) {
@@ -228,6 +256,24 @@ function parseFoundBidsCount(value) {
   const text = String(value).replace(/,/g, '').trim();
   if (!/^\d+$/.test(text)) return null;
   return Number.parseInt(text, 10);
+}
+
+// Bounded budget for the bid table to paint after navigation. PlanetBids' Ember
+// shell resolves its boot requests within ~1s but paints the table later; 15s
+// covers observed production render times with headroom while staying far inside
+// the 10-minute scrape guard. Overridable for slow portals without a redeploy.
+const PLANETBIDS_LISTING_WAIT_MS = Number(process.env.PLANETBIDS_LISTING_WAIT_MS) > 0
+  ? Number(process.env.PLANETBIDS_LISTING_WAIT_MS)
+  : 15000;
+const PLANETBIDS_LISTING_POLL_MS = 250;
+
+const PLANETBIDS_NO_RESULTS_RE = /no\s+(open\s+)?(bid|opportunit|record)|no\s+data|nothing\s+found/i;
+
+// PlanetBids serves decommissioned/unknown portal ids as a /2001 interstitial.
+// Terminal: a source-configuration problem, never a hydration timeout.
+function detectPlanetBidsInvalidPortal(url, bodyText) {
+  return /^https?:\/\/vendors\.planetbids\.com\/2001(?:[/?#]|$)/i.test(String(url ?? ''))
+    || /not a valid PlanetBids agency portal/i.test(String(bodyText ?? ''));
 }
 
 function addPlanetBidsDetailUrl(urls, portalId, bidId) {
@@ -420,31 +466,83 @@ async function extractBidDetailUrlsFromPage(page, baseUrl) {
   }, baseUrl).catch(() => []);
 }
 
-async function waitForResultsReady(page, sourceName, log, apiReady = null) {
-  apiReady ??= page.waitForResponse(isPlanetBidsApiResponse, { timeout: 25000 }).catch(() => null);
-
-  const domReady = waitForDocumentReady(page, 30000);
-  const apiResponse = await apiReady;
-  const domReadyObserved = await domReady;
-  if (!apiResponse && !domReadyObserved) {
-    await page.waitForSelector('body', { state: 'attached', timeout: 5000 }).catch(() => null);
-  }
-  if (apiResponse) {
-    log(`[${sourceName}] PlanetBids API response observed: ${apiResponse.url().substring(0, 180)}`);
-  } else {
-    log(`[${sourceName}] No PlanetBids API response observed before readiness timeout`);
-  }
-
-  await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
-  await page.waitForTimeout(apiResponse ? 1500 : 6000);
-  return Boolean(apiResponse);
+// Single-pass read of the signals that can definitively classify a listing page.
+async function probePlanetBidsListingPage(page) {
+  return page.evaluate(() => {
+    const clean = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
+    const bodyText = clean(document.body?.innerText ?? '');
+    return {
+      url: location.href,
+      body_text: bodyText.substring(0, 1000),
+      found_bids_text: bodyText.match(/Found\s+([\d,]+)\s+bids?/i)?.[1] ?? null,
+    };
+  }).catch(() => ({ url: page.url(), body_text: '', found_bids_text: null }));
 }
 
-async function gotoListingAndWait(page, listingUrl, sourceName, log) {
-  const apiReady = page.waitForResponse(isPlanetBidsApiResponse, { timeout: 25000 }).catch(() => null);
+/**
+ * Bounded, DOM-authoritative listing-state wait.
+ *
+ * The DOM is the only source of truth. Network activity is telemetry only:
+ * gating on "some PlanetBids API responded" reads the table before Ember paints
+ * it, which is the 2026-07-16 nightly-failure race (see
+ * docs/analysis/repeated-planetbids-nightly-failures-bug-report-2026-07-16.md).
+ *
+ * Resolves as soon as one definitive state holds, so a fast portal costs one poll.
+ * Returns { state: 'rows' | 'empty' | 'invalid_portal' | 'timeout', … }.
+ */
+async function waitForPlanetBidsListingState(page, options = {}) {
+  const {
+    rows = () => createBiddingRowsLocator(page),
+    probe = () => probePlanetBidsListingPage(page),
+    timeout = PLANETBIDS_LISTING_WAIT_MS,
+    pollMs = PLANETBIDS_LISTING_POLL_MS,
+    now = () => Date.now(),
+    sleep = (ms) => page.waitForTimeout(ms),
+    readinessSignals = {},
+  } = options;
 
+  const started = now();
+  let foundBidsCount = null;
+  let polls = 0;
+  let finalUrl = null;
+
+  for (;;) {
+    polls++;
+    const rowCount = await rows().count().catch(() => 0);
+    if (rowCount > 0) {
+      return { state: 'rows', rowCount, foundBidsCount, waitMs: now() - started, polls, finalUrl, readinessSignals };
+    }
+
+    const observed = await probe();
+    finalUrl = observed.url ?? finalUrl;
+    foundBidsCount = parseFoundBidsCount(observed.found_bids_text);
+
+    if (detectPlanetBidsInvalidPortal(observed.url, observed.body_text)) {
+      return { state: 'invalid_portal', rowCount: 0, foundBidsCount, waitMs: now() - started, polls, finalUrl, readinessSignals };
+    }
+
+    // Only affirmative evidence counts as empty. A blank body is a page that has
+    // not painted yet — never proof that the portal has no open solicitations.
+    if (foundBidsCount === 0 || PLANETBIDS_NO_RESULTS_RE.test(observed.body_text ?? '')) {
+      return { state: 'empty', rowCount: 0, foundBidsCount, waitMs: now() - started, polls, finalUrl, readinessSignals };
+    }
+
+    if (now() - started >= timeout) {
+      return { state: 'timeout', rowCount: 0, foundBidsCount, waitMs: now() - started, polls, finalUrl, readinessSignals };
+    }
+    await sleep(pollMs);
+  }
+}
+
+async function gotoListingAndWait(page, listingUrl, sourceName, log, options = {}) {
   await page.goto(listingUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
-  return waitForResultsReady(page, sourceName, log, apiReady);
+  await waitForDocumentReady(page, 30000);
+  const state = await waitForPlanetBidsListingState(page, options);
+  log(
+    `[${sourceName}] Listing state=${state.state} rows=${state.rowCount} ` +
+    `found_bids=${state.foundBidsCount ?? 'n/a'} wait=${state.waitMs}ms polls=${state.polls}`
+  );
+  return state;
 }
 
 async function clickSearchIfAvailable(page, sourceName, log) {
@@ -454,16 +552,11 @@ async function clickSearchIfAvailable(page, sourceName, log) {
   }
 
   log(`[${sourceName}] No Bidding rows after initial load — clicking Search`);
-  const apiReady = page.waitForResponse(isPlanetBidsApiResponse, { timeout: 20000 }).catch(() => null);
   await searchButton.click();
   await waitForDocumentReady(page, 30000);
   await page.waitForSelector('body', { state: 'attached', timeout: 5000 }).catch(() => null);
-  const apiResponse = await apiReady;
-  if (apiResponse) {
-    log(`[${sourceName}] PlanetBids API response observed after Search`);
-  }
-  await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
-  await page.waitForTimeout(apiResponse ? 1500 : 4000);
+  // Readiness is re-established by the caller's bounded DOM wait; settling on an
+  // API response here would reintroduce the boot-beacon race.
   return true;
 }
 
@@ -573,10 +666,17 @@ async function scrapePlanetBids(payload, log) {
             if (auth.startsWith('Bearer ')) bearerToken = auth.slice(7);
           }
         });
+        // Network observation is telemetry only — it never gates listing readiness.
+        const readinessSignals = {
+          clock_or_beacon_observed: false,
+          listing_endpoint_observed: false,
+        };
         page.on('response', (res) => {
           if (isPlanetBidsApiResponse(res)) {
             apiResponsesObserved++;
             const responseUrl = res.url();
+            if (isPlanetBidsClockOrBeaconUrl(responseUrl)) readinessSignals.clock_or_beacon_observed = true;
+            if (isPlanetBidsListingResponseUrl(responseUrl)) readinessSignals.listing_endpoint_observed = true;
             apiExtractionTasks.push(res.json().then((json) => {
               const urls = collectPlanetBidsApiDetailUrls(json, portalId, responseUrl);
               for (const url of urls) {
@@ -590,66 +690,68 @@ async function scrapePlanetBids(payload, log) {
           }
         });
 
-        log(`[${source_name}] Loading listing: ${listing_url}`);
-        await gotoListingAndWait(page, listing_url, source_name, log);
+        // Listing readiness is decided by the DOM, never by network activity.
+        // One bounded recovery attempt follows a hydration timeout; both attempts
+        // re-run the full state wait so a boot beacon cannot short-circuit either.
+        const awaitListingState = () => waitForPlanetBidsListingState(page, {
+          rows: biddingRows,
+          readinessSignals,
+        });
 
-        let rowLocator = biddingRows();
-        let rowCount = await rowLocator.count();
-        if (rowCount === 0 && await clickSearchIfAvailable(page, source_name, log)) {
-          rowLocator = biddingRows();
-          rowCount = await rowLocator.count();
+        log(`[${source_name}] Loading listing: ${listing_url}`);
+        let listing = await gotoListingAndWait(page, listing_url, source_name, log, {
+          rows: biddingRows,
+          readinessSignals,
+        });
+        if (listing.state === 'timeout' && await clickSearchIfAvailable(page, source_name, log)) {
+          listing = await awaitListingState();
         }
+
+        let listingAttempts = 1;
+        if (listing.state === 'timeout') {
+          log(`[${source_name}] Listing did not reach a definitive state in ${listing.waitMs}ms — one bounded reload before failing`);
+          await page.waitForTimeout(1000 + Math.floor(Math.random() * 1000));
+          listing = await gotoListingAndWait(page, listing_url, source_name, log, {
+            rows: biddingRows,
+            readinessSignals,
+          });
+          if (listing.state === 'timeout' && await clickSearchIfAvailable(page, source_name, log)) {
+            listing = await awaitListingState();
+          }
+          listingAttempts = 2;
+        }
+
+        if (listing.state === 'invalid_portal') {
+          telemetry.terminal_failures++;
+          recordError(
+            `invalid_planetbids_portal: PlanetBids does not recognize this portal id. ` +
+            `listing_url=${listing_url}; final_url=${listing.finalUrl}; attempts=${listingAttempts}; ` +
+            `wait_ms=${listing.waitMs}. Source configuration must be corrected — retrying will not help.`
+          );
+          errors++;
+          return;
+        }
+
+        if (listing.state === 'empty') {
+          log(`[${source_name}] No active bidding rows found (found_bids=${listing.foundBidsCount ?? 'no-results text'}, attempts=${listingAttempts})`);
+          return;
+        }
+
+        let rowCount = listing.state === 'rows' ? listing.rowCount : 0;
         log(`[${source_name}] ${rowCount} Bidding row(s) found`);
 
         let detailUrlFallbacks = [];
         let extractionMode = 'dom_rows';
         if (rowCount === 0) {
-          let pageText = await page.locator('body').innerText({ timeout: 5000 }).catch(() => '');
-          let diagnostics = await captureZeroRowDiagnostics(page);
-          let foundBidsCount = parseFoundBidsCount(diagnostics.found_bids_text);
-          let noResultsText = /no\s+(open\s+)?(bid|opportunit|record)|no\s+data|nothing\s+found/i.test(pageText);
-          if (noResultsText || foundBidsCount === 0) {
-            log(`[${source_name}] No active bidding rows found`);
-            return;
-          }
-
+          // Hydration timed out after bounded recovery. Existing detail-link
+          // fallbacks still get a chance before the scan reports a failure.
           await Promise.allSettled(apiExtractionTasks);
-          let domDetailUrls = await extractBidDetailUrlsFromPage(page, listing_url);
-          let apiDerivedDetailUrls = [...apiDetailUrls];
+          const domDetailUrls = await extractBidDetailUrlsFromPage(page, listing_url);
+          const apiDerivedDetailUrls = [...apiDetailUrls];
           detailUrlFallbacks = [...new Set([...domDetailUrls, ...apiDerivedDetailUrls])];
+          const diagnostics = await captureZeroRowDiagnostics(page);
 
-          if (detailUrlFallbacks.length === 0) {
-            log(`[${source_name}] Listing produced no usable targets — reloading once before failing`);
-            await page.waitForTimeout(1000 + Math.floor(Math.random() * 1000));
-            await gotoListingAndWait(page, listing_url, source_name, log);
-            rowLocator = biddingRows();
-            rowCount = await rowLocator.count();
-            if (rowCount === 0 && await clickSearchIfAvailable(page, source_name, log)) {
-              rowLocator = biddingRows();
-              rowCount = await rowLocator.count();
-            }
-
-            if (rowCount === 0) {
-              pageText = await page.locator('body').innerText({ timeout: 5000 }).catch(() => '');
-              diagnostics = await captureZeroRowDiagnostics(page);
-              foundBidsCount = parseFoundBidsCount(diagnostics.found_bids_text);
-              noResultsText = /no\s+(open\s+)?(bid|opportunit|record)|no\s+data|nothing\s+found/i.test(pageText);
-              if (noResultsText || foundBidsCount === 0) {
-                log(`[${source_name}] No active bidding rows found after bounded reload`);
-                return;
-              }
-              await Promise.allSettled(apiExtractionTasks);
-              domDetailUrls = await extractBidDetailUrlsFromPage(page, listing_url);
-              apiDerivedDetailUrls = [...apiDetailUrls];
-              detailUrlFallbacks = [...new Set([...domDetailUrls, ...apiDerivedDetailUrls])];
-            } else {
-              log(`[${source_name}] Listing rows recovered after bounded reload: ${rowCount}`);
-            }
-          }
-
-          if (rowCount > 0) {
-            extractionMode = 'dom_rows';
-          } else if (detailUrlFallbacks.length > 0) {
+          if (detailUrlFallbacks.length > 0) {
             extractionMode = 'detail_url_fallback';
             log(
               `[${source_name}] Bidding row locator found 0 rows, but ${detailUrlFallbacks.length} ` +
@@ -659,15 +761,21 @@ async function scrapePlanetBids(payload, log) {
               `role_row_count=${diagnostics.role_row_count}; found_bids=${diagnostics.found_bids_text ?? 'n/a'}`
             );
           } else {
-            const signal = foundBidsCount !== null || apiResponsesObserved > 0
-              ? 'Listing data was observed, but no usable bid detail targets were found.'
-              : 'No listing data or usable bid detail targets were found.';
+            // Transient by construction: the portal never reached a definitive
+            // state. Never claim listing records existed — nothing was observed.
+            telemetry.retryable_failures++;
             recordError(
-              `${signal} final_url=${diagnostics.final_url}; ` +
-              `api_responses=${apiResponsesObserved}; tr_count=${diagnostics.tr_count}; ` +
-              `role_row_count=${diagnostics.role_row_count}; found_bids=${diagnostics.found_bids_text ?? 'n/a'}; ` +
+              `planetbids_listing_hydration_timeout: listings never rendered and no explicit ` +
+              `empty state appeared within the bounded wait. final_url=${diagnostics.final_url}; ` +
+              `attempts=${listingAttempts}; wait_ms=${listing.waitMs}; polls=${listing.polls}; ` +
+              `api_responses=${apiResponsesObserved}; ` +
+              `clock_or_beacon_observed=${readinessSignals.clock_or_beacon_observed}; ` +
+              `listing_endpoint_observed=${readinessSignals.listing_endpoint_observed}; ` +
+              `found_bids=${diagnostics.found_bids_text ?? 'n/a'}; tr_count=${diagnostics.tr_count}; ` +
+              `role_row_count=${diagnostics.role_row_count}; no_results_text=false; ` +
               `api_detail_links=${apiDerivedDetailUrls.length}; dom_detail_links=${domDetailUrls.length}; ` +
-              `Body preview: ${diagnostics.body_preview}`
+              `body=${diagnostics.body_preview ? `${diagnostics.body_preview.length} chars` : 'blank'}; ` +
+              `session=${sessionId}`
             );
             if (diagnostics.result_html_preview) {
               log(`[${source_name}] Results HTML preview: ${diagnostics.result_html_preview}`);
@@ -1386,4 +1494,9 @@ module.exports = {
   parseEstimatedValueDetails,
   openPlanetBidsRowWithRetry,
   waitForPlanetBidsDetailNavigation,
+  waitForPlanetBidsListingState,
+  isPlanetBidsListingResponseUrl,
+  isPlanetBidsClockOrBeaconUrl,
+  detectPlanetBidsInvalidPortal,
+  PLANETBIDS_LISTING_WAIT_MS,
 };
