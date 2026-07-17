@@ -249,6 +249,16 @@ Ship the 10 evidence items above first. Then, and only then, propose a fix. Ever
 
 ## Completion response
 
+## Instrumentation status — 2026-07-17
+
+After this local instrumentation commit is deployed, the next midnight wave will persist `planetbids_hydration_diagnostics_v1` in the existing `agent_tasks.result` object for each PlanetBids scan. No new database column or storage bucket is used. Successful scans retain a lightweight attempt summary; failed listing states retain bounded attempt evidence.
+
+Captured evidence includes two attempt-scoped timestamps/states, final page state, Browserbase session ID, available Railway replica/deployment ID, sanitized page errors, warning/error/assert console events, failed requests, HTTP errors, ordered PlanetBids API request/response chronology, `/papi/bids` response structure and hash (never records), and timeout-only DOM structure/previews. The second attempt is compared with the first for page/session identity, API chronology, bid-response hash, runtime/network errors, DOM signature, and body-preview hash.
+
+All text, URLs, stacks, event lists, DOM previews, inspected bid bytes, and the serialized payload are capped and redacted for tokens, credentials, cookies, authorization values, URL query secrets, email addresses, and common API-key formats. The total serialized diagnostic target is 64 KiB; lower-priority previews/events are trimmed with truncation metadata if required. There is no supported scan-artifact persistence path today, so screenshot capture is recorded as unsupported rather than storing binary data in a task result.
+
+This instrumentation does not change the DOM readiness rule, 15-second wait, bounded two-attempt behavior, session creation, concurrency, source health, source configuration, or any scan outcome. Evidence is sufficient for a functional follow-up only when a failed task identifies the last API/bootstrap step, runtime/network failure (if any), `/papi/bids` response structure, and timeout DOM signature for both attempts.
+
 1. **Deployed commit during the most recent midnight scan:** `f5441d1` (Fix PlanetBids listing readiness race).
 2. **Was `f5441d1` truly active:** Yes — production error strings contain telemetry fields introduced by that commit; no earlier commit could have produced them.
 3. **`/papi/bids` in failed sessions:** For 12 of 13 sources it never fires (`listing_endpoint_observed=false`, `api_responses=6`). For 1 of 13 (Eastvale) it fires (`listing_endpoint_observed=true`, `api_responses=15`).

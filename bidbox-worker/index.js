@@ -731,7 +731,7 @@ async function runScan(task, supabase, driver) {
     errorMessages = [],
     telemetry = {},
   } = await driver(
-    { source_id, source_name, listing_url, portal_type: resolvedPortalType },
+    { source_id, source_name, listing_url, portal_type: resolvedPortalType, task_id: task.id },
     log
   );
 
@@ -1534,6 +1534,9 @@ async function processTask(task) {
           document_acquisition_supported: !['caleprocure_scan', 'opengov_scan'].includes(task.task_type),
           trigger_reason: task.payload?.trigger_reason ?? task.trigger_reason ?? null,
           refresh_window: task.payload?.refresh_window ?? task.refresh_window ?? null,
+          ...(task.task_type === 'planetbids_scan' && result.telemetry?.planetbids_hydration_diagnostics_v1
+            ? { planetbids_hydration_diagnostics_v1: result.telemetry.planetbids_hydration_diagnostics_v1 }
+            : {}),
         }
       : task.task_type === 'document_processing'
       ? {

@@ -2,6 +2,7 @@ const { chromium } = require('playwright');
 const { createBrowserbaseSessionId } = require('../lib/browserbase');
 const { extractExactApiMetadata } = require('../lib/planetbids-recovery');
 const { parseBidDueDate } = require('../lib/planetbids-date');
+const { createPlanetBidsHydrationDiagnostics } = require('../lib/planetbids-hydration-diagnostics');
 
 function extractBidId(url) {
   const m = url.match(/\/bo-detail\/(\d+)/);
@@ -590,7 +591,7 @@ async function captureZeroRowDiagnostics(page) {
 }
 
 async function scrapePlanetBids(payload, log) {
-  const { source_name, listing_url } = payload;
+  const { source_id, source_name, listing_url, task_id } = payload;
   const candidates = [];
   const errorMessages = [];
   let errors = 0;
@@ -621,6 +622,7 @@ async function scrapePlanetBids(payload, log) {
   }
 
   let browser = null;
+  let hydrationDiagnostics = null;
 
   // FIX 4: 10-minute outer guard — returns partial results on timeout
   const TIMEOUT_MS = 10 * 60 * 1000;
@@ -657,10 +659,20 @@ async function scrapePlanetBids(payload, log) {
         let bearerToken = null;
         let apiResponsesObserved = 0;
         const portalId = extractPortalId(listing_url);
+        hydrationDiagnostics = createPlanetBidsHydrationDiagnostics({
+          sourceId: source_id,
+          sourceName: source_name,
+          taskId: task_id,
+          sessionId,
+        });
+        // Event listeners are attached before the first listing navigation.
+        // They observe only; listing readiness remains DOM-authoritative.
+        hydrationDiagnostics.attach(page);
         const apiDetailUrls = new Set();
         const apiMetadataByBidId = new Map();
         const apiExtractionTasks = [];
         page.on('request', (req) => {
+          hydrationDiagnostics.request(req);
           if (req.url().includes('api-external.prod.planetbids.com')) {
             const auth = req.headers()['authorization'] ?? '';
             if (auth.startsWith('Bearer ')) bearerToken = auth.slice(7);
@@ -699,26 +711,36 @@ async function scrapePlanetBids(payload, log) {
         });
 
         log(`[${source_name}] Loading listing: ${listing_url}`);
+        hydrationDiagnostics.begin(1, page, portalId);
+        let firstSearchClicked = false;
         let listing = await gotoListingAndWait(page, listing_url, source_name, log, {
           rows: biddingRows,
           readinessSignals,
         });
         if (listing.state === 'timeout' && await clickSearchIfAvailable(page, source_name, log)) {
+          firstSearchClicked = true;
           listing = await awaitListingState();
         }
 
         let listingAttempts = 1;
         if (listing.state === 'timeout') {
+          await hydrationDiagnostics.finish(listing, page, { timeout: true, searchClicked: firstSearchClicked });
           log(`[${source_name}] Listing did not reach a definitive state in ${listing.waitMs}ms — one bounded reload before failing`);
           await page.waitForTimeout(1000 + Math.floor(Math.random() * 1000));
+          hydrationDiagnostics.begin(2, page, portalId);
+          let secondSearchClicked = false;
           listing = await gotoListingAndWait(page, listing_url, source_name, log, {
             rows: biddingRows,
             readinessSignals,
           });
           if (listing.state === 'timeout' && await clickSearchIfAvailable(page, source_name, log)) {
+            secondSearchClicked = true;
             listing = await awaitListingState();
           }
+          await hydrationDiagnostics.finish(listing, page, { timeout: listing.state === 'timeout', searchClicked: secondSearchClicked });
           listingAttempts = 2;
+        } else {
+          await hydrationDiagnostics.finish(listing, page, { timeout: false, searchClicked: firstSearchClicked });
         }
 
         if (listing.state === 'invalid_portal') {
@@ -1479,6 +1501,11 @@ async function scrapePlanetBids(payload, log) {
     }
   } finally {
     clearTimeout(timeoutHandle);
+    if (hydrationDiagnostics) {
+      // Compact summaries are retained for successful scans; detailed evidence
+      // stays in the existing task-result path only on failed listing states.
+      telemetry.planetbids_hydration_diagnostics_v1 = hydrationDiagnostics.build({ failure: errors > 0 });
+    }
     if (browser) {
       try { await browser.close(); } catch (_) {}
     }
