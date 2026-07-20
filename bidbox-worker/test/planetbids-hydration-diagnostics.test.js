@@ -4,11 +4,32 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   createPlanetBidsHydrationDiagnostics,
+  detectPlanetBidsBootstrapFailure,
   sanitizeText,
   sanitizeUrl,
   inspectBidsPayload,
   MAX_PAYLOAD_BYTES,
 } = require('../lib/planetbids-hydration-diagnostics');
+
+function bootstrapEvidence(overrides = {}) {
+  return {
+    listingEndpointObserved: false,
+    rowCount: 0,
+    foundBidsCount: null,
+    bodyText: '',
+    appRootPresent: false,
+    noResults: false,
+    elapsedMs: 3000,
+    pageErrors: [
+      { relative_ms: 1200, message: 'Unexpected end of JSON input' },
+      { relative_ms: 1201, message: "Cannot read properties of undefined (reading 'data')" },
+    ],
+    consoleEvents: [{ relative_ms: 900, text: 'Token refresh failed' }],
+    httpErrors: [{ relative_ms: 850, path: 'api-external.prod.planetbids.com/papi/oauth/refresh/', status: 401 }],
+    failedRequests: [],
+    ...overrides,
+  };
+}
 
 function pageState() {
   return {
@@ -96,4 +117,72 @@ test('PlanetBids diagnostics compare attempts and enforce the total payload limi
   assert.equal(output.attempt_comparison.same_browserbase_session, true);
   assert.equal(output.attempt_comparison.same_playwright_page, true);
   assert.ok(Buffer.byteLength(JSON.stringify(output)) <= MAX_PAYLOAD_BYTES || output.diagnostics_truncated === true);
+});
+
+test('PlanetBids compound bootstrap signature requires auth, route failure, blank app, and no listing request', () => {
+  const pendingGrace = detectPlanetBidsBootstrapFailure(bootstrapEvidence({ elapsedMs: 1500 }));
+  assert.equal(pendingGrace.candidate, true);
+  assert.equal(pendingGrace.detected, false);
+
+  const detected = detectPlanetBidsBootstrapFailure(bootstrapEvidence());
+  assert.equal(detected.detected, true);
+  assert.equal(detected.papi_bids_observed, false);
+  assert.equal(detected.body_blank, true);
+  assert.ok(detected.detected_at_ms < 15000);
+  assert.deepEqual(detected.reasons, [
+    'papi_bids_not_observed',
+    'no_rows_or_explicit_empty_state',
+    'blank_body',
+    'anonymous_bootstrap_auth_failure',
+    'route_bootstrap_exception',
+  ]);
+});
+
+test('PlanetBids compound bootstrap signature recognizes credentialed OAuth CORS failure', () => {
+  const detected = detectPlanetBidsBootstrapFailure(bootstrapEvidence({
+    httpErrors: [],
+    consoleEvents: [{ relative_ms: 850, text: "oauth/refresh has been blocked by CORS policy because credentials mode is include" }],
+    failedRequests: [{ relative_ms: 860, path: 'api-external.prod.planetbids.com/papi/oauth/refresh/', failure: 'net::ERR_FAILED' }],
+  }));
+  assert.equal(detected.detected, true);
+});
+
+test('PlanetBids bootstrap detection does not over-trigger on isolated or recovering signals', () => {
+  const cases = [
+    bootstrapEvidence({ pageErrors: [], consoleEvents: [], elapsedMs: 15000 }),
+    bootstrapEvidence({ httpErrors: [], failedRequests: [], consoleEvents: [], elapsedMs: 15000 }),
+    bootstrapEvidence({ listingEndpointObserved: true }),
+    bootstrapEvidence({ rowCount: 3, bodyText: 'Found 3 bids', appRootPresent: true }),
+    bootstrapEvidence({ foundBidsCount: 0, noResults: true }),
+    bootstrapEvidence({ bodyText: 'Loading application', appRootPresent: true }),
+  ];
+  for (const evidence of cases) assert.equal(detectPlanetBidsBootstrapFailure(evidence).detected, false);
+});
+
+test('PlanetBids diagnostics record distinct fresh-session identities without secrets', async () => {
+  const pageA = fakePage();
+  const pageB = fakePage();
+  const contextA = {};
+  const contextB = {};
+  const diagnostics = createPlanetBidsHydrationDiagnostics({ sourceId: 'source-1' });
+  diagnostics.begin(1, pageA, '12', { browserbaseSessionId: 'session-a', context: contextA });
+  await diagnostics.finish({ state: 'bootstrap_failed', waitMs: 3000, finalUrl: pageA.url() }, pageA, { timeout: true });
+  diagnostics.begin(2, pageB, '12', { browserbaseSessionId: 'session-b', context: contextB });
+  await diagnostics.finish({ state: 'rows', waitMs: 2000, finalUrl: pageB.url() }, pageB);
+  diagnostics.recordRecovery({
+    recovery_strategy: 'fresh_session',
+    fresh_session_recovery_triggered: true,
+    first_session_cleanup_outcome: { complete: true },
+    second_session_creation_outcome: { created: true, note: 'token=secret' },
+    recovery_outcome: 'fresh_session_recovered',
+  });
+  const output = diagnostics.build({ failure: false });
+  assert.equal(output.attempt_comparison.same_browserbase_session, false);
+  assert.equal(output.attempt_comparison.same_page, false);
+  assert.equal(output.attempt_comparison.same_playwright_page, false);
+  assert.equal(output.attempt_comparison.same_context, false);
+  assert.equal(output.recovery_strategy, 'fresh_session');
+  assert.equal(output.fresh_session_recovery_triggered, true);
+  assert.doesNotMatch(JSON.stringify(output), /token=secret/);
+  assert.ok(Buffer.byteLength(JSON.stringify(output)) <= MAX_PAYLOAD_BYTES);
 });

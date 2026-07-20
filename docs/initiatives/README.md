@@ -21,6 +21,7 @@ Related document sets (initiative doc + implementation plan + task list) move to
 - [Bid Date Authority](bid-date-authority.md) — backlog, design only
 - [C1A — Refresh Existing Opportunities](c1a-refresh-existing-opportunities.md) — backlog
 - [Deadline Resolution Engine](deadline-resolution-engine.md) — future initiative
+- [PlanetBids Driver-Owned Listing Discovery Through `/papi/bids`](planetbids-direct-api-listing-discovery.md) — deferred, high-priority technical debt; schedule after fresh-session recovery validation or sooner if failures remain elevated
 
 ## Completed Initiatives
 

@@ -9,6 +9,8 @@ const {
   isPlanetBidsListingResponseUrl,
   isPlanetBidsClockOrBeaconUrl,
   detectPlanetBidsInvalidPortal,
+  cleanupPlanetBidsBrowserSession,
+  runPlanetBidsListingRecovery,
 } = require('../drivers/planetbids');
 
 // ── Listing-readiness harness ────────────────────────────────────────────────
@@ -25,6 +27,8 @@ function listingHarness(script) {
       url: state(clock).url ?? 'https://vendors.planetbids.com/portal/14424/bo/bo-search',
       body_text: state(clock).body ?? '',
       found_bids_text: state(clock).foundBids ?? null,
+      app_root_present: state(clock).appRoot ?? false,
+      no_results_indicator: state(clock).noResults ?? false,
     }),
     elapsed: () => clock,
   };
@@ -108,7 +112,7 @@ test('PlanetBids row navigation remains bounded after a second missed click', as
 
 test('PlanetBids listing recovery remains explicitly bounded to one reload', () => {
   const source = require('node:fs').readFileSync(require.resolve('../drivers/planetbids'), 'utf8');
-  assert.match(source, /one bounded reload before failing/);
+  assert.match(source, /one bounded same-session reload before failing/);
   assert.match(source, /planetbids_listing_hydration_timeout/);
 });
 
@@ -269,4 +273,167 @@ test('PlanetBids hydration timeout no longer claims listing data was observed', 
   assert.doesNotMatch(source, /Listing data was observed, but no usable bid detail targets were found/);
   assert.doesNotMatch(source, /No listing data or usable bid detail targets were found/);
   assert.match(source, /invalid_planetbids_portal/);
+});
+
+test('PlanetBids compound bootstrap failure exits before the full listing timeout', async () => {
+  const harness = listingHarness(() => ({ rowCount: 0, body: '', appRoot: false }));
+  const result = await waitForPlanetBidsListingState({}, {
+    ...harness,
+    timeout: 15000,
+    detectBootstrapFailure: ({ elapsedMs }) => ({ detected: elapsedMs >= 2500, detected_at_ms: elapsedMs }),
+  });
+  assert.equal(result.state, 'bootstrap_failed');
+  assert.ok(result.waitMs >= 2500);
+  assert.ok(result.waitMs < 15000);
+});
+
+test('PlanetBids bootstrap detector cannot preempt later legitimate rows', async () => {
+  const harness = listingHarness((at) => at >= 4000
+    ? { rowCount: 3, body: 'Found 3 bids', appRoot: true }
+    : { rowCount: 0, body: '', appRoot: false });
+  const result = await waitForPlanetBidsListingState({}, {
+    ...harness,
+    detectBootstrapFailure: () => ({ detected: false }),
+  });
+  assert.equal(result.state, 'rows');
+  assert.equal(result.rowCount, 3);
+});
+
+test('PlanetBids fresh-session recovery closes A before creating B and then continues', async () => {
+  const events = [];
+  const sessions = [];
+  const result = await runPlanetBidsListingRecovery({
+    createSession: async (attempt) => {
+      events.push(`create-${attempt}`);
+      const session = { sessionId: attempt === 1 ? 'session-a' : 'session-b' };
+      sessions.push(session);
+      return session;
+    },
+    cleanupSession: async (session) => {
+      events.push(`cleanup-${session.sessionId}`);
+      return { complete: true, session_id: session.sessionId };
+    },
+    runAttempt: async (session) => {
+      events.push(`run-${session.sessionId}`);
+      return { state: session.sessionId === 'session-a' ? 'bootstrap_failed' : 'rows', rowCount: 2 };
+    },
+  });
+  assert.deepEqual(events, ['create-1', 'run-session-a', 'cleanup-session-a', 'create-2', 'run-session-b']);
+  assert.equal(result.session.sessionId, 'session-b');
+  assert.equal(result.listing.state, 'rows');
+  assert.equal(result.sessionsCreated, 2);
+  assert.equal(result.recoveryStrategy, 'fresh_session');
+  assert.equal(sessions.length, 2);
+});
+
+test('PlanetBids fresh-session recovery never overlaps active sessions', async () => {
+  let activeSessions = 0;
+  let peakActiveSessions = 0;
+  let creates = 0;
+  const result = await runPlanetBidsListingRecovery({
+    createSession: async () => {
+      activeSessions++;
+      peakActiveSessions = Math.max(peakActiveSessions, activeSessions);
+      return { sessionId: `session-${++creates}` };
+    },
+    cleanupSession: async () => {
+      activeSessions--;
+      return { complete: true, session_released: true };
+    },
+    runAttempt: async (session) => ({ state: session.sessionId === 'session-1' ? 'bootstrap_failed' : 'rows' }),
+  });
+  assert.equal(result.sessionsCreated, 2);
+  assert.equal(peakActiveSessions, 1);
+  assert.equal(activeSessions, 1);
+});
+
+test('PlanetBids fresh-session recovery does not create B when A cannot be safely closed', async () => {
+  let creates = 0;
+  await assert.rejects(
+    runPlanetBidsListingRecovery({
+      createSession: async () => ({ sessionId: `session-${++creates}` }),
+      cleanupSession: async () => ({ complete: false, errors: [{ step: 'session_released' }] }),
+      runAttempt: async () => ({ state: 'bootstrap_failed' }),
+    }),
+    /could not be safely closed or released/
+  );
+  assert.equal(creates, 1);
+});
+
+test('PlanetBids repeated bootstrap failure exhausts after exactly two sessions', async () => {
+  let creates = 0;
+  const cleaned = [];
+  const cleanupSession = async (session) => { cleaned.push(session.sessionId); return { complete: true }; };
+  const result = await runPlanetBidsListingRecovery({
+    createSession: async () => ({ sessionId: `session-${++creates}` }),
+    cleanupSession,
+    runAttempt: async () => ({ state: 'bootstrap_failed' }),
+  });
+  // The orchestrator releases the poisoned first session; the driver's outer
+  // finally owns the active second session after classification.
+  await cleanupSession(result.session);
+  assert.equal(creates, 2);
+  assert.deepEqual(cleaned, ['session-1', 'session-2']);
+  assert.equal(result.recoveryExhausted, true);
+  assert.equal(result.listing.state, 'bootstrap_failed');
+});
+
+test('PlanetBids fresh-session recovery preserves a different second-session failure', async () => {
+  let creates = 0;
+  const result = await runPlanetBidsListingRecovery({
+    createSession: async () => ({ sessionId: `session-${++creates}` }),
+    cleanupSession: async () => ({ complete: true }),
+    runAttempt: async (session) => ({ state: session.sessionId === 'session-1' ? 'bootstrap_failed' : 'invalid_portal' }),
+  });
+  assert.equal(result.listing.state, 'invalid_portal');
+  assert.equal(result.recoveryExhausted, false);
+  assert.equal(creates, 2);
+});
+
+test('PlanetBids ordinary hydration timeout keeps the bounded same-session reload', async () => {
+  let creates = 0;
+  let attempts = 0;
+  let sameSessionRetry = 0;
+  const result = await runPlanetBidsListingRecovery({
+    createSession: async () => ({ sessionId: `session-${++creates}` }),
+    cleanupSession: async () => assert.fail('ordinary timeout must not fresh-session cleanup'),
+    runAttempt: async () => { attempts++; return { state: 'timeout' }; },
+    beforeSameSessionRetry: async () => { sameSessionRetry++; },
+  });
+  assert.equal(creates, 1);
+  assert.equal(attempts, 2);
+  assert.equal(sameSessionRetry, 1);
+  assert.equal(result.recoveryStrategy, 'same_session_reload');
+});
+
+test('PlanetBids explicit empty and invalid portal never create recovery sessions', async () => {
+  for (const state of ['empty', 'invalid_portal', 'rows']) {
+    let creates = 0;
+    const result = await runPlanetBidsListingRecovery({
+      createSession: async () => ({ sessionId: `session-${++creates}` }),
+      cleanupSession: async () => assert.fail(`${state} must not trigger recovery cleanup`),
+      runAttempt: async () => ({ state }),
+    });
+    assert.equal(creates, 1);
+    assert.equal(result.attempts, 1);
+    assert.equal(result.listing.state, state);
+  }
+});
+
+test('PlanetBids cleanup is ordered, scoped, and best-effort', async () => {
+  const events = [];
+  const session = {
+    sessionId: 'owned-session',
+    page: { isClosed: () => false, close: async () => { events.push('page'); throw new Error('page already closing'); } },
+    context: { close: async () => { events.push('context'); } },
+    browser: { close: async () => { events.push('browser'); } },
+  };
+  const outcome = await cleanupPlanetBidsBrowserSession(session, {
+    release: async (sessionId) => { events.push(`release-${sessionId}`); return { released: true }; },
+  });
+  assert.deepEqual(events, ['page', 'context', 'browser', 'release-owned-session']);
+  assert.equal(outcome.session_id, 'owned-session');
+  assert.equal(outcome.session_released, true);
+  assert.equal(outcome.complete, false);
+  assert.equal(outcome.errors.length, 1);
 });

@@ -10,6 +10,7 @@ const MAX_STACK = 900;
 const MAX_PREVIEW = 900;
 const MAX_BIDS_BYTES = 24 * 1024;
 const MAX_PAYLOAD_BYTES = 64 * 1024;
+const BOOTSTRAP_FAILURE_GRACE_MS = 750;
 
 function hash(value) {
   return crypto.createHash('sha256').update(String(value ?? '')).digest('hex').slice(0, 24);
@@ -45,6 +46,93 @@ function pushBounded(list, entry, key) {
 
 function publicEvents(events) {
   return events.map(({ _dedupe, ...event }) => event);
+}
+
+function sanitizeRecoveryValue(value, depth = 0) {
+  if (depth > 4) return '[TRUNCATED]';
+  if (typeof value === 'string') return sanitizeText(value, 300);
+  if (value === null || typeof value === 'number' || typeof value === 'boolean') return value;
+  if (Array.isArray(value)) return value.slice(0, 12).map((item) => sanitizeRecoveryValue(item, depth + 1));
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).slice(0, 24).map(([key, item]) => [key, sanitizeRecoveryValue(item, depth + 1)]));
+  }
+  return sanitizeText(value, 300);
+}
+
+function eventText(event) {
+  return sanitizeText(`${event?.name ?? ''} ${event?.message ?? ''} ${event?.text ?? ''} ${event?.failure ?? ''}`, MAX_TEXT).toLowerCase();
+}
+
+function firstEventMs(events, predicate) {
+  const matches = (events ?? []).filter(predicate).map((event) => Number(event?.relative_ms)).filter(Number.isFinite);
+  return matches.length > 0 ? Math.min(...matches) : null;
+}
+
+/**
+ * Confirm the production-observed poisoned anonymous bootstrap without treating
+ * an isolated OAuth warning, blank first paint, or JSON warning as sufficient.
+ */
+function detectPlanetBidsBootstrapFailure({
+  listingEndpointObserved = false,
+  rowCount = 0,
+  foundBidsCount = null,
+  bodyText = '',
+  appRootPresent = false,
+  noResults = false,
+  pageErrors = [],
+  consoleEvents = [],
+  httpErrors = [],
+  failedRequests = [],
+  elapsedMs = 0,
+  graceMs = BOOTSTRAP_FAILURE_GRACE_MS,
+} = {}) {
+  const isOauthRefresh = (event) => /\/papi\/oauth\/refresh\/?/i.test(String(event?.path ?? event?.source ?? ''));
+  const authHttpAt = firstEventMs(httpErrors, (event) => isOauthRefresh(event) && Number(event?.status) === 401);
+  const authRequestAt = firstEventMs(failedRequests, (event) => isOauthRefresh(event) && /err_failed|cors|aborted/i.test(eventText(event)));
+  const authConsoleAt = firstEventMs(consoleEvents, (event) => (
+    /token refresh failed|cross-agency bootstrap failed|oauth\/refresh.*cors policy|credential.*cors/i.test(eventText(event))
+  ));
+  const authTimes = [authHttpAt, authRequestAt, authConsoleAt].filter(Number.isFinite);
+
+  const routePageAt = firstEventMs(pageErrors, (event) => (
+    /unexpected end of json input|cannot read properties of undefined.*reading ['"]?data|normalizeresponse/i.test(eventText(event))
+  ));
+  const routeConsoleAt = firstEventMs(consoleEvents, (event) => (
+    /error while processing route.*normalizeresponse|cannot read properties of undefined.*reading ['"]?data|unexpected end of json input/i.test(eventText(event))
+  ));
+  const routeTimes = [routePageAt, routeConsoleAt].filter(Number.isFinite);
+
+  const noListing = !listingEndpointObserved && Number(rowCount) === 0;
+  const noDefinitiveEmpty = foundBidsCount !== 0 && !noResults;
+  const applicationUninitialized = sanitizeText(bodyText, MAX_PREVIEW).length === 0 || !appRootPresent;
+  const authFailureObserved = authTimes.length > 0;
+  const routeFailureObserved = routeTimes.length > 0;
+  const firstSignalAtMs = [...authTimes, ...routeTimes].length > 0 ? Math.min(...authTimes, ...routeTimes) : null;
+  const signatureAtMs = authFailureObserved && routeFailureObserved ? Math.max(Math.min(...authTimes), Math.min(...routeTimes)) : null;
+  const graceElapsed = Number.isFinite(signatureAtMs) && Number(elapsedMs) - signatureAtMs >= graceMs;
+  const detected = noListing && noDefinitiveEmpty && applicationUninitialized && authFailureObserved && routeFailureObserved && graceElapsed;
+
+  const reasons = [];
+  if (noListing) reasons.push('papi_bids_not_observed');
+  if (noDefinitiveEmpty) reasons.push('no_rows_or_explicit_empty_state');
+  if (applicationUninitialized) reasons.push(sanitizeText(bodyText).length === 0 ? 'blank_body' : 'app_root_not_initialized');
+  if (authFailureObserved) reasons.push('anonymous_bootstrap_auth_failure');
+  if (routeFailureObserved) reasons.push('route_bootstrap_exception');
+
+  return {
+    detected,
+    candidate: noListing && noDefinitiveEmpty && applicationUninitialized && authFailureObserved && routeFailureObserved,
+    reasons,
+    first_signal_at_ms: firstSignalAtMs,
+    signature_at_ms: signatureAtMs,
+    detected_at_ms: detected ? Number(elapsedMs) : null,
+    grace_ms: graceMs,
+    papi_bids_observed: Boolean(listingEndpointObserved),
+    body_blank: sanitizeText(bodyText, MAX_PREVIEW).length === 0,
+    app_root_present: Boolean(appRootPresent),
+    auth_failure_observed: authFailureObserved,
+    route_failure_observed: routeFailureObserved,
+  };
 }
 
 function inspectBidsPayload(raw) {
@@ -161,20 +249,48 @@ async function collectAttemptPageState(page) {
 function createPlanetBidsHydrationDiagnostics({ sourceId = null, taskId = null, sourceName = null, sessionId = null } = {}) {
   const attempts = [];
   let active = null;
+  let nextPageIdentity = 0;
+  let nextContextIdentity = 0;
+  const pageIdentities = new WeakMap();
+  const contextIdentities = new WeakMap();
+  const recovery = {
+    recovery_strategy: 'none',
+    fresh_session_recovery_triggered: false,
+    session_attempts: [],
+    first_session_cleanup_outcome: null,
+    second_session_creation_outcome: null,
+    recovery_outcome: null,
+    final_error_classification: null,
+  };
   const railwayReplicaId = process.env.RAILWAY_REPLICA_ID || process.env.RAILWAY_DEPLOYMENT_ID || null;
 
-  function begin(attemptNumber, page, portalId) {
+  function identityFor(map, value, prefix, next) {
+    if (!value || (typeof value !== 'object' && typeof value !== 'function')) return null;
+    if (!map.has(value)) map.set(value, `${prefix}-${next()}`);
+    return map.get(value);
+  }
+
+  function begin(attemptNumber, page, portalId, { browserbaseSessionId = sessionId, context = page?.context?.() } = {}) {
+    const pageIdentity = identityFor(pageIdentities, page, 'page', () => ++nextPageIdentity);
+    const contextIdentity = identityFor(contextIdentities, context, 'context', () => ++nextContextIdentity);
     active = {
       attempt: attemptNumber,
       started_at: new Date().toISOString(),
       portal_id: portalId ?? null,
-      browserbase_session_id: sessionId ?? null,
+      browserbase_session_id: browserbaseSessionId ?? null,
       railway_replica_id: railwayReplicaId,
-      page_identity: String(page),
+      page_identity: pageIdentity,
+      context_identity: contextIdentity,
       console_events: [], page_errors: [], failed_requests: [], http_errors: [], api_chronology: [],
       search_button_clicked: false,
     };
     attempts.push(active);
+    recovery.session_attempts.push({
+      attempt: attemptNumber,
+      browserbase_session_id: browserbaseSessionId ?? null,
+      page_identity: pageIdentity,
+      context_identity: contextIdentity,
+    });
     return active;
   }
 
@@ -235,6 +351,41 @@ function createPlanetBidsHydrationDiagnostics({ sourceId = null, taskId = null, 
     page.on('console', consoleEvent);
   }
 
+  function bootstrapFailureEvidence({ observed = {}, rowCount = 0, foundBidsCount = null, readinessSignals = {}, elapsedMs = 0 } = {}) {
+    if (!active) return detectPlanetBidsBootstrapFailure();
+    return detectPlanetBidsBootstrapFailure({
+      listingEndpointObserved: Boolean(readinessSignals.listing_endpoint_observed || active.papi_bids),
+      rowCount,
+      foundBidsCount,
+      bodyText: observed.body_text ?? '',
+      appRootPresent: Boolean(observed.app_root_present),
+      noResults: Boolean(observed.no_results_indicator),
+      pageErrors: publicEvents(active.page_errors),
+      consoleEvents: publicEvents(active.console_events),
+      httpErrors: publicEvents(active.http_errors),
+      failedRequests: publicEvents(active.failed_requests),
+      elapsedMs,
+    });
+  }
+
+  function markBootstrapFailure(evidence) {
+    if (!active || !evidence) return;
+    active.bootstrap_failure_signature = {
+      reasons: evidence.reasons,
+      first_signal_at_ms: evidence.first_signal_at_ms,
+      signature_at_ms: evidence.signature_at_ms,
+      detected_at_ms: evidence.detected_at_ms,
+      papi_bids_observed: evidence.papi_bids_observed,
+      body_blank: evidence.body_blank,
+      app_root_present: evidence.app_root_present,
+    };
+    active.bootstrap_failure_detected_at_ms = evidence.detected_at_ms;
+  }
+
+  function recordRecovery(fields = {}) {
+    for (const [key, value] of Object.entries(fields)) recovery[key] = sanitizeRecoveryValue(value);
+  }
+
   async function finish(listing, page, { timeout = false, searchClicked = false } = {}) {
     if (!active) return null;
     active.ended_at = new Date().toISOString();
@@ -262,12 +413,15 @@ function createPlanetBidsHydrationDiagnostics({ sourceId = null, taskId = null, 
       attempts: failure ? compactAttempts : compactAttempts.map(({ dom, console_events, page_errors, failed_requests, http_errors, api_chronology, ...summary }) => summary),
       screenshot_capture_supported: false,
       screenshot_artifacts: [],
+      ...recovery,
     };
     if (compactAttempts.length === 2) {
       const [a, b] = compactAttempts;
       output.attempt_comparison = {
         same_browserbase_session: a.browserbase_session_id === b.browserbase_session_id,
+        same_page: a.page_identity === b.page_identity,
         same_playwright_page: a.page_identity === b.page_identity,
+        same_context: a.context_identity === b.context_identity,
         final_url_equal: a.final_url === b.final_url,
         api_chronology_equal: hash(JSON.stringify(publicEvents(a.api_chronology))) === hash(JSON.stringify(publicEvents(b.api_chronology))),
         papi_bids_observed: [Boolean(a.papi_bids), Boolean(b.papi_bids)],
@@ -294,7 +448,30 @@ function createPlanetBidsHydrationDiagnostics({ sourceId = null, taskId = null, 
     return output;
   }
 
-  return { attach, begin, finish, build, request, requestFailed, pageError, consoleEvent, response };
+  return {
+    attach,
+    begin,
+    finish,
+    build,
+    request,
+    requestFailed,
+    pageError,
+    consoleEvent,
+    response,
+    bootstrapFailureEvidence,
+    markBootstrapFailure,
+    recordRecovery,
+  };
 }
 
-module.exports = { createPlanetBidsHydrationDiagnostics, sanitizeText, sanitizeUrl, inspectBidsPayload, collectTimeoutDomEvidence, collectAttemptPageState, MAX_PAYLOAD_BYTES };
+module.exports = {
+  createPlanetBidsHydrationDiagnostics,
+  detectPlanetBidsBootstrapFailure,
+  sanitizeText,
+  sanitizeUrl,
+  inspectBidsPayload,
+  collectTimeoutDomEvidence,
+  collectAttemptPageState,
+  BOOTSTRAP_FAILURE_GRACE_MS,
+  MAX_PAYLOAD_BYTES,
+};

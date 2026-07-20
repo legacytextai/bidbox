@@ -115,6 +115,35 @@ async function connectBrowserbaseSession(log = console.log) {
   return { browser, context, page, sessionId };
 }
 
+// Browserbase's session-update API uses REQUEST_RELEASE to terminate a session
+// explicitly. Closing the CDP browser remains the first cleanup step; this call
+// is the scoped, best-effort remote release for the same session id.
+async function releaseBrowserbaseSession(sessionId, log = console.log, fetchImpl = fetch) {
+  if (!sessionId) return { requested: false, released: false, reason: 'missing_session_id' };
+  const apiKey = process.env.BROWSERBASE_API_KEY;
+  if (!apiKey) throw new Error('BROWSERBASE_API_KEY not configured');
+
+  const res = await fetchImpl(`${API_BASE}/sessions/${encodeURIComponent(sessionId)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-bb-api-key': apiKey },
+    body: JSON.stringify({ status: 'REQUEST_RELEASE' }),
+  });
+  if (res.ok) {
+    log(`Browserbase session released: ${sessionId}`);
+    return { requested: true, released: true, status: res.status };
+  }
+
+  // The CDP close can win the race and make the explicit release redundant.
+  // These terminal responses are safe and do not imply a leaked session.
+  if ([404, 409, 410].includes(res.status)) {
+    log(`Browserbase session already terminal: ${sessionId} (HTTP ${res.status})`);
+    return { requested: true, released: true, already_terminal: true, status: res.status };
+  }
+
+  const detail = await res.text().catch(() => '');
+  throw new Error(`Browserbase session release failed: ${res.status}${detail ? ` — ${detail.slice(0, 160)}` : ''}`);
+}
+
 // Returns the bytes of the first non-directory entry in a zip buffer, or
 // null if the zip is valid but contains no files (a real possibility here —
 // an empty zip's End-Of-Central-Directory record is ~22 bytes, so it passes
@@ -252,4 +281,5 @@ module.exports = {
   fetchBrowserbaseDownloadZip,
   fetchBrowserbaseDownloadZipEntries,
   createBrowserbaseSessionId,
+  releaseBrowserbaseSession,
 };

@@ -1,5 +1,5 @@
 const { chromium } = require('playwright');
-const { createBrowserbaseSessionId } = require('../lib/browserbase');
+const { createBrowserbaseSessionId, releaseBrowserbaseSession } = require('../lib/browserbase');
 const { extractExactApiMetadata } = require('../lib/planetbids-recovery');
 const { parseBidDueDate } = require('../lib/planetbids-date');
 const { createPlanetBidsHydrationDiagnostics } = require('../lib/planetbids-hydration-diagnostics');
@@ -476,8 +476,16 @@ async function probePlanetBidsListingPage(page) {
       url: location.href,
       body_text: bodyText.substring(0, 1000),
       found_bids_text: bodyText.match(/Found\s+([\d,]+)\s+bids?/i)?.[1] ?? null,
+      app_root_present: Boolean(document.querySelector('#app, #ember-app, [data-ember-action], [id*="ember" i]')),
+      no_results_indicator: /no\s+(open\s+)?(bid|opportunit|record)|no\s+data|nothing\s+found/i.test(bodyText),
     };
-  }).catch(() => ({ url: page.url(), body_text: '', found_bids_text: null }));
+  }).catch(() => ({
+    url: page.url(),
+    body_text: '',
+    found_bids_text: null,
+    app_root_present: false,
+    no_results_indicator: false,
+  }));
 }
 
 /**
@@ -489,7 +497,7 @@ async function probePlanetBidsListingPage(page) {
  * docs/analysis/repeated-planetbids-nightly-failures-bug-report-2026-07-16.md).
  *
  * Resolves as soon as one definitive state holds, so a fast portal costs one poll.
- * Returns { state: 'rows' | 'empty' | 'invalid_portal' | 'timeout', … }.
+ * Returns { state: 'rows' | 'empty' | 'invalid_portal' | 'bootstrap_failed' | 'timeout', … }.
  */
 async function waitForPlanetBidsListingState(page, options = {}) {
   const {
@@ -500,6 +508,7 @@ async function waitForPlanetBidsListingState(page, options = {}) {
     now = () => Date.now(),
     sleep = (ms) => page.waitForTimeout(ms),
     readinessSignals = {},
+    detectBootstrapFailure = null,
   } = options;
 
   const started = now();
@@ -526,6 +535,28 @@ async function waitForPlanetBidsListingState(page, options = {}) {
     // not painted yet — never proof that the portal has no open solicitations.
     if (foundBidsCount === 0 || PLANETBIDS_NO_RESULTS_RE.test(observed.body_text ?? '')) {
       return { state: 'empty', rowCount: 0, foundBidsCount, waitMs: now() - started, polls, finalUrl, readinessSignals };
+    }
+
+    if (typeof detectBootstrapFailure === 'function') {
+      const bootstrapFailure = await detectBootstrapFailure({
+        observed,
+        rowCount,
+        foundBidsCount,
+        readinessSignals,
+        elapsedMs: now() - started,
+      });
+      if (bootstrapFailure?.detected) {
+        return {
+          state: 'bootstrap_failed',
+          rowCount: 0,
+          foundBidsCount,
+          waitMs: now() - started,
+          polls,
+          finalUrl,
+          readinessSignals,
+          bootstrapFailure,
+        };
+      }
     }
 
     if (now() - started >= timeout) {
@@ -590,6 +621,127 @@ async function captureZeroRowDiagnostics(page) {
   }));
 }
 
+async function cleanupPlanetBidsBrowserSession(session, { log = () => {}, release = releaseBrowserbaseSession } = {}) {
+  const outcome = {
+    session_id: session?.sessionId ?? null,
+    page_closed: false,
+    context_closed: false,
+    browser_closed: false,
+    session_released: false,
+    errors: [],
+  };
+  const attempt = async (label, action) => {
+    if (!action) return;
+    try {
+      await action();
+      outcome[label] = true;
+    } catch (error) {
+      outcome.errors.push({ step: label, message: String(error?.message ?? error).slice(0, 240) });
+      log(`PlanetBids cleanup ${label} failed for session ${outcome.session_id ?? 'unknown'}: ${String(error?.message ?? error).slice(0, 160)}`);
+    }
+  };
+
+  if (!session?.page || session.page.isClosed?.()) outcome.page_closed = true;
+  else await attempt('page_closed', () => session.page.close());
+  await attempt('context_closed', session?.context ? () => session.context.close() : null);
+  await attempt('browser_closed', session?.browser ? () => session.browser.close() : null);
+  await attempt('session_released', session?.sessionId ? async () => {
+    const released = await release(session.sessionId, log);
+    if (released?.released === false) throw new Error(released.reason || 'session release not confirmed');
+  } : null);
+  outcome.complete = outcome.errors.length === 0;
+  return outcome;
+}
+
+async function createPlanetBidsBrowserSession({ apiKey, projectId, log = () => {}, createSessionId = createBrowserbaseSessionId } = {}) {
+  const session = { sessionId: null, browser: null, context: null, page: null };
+  try {
+    session.sessionId = await createSessionId(apiKey, projectId, log);
+    log(`PlanetBids Browserbase session: ${session.sessionId}`);
+    const wsUrl = `wss://connect.browserbase.com?apiKey=${apiKey}&sessionId=${session.sessionId}`;
+    session.browser = await chromium.connectOverCDP(wsUrl);
+    session.context = session.browser.contexts()[0] ?? (await session.browser.newContext());
+    session.page = await session.context.newPage();
+    return session;
+  } catch (error) {
+    if (session.sessionId || session.browser || session.context || session.page) {
+      await cleanupPlanetBidsBrowserSession(session, { log });
+    }
+    throw error;
+  }
+}
+
+async function runPlanetBidsListingRecovery({
+  createSession,
+  cleanupSession,
+  runAttempt,
+  beforeSameSessionRetry = async () => {},
+  recordRecovery = () => {},
+} = {}) {
+  let sessionsCreated = 0;
+  let session = await createSession(1);
+  sessionsCreated++;
+  let listing = await runAttempt(session, 1, { recoveryStrategy: 'none' });
+
+  if (listing.state === 'bootstrap_failed') {
+    recordRecovery({ recovery_strategy: 'fresh_session', fresh_session_recovery_triggered: true });
+    const firstCleanup = await cleanupSession(session, { reason: 'bootstrap_failed' });
+    recordRecovery({ first_session_cleanup_outcome: firstCleanup });
+    session = null;
+    const safelyReleased = Boolean(
+      firstCleanup?.complete || firstCleanup?.session_released || firstCleanup?.browser_closed || firstCleanup?.context_closed
+    );
+    if (!safelyReleased) {
+      recordRecovery({ recovery_outcome: 'first_session_cleanup_unsafe' });
+      throw new Error('PlanetBids fresh-session recovery aborted because the first session could not be safely closed or released');
+    }
+    try {
+      session = await createSession(2);
+      sessionsCreated++;
+      recordRecovery({ second_session_creation_outcome: { created: true, session_id: session.sessionId ?? null } });
+    } catch (error) {
+      recordRecovery({
+        second_session_creation_outcome: { created: false, error: String(error?.message ?? error).slice(0, 240) },
+        recovery_outcome: 'fresh_session_creation_failed',
+      });
+      throw error;
+    }
+    listing = await runAttempt(session, 2, { recoveryStrategy: 'fresh_session' });
+    return {
+      session,
+      listing,
+      attempts: 2,
+      sessionsCreated,
+      recoveryStrategy: 'fresh_session',
+      recoveryExhausted: listing.state === 'bootstrap_failed',
+      firstCleanup,
+    };
+  }
+
+  if (listing.state === 'timeout') {
+    recordRecovery({ recovery_strategy: 'same_session_reload' });
+    await beforeSameSessionRetry(session);
+    listing = await runAttempt(session, 2, { recoveryStrategy: 'same_session_reload' });
+    return {
+      session,
+      listing,
+      attempts: 2,
+      sessionsCreated,
+      recoveryStrategy: 'same_session_reload',
+      recoveryExhausted: false,
+    };
+  }
+
+  return {
+    session,
+    listing,
+    attempts: 1,
+    sessionsCreated,
+    recoveryStrategy: 'none',
+    recoveryExhausted: false,
+  };
+}
+
 async function scrapePlanetBids(payload, log) {
   const { source_id, source_name, listing_url, task_id } = payload;
   const candidates = [];
@@ -621,7 +773,7 @@ async function scrapePlanetBids(payload, log) {
     return { candidates, errors: 1, errorMessages, telemetry };
   }
 
-  let browser = null;
+  let activeSession = null;
   let hydrationDiagnostics = null;
 
   // FIX 4: 10-minute outer guard — returns partial results on timeout
@@ -637,114 +789,139 @@ async function scrapePlanetBids(payload, log) {
   try {
     await Promise.race([
       (async () => {
-        log(`[${source_name}] Creating Browserbase session`);
-        // Centralized create with concurrency gate + 429/503 backoff (see lib/browserbase).
-        let sessionId;
-        try {
-          sessionId = await createBrowserbaseSessionId(bbApiKey, bbProjectId, log);
-        } catch (e) {
-          recordError(e.message);
-          errors++;
-          return;
-        }
-        log(`[${source_name}] Session: ${sessionId}`);
-
-        const wsUrl = `wss://connect.browserbase.com?apiKey=${bbApiKey}&sessionId=${sessionId}`;
-        browser = await chromium.connectOverCDP(wsUrl);
-
-        const bContext = browser.contexts()[0] ?? (await browser.newContext());
-        const page = await bContext.newPage();
-        const biddingRows = () => createBiddingRowsLocator(page);
-
-        let bearerToken = null;
-        let apiResponsesObserved = 0;
         const portalId = extractPortalId(listing_url);
         hydrationDiagnostics = createPlanetBidsHydrationDiagnostics({
           sourceId: source_id,
           sourceName: source_name,
           taskId: task_id,
-          sessionId,
         });
-        // Event listeners are attached before the first listing navigation.
-        // They observe only; listing readiness remains DOM-authoritative.
-        hydrationDiagnostics.attach(page);
-        const apiDetailUrls = new Set();
-        const apiMetadataByBidId = new Map();
-        const apiExtractionTasks = [];
-        page.on('request', (req) => {
-          hydrationDiagnostics.request(req);
-          if (req.url().includes('api-external.prod.planetbids.com')) {
-            const auth = req.headers()['authorization'] ?? '';
-            if (auth.startsWith('Bearer ')) bearerToken = auth.slice(7);
-          }
-        });
-        // Network observation is telemetry only — it never gates listing readiness.
-        const readinessSignals = {
-          clock_or_beacon_observed: false,
-          listing_endpoint_observed: false,
-        };
-        page.on('response', (res) => {
-          if (isPlanetBidsApiResponse(res)) {
-            apiResponsesObserved++;
+        const attachSession = (session) => {
+          const state = {
+            bearerToken: null,
+            apiResponsesObserved: 0,
+            readinessSignals: { clock_or_beacon_observed: false, listing_endpoint_observed: false },
+            apiDetailUrls: new Set(),
+            apiMetadataByBidId: new Map(),
+            apiExtractionTasks: [],
+          };
+          const { page } = session;
+          state.biddingRows = () => createBiddingRowsLocator(page);
+          hydrationDiagnostics.attach(page);
+          page.on('request', (req) => {
+            if (req.url().includes('api-external.prod.planetbids.com')) {
+              const auth = req.headers()['authorization'] ?? '';
+              if (auth.startsWith('Bearer ')) state.bearerToken = auth.slice(7);
+            }
+          });
+          page.on('response', (res) => {
+            if (!isPlanetBidsApiResponse(res)) return;
+            state.apiResponsesObserved++;
             const responseUrl = res.url();
-            if (isPlanetBidsClockOrBeaconUrl(responseUrl)) readinessSignals.clock_or_beacon_observed = true;
-            if (isPlanetBidsListingResponseUrl(responseUrl)) readinessSignals.listing_endpoint_observed = true;
-            apiExtractionTasks.push(res.json().then((json) => {
+            if (isPlanetBidsClockOrBeaconUrl(responseUrl)) state.readinessSignals.clock_or_beacon_observed = true;
+            if (isPlanetBidsListingResponseUrl(responseUrl)) state.readinessSignals.listing_endpoint_observed = true;
+            state.apiExtractionTasks.push(res.json().then((json) => {
               const urls = collectPlanetBidsApiDetailUrls(json, portalId, responseUrl);
               for (const url of urls) {
-                apiDetailUrls.add(url);
+                state.apiDetailUrls.add(url);
                 const responseBidId = extractBidId(url);
                 if (!responseBidId) continue;
                 const exact = extractExactApiMetadata(json, responseBidId, responseUrl, res.status());
-                if (exact) apiMetadataByBidId.set(String(responseBidId), exact);
+                if (exact) state.apiMetadataByBidId.set(String(responseBidId), exact);
               }
             }).catch(() => {}));
-          }
-        });
+          });
+          session.state = state;
+          return session;
+        };
 
-        // Listing readiness is decided by the DOM, never by network activity.
-        // One bounded recovery attempt follows a hydration timeout; both attempts
-        // re-run the full state wait so a boot beacon cannot short-circuit either.
-        const awaitListingState = () => waitForPlanetBidsListingState(page, {
-          rows: biddingRows,
-          readinessSignals,
-        });
+        const createSession = async (attempt) => {
+          log(`[${source_name}] Creating Browserbase session for listing attempt ${attempt}`);
+          const session = await createPlanetBidsBrowserSession({ apiKey: bbApiKey, projectId: bbProjectId, log });
+          activeSession = attachSession(session);
+          return activeSession;
+        };
 
-        log(`[${source_name}] Loading listing: ${listing_url}`);
-        hydrationDiagnostics.begin(1, page, portalId);
-        let firstSearchClicked = false;
-        let listing = await gotoListingAndWait(page, listing_url, source_name, log, {
-          rows: biddingRows,
-          readinessSignals,
-        });
-        if (listing.state === 'timeout' && await clickSearchIfAvailable(page, source_name, log)) {
-          firstSearchClicked = true;
-          listing = await awaitListingState();
-        }
+        const cleanupSession = async (session, { reason } = {}) => {
+          log(`[${source_name}] Closing Browserbase session ${session?.sessionId ?? 'unknown'} (${reason ?? 'cleanup'})`);
+          const outcome = await cleanupPlanetBidsBrowserSession(session, { log });
+          if (activeSession === session) activeSession = null;
+          return outcome;
+        };
 
-        let listingAttempts = 1;
-        if (listing.state === 'timeout') {
-          await hydrationDiagnostics.finish(listing, page, { timeout: true, searchClicked: firstSearchClicked });
-          log(`[${source_name}] Listing did not reach a definitive state in ${listing.waitMs}ms — one bounded reload before failing`);
-          await page.waitForTimeout(1000 + Math.floor(Math.random() * 1000));
-          hydrationDiagnostics.begin(2, page, portalId);
-          let secondSearchClicked = false;
-          listing = await gotoListingAndWait(page, listing_url, source_name, log, {
-            rows: biddingRows,
-            readinessSignals,
+        const runAttempt = async (session, attempt, { recoveryStrategy }) => {
+          const { page, context, sessionId, state } = session;
+          const detector = (input) => hydrationDiagnostics.bootstrapFailureEvidence(input);
+          hydrationDiagnostics.begin(attempt, page, portalId, { browserbaseSessionId: sessionId, context });
+          log(`[${source_name}] Loading listing: ${listing_url} (attempt=${attempt}, recovery=${recoveryStrategy})`);
+          let searchClicked = false;
+          let listing = await gotoListingAndWait(page, listing_url, source_name, log, {
+            rows: state.biddingRows,
+            readinessSignals: state.readinessSignals,
+            detectBootstrapFailure: detector,
           });
           if (listing.state === 'timeout' && await clickSearchIfAvailable(page, source_name, log)) {
-            secondSearchClicked = true;
-            listing = await awaitListingState();
+            searchClicked = true;
+            listing = await waitForPlanetBidsListingState(page, {
+              rows: state.biddingRows,
+              readinessSignals: state.readinessSignals,
+              detectBootstrapFailure: detector,
+            });
           }
-          await hydrationDiagnostics.finish(listing, page, { timeout: listing.state === 'timeout', searchClicked: secondSearchClicked });
-          listingAttempts = 2;
-        } else {
-          await hydrationDiagnostics.finish(listing, page, { timeout: false, searchClicked: firstSearchClicked });
+          if (listing.state === 'bootstrap_failed') hydrationDiagnostics.markBootstrapFailure(listing.bootstrapFailure);
+          await hydrationDiagnostics.finish(listing, page, {
+            timeout: listing.state === 'timeout' || listing.state === 'bootstrap_failed',
+            searchClicked,
+          });
+          return listing;
+        };
+
+        const recovery = await runPlanetBidsListingRecovery({
+          createSession,
+          cleanupSession,
+          runAttempt,
+          beforeSameSessionRetry: async (session) => {
+            log(`[${source_name}] Listing did not reach a definitive state — one bounded same-session reload before failing`);
+            await session.page.waitForTimeout(1000 + Math.floor(Math.random() * 1000));
+          },
+          recordRecovery: (fields) => hydrationDiagnostics.recordRecovery(fields),
+        });
+
+        activeSession = recovery.session;
+        const { sessionId, page, state } = activeSession;
+        const {
+          biddingRows,
+          readinessSignals,
+          apiDetailUrls,
+          apiMetadataByBidId,
+          apiExtractionTasks,
+        } = state;
+        const listingAttempts = recovery.attempts;
+        const listing = recovery.listing;
+
+        if (recovery.recoveryStrategy === 'fresh_session') {
+          const recoveryOutcome = listing.state === 'rows' || listing.state === 'empty'
+            ? 'fresh_session_recovered'
+            : listing.state === 'bootstrap_failed'
+              ? 'fresh_session_exhausted'
+              : 'fresh_session_different_failure';
+          hydrationDiagnostics.recordRecovery({ recovery_outcome: recoveryOutcome });
+        }
+
+        if (listing.state === 'bootstrap_failed') {
+          telemetry.retryable_failures++;
+          hydrationDiagnostics.recordRecovery({ final_error_classification: 'planetbids_bootstrap_auth_failed' });
+          recordError(
+            `planetbids_bootstrap_auth_failed: PlanetBids anonymous bootstrap failed in two distinct ` +
+            `Browserbase sessions before /papi/bids. attempts=${listingAttempts}; ` +
+            `wait_ms=${listing.waitMs}; final_url=${listing.finalUrl}; recovery=fresh_session_exhausted`
+          );
+          errors++;
+          return;
         }
 
         if (listing.state === 'invalid_portal') {
           telemetry.terminal_failures++;
+          hydrationDiagnostics.recordRecovery({ final_error_classification: 'invalid_planetbids_portal' });
           recordError(
             `invalid_planetbids_portal: PlanetBids does not recognize this portal id. ` +
             `listing_url=${listing_url}; final_url=${listing.finalUrl}; attempts=${listingAttempts}; ` +
@@ -779,18 +956,19 @@ async function scrapePlanetBids(payload, log) {
               `[${source_name}] Bidding row locator found 0 rows, but ${detailUrlFallbacks.length} ` +
               `bid detail target(s) were resolved. Falling back to direct detail navigation. ` +
               `dom_detail_links=${domDetailUrls.length}; api_detail_links=${apiDerivedDetailUrls.length}; ` +
-              `api_responses=${apiResponsesObserved}; tr_count=${diagnostics.tr_count}; ` +
+              `api_responses=${state.apiResponsesObserved}; tr_count=${diagnostics.tr_count}; ` +
               `role_row_count=${diagnostics.role_row_count}; found_bids=${diagnostics.found_bids_text ?? 'n/a'}`
             );
           } else {
             // Transient by construction: the portal never reached a definitive
             // state. Never claim listing records existed — nothing was observed.
             telemetry.retryable_failures++;
+            hydrationDiagnostics.recordRecovery({ final_error_classification: 'planetbids_listing_hydration_timeout' });
             recordError(
               `planetbids_listing_hydration_timeout: listings never rendered and no explicit ` +
               `empty state appeared within the bounded wait. final_url=${diagnostics.final_url}; ` +
               `attempts=${listingAttempts}; wait_ms=${listing.waitMs}; polls=${listing.polls}; ` +
-              `api_responses=${apiResponsesObserved}; ` +
+              `api_responses=${state.apiResponsesObserved}; ` +
               `clock_or_beacon_observed=${readinessSignals.clock_or_beacon_observed}; ` +
               `listing_endpoint_observed=${readinessSignals.listing_endpoint_observed}; ` +
               `found_bids=${diagnostics.found_bids_text ?? 'n/a'}; tr_count=${diagnostics.tr_count}; ` +
@@ -814,7 +992,7 @@ async function scrapePlanetBids(payload, log) {
           const diagnostics = await captureZeroRowDiagnostics(page);
           recordError(
             `No Bidding rows rendered. final_url=${diagnostics.final_url}; ` +
-            `api_responses=${apiResponsesObserved}; tr_count=${diagnostics.tr_count}; ` +
+            `api_responses=${state.apiResponsesObserved}; tr_count=${diagnostics.tr_count}; ` +
             `role_row_count=${diagnostics.role_row_count}; found_bids=${diagnostics.found_bids_text ?? 'n/a'}; ` +
             `Body preview: ${diagnostics.body_preview}`
           );
@@ -1446,7 +1624,7 @@ async function scrapePlanetBids(payload, log) {
           }
         }
 
-        if (bearerToken) {
+        if (state.bearerToken) {
           log(`[${source_name}] Bearer token captured — fetching ${candidates.length} manifest(s)`);
           for (const candidate of candidates) {
             const bidId = candidate.crawl_data?.bid_id;
@@ -1456,7 +1634,7 @@ async function scrapePlanetBids(payload, log) {
                 `https://api-external.prod.planetbids.com/papi/bid-downloadable-files?bid_id=${bidId}`,
                 {
                   headers: {
-                    Authorization: `Bearer ${bearerToken}`,
+                    Authorization: `Bearer ${state.bearerToken}`,
                     Referer: 'https://vendors.planetbids.com/',
                     Origin: 'https://vendors.planetbids.com',
                   },
@@ -1487,27 +1665,31 @@ async function scrapePlanetBids(payload, log) {
           log(`[${source_name}] No bearer token captured — file manifests skipped`);
         }
 
-        log(`[${source_name}] Scan complete. candidates=${candidates.length} errors=${errors} extraction_mode=${extractionMode} api_responses=${apiResponsesObserved}`);
+        log(`[${source_name}] Scan complete. candidates=${candidates.length} errors=${errors} extraction_mode=${extractionMode} api_responses=${state.apiResponsesObserved}`);
       })(),
       timeoutPromise,
     ]);
   } catch (e) {
     if (e.message.includes('timed out')) {
+      if (hydrationDiagnostics) hydrationDiagnostics.recordRecovery({ final_error_classification: 'planetbids_scan_timeout' });
       recordError(`${e.message} — returning ${candidates.length} partial result(s)`);
       errors++;
     } else {
+      if (hydrationDiagnostics) hydrationDiagnostics.recordRecovery({ final_error_classification: 'planetbids_scan_error' });
       recordError(`Scrape error: ${e.message}`);
       errors++;
     }
   } finally {
     clearTimeout(timeoutHandle);
+    if (activeSession) {
+      const finalCleanup = await cleanupPlanetBidsBrowserSession(activeSession, { log });
+      if (hydrationDiagnostics) hydrationDiagnostics.recordRecovery({ final_session_cleanup_outcome: finalCleanup });
+      activeSession = null;
+    }
     if (hydrationDiagnostics) {
       // Compact summaries are retained for successful scans; detailed evidence
       // stays in the existing task-result path only on failed listing states.
       telemetry.planetbids_hydration_diagnostics_v1 = hydrationDiagnostics.build({ failure: errors > 0 });
-    }
-    if (browser) {
-      try { await browser.close(); } catch (_) {}
     }
   }
 
@@ -1525,5 +1707,8 @@ module.exports = {
   isPlanetBidsListingResponseUrl,
   isPlanetBidsClockOrBeaconUrl,
   detectPlanetBidsInvalidPortal,
+  cleanupPlanetBidsBrowserSession,
+  createPlanetBidsBrowserSession,
+  runPlanetBidsListingRecovery,
   PLANETBIDS_LISTING_WAIT_MS,
 };
