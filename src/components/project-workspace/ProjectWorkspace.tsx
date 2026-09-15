@@ -141,28 +141,6 @@ export function ProjectWorkspace({
     [setSearchParams],
   );
 
-  const handlePursuitStatusChange = async (value: string) => {
-    setSavingPursuit(true);
-    const prev = pursuitStatus;
-    setPursuitStatus(value);
-    try {
-      const { error } = await supabase
-        .from("projects")
-        .update({
-          pursuit_status: value,
-          pursuit_status_updated_at: new Date().toISOString(),
-        } as never)
-        .eq("id", project.id);
-      if (error) throw error;
-    } catch (e: unknown) {
-      setPursuitStatus(prev);
-      const message = e instanceof Error ? e.message : String(e);
-      toast({ title: "Failed to update pursuit status", description: message, variant: "destructive" });
-    } finally {
-      setSavingPursuit(false);
-    }
-  };
-
   const handleDeleteProject = async () => {
     setDeletingProject(true);
     try {
