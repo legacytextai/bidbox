@@ -29,7 +29,7 @@ interface Project {
   pursuit_status?: string | null;
 }
 
-interface CalendarEvent {
+export interface CalendarEvent {
   id: string;
   projectId: string;
   projectName: string;
@@ -46,6 +46,7 @@ interface CalendarGridProps {
 
 const CalendarGrid = ({ projects }: CalendarGridProps) => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const navigate = useNavigate();
 
   const handlePrevMonth = () => setCurrentMonth(subMonths(currentMonth, 1));
