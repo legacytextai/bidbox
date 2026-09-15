@@ -202,22 +202,11 @@ export function ProjectWorkspace({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <Select value={pursuitStatus} onValueChange={handlePursuitStatusChange} disabled={savingPursuit}>
-              <SelectTrigger className={`w-36 h-9 text-sm ${PURSUIT_STATUS_STYLES[ps]}`}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {(["reviewing", "pursuing", "passed", "submitted"] as PursuitStatus[]).map((status) => (
-                  <SelectItem
-                    key={status}
-                    value={status}
-                    className={status === ps ? PURSUIT_STATUS_STYLES[status] : undefined}
-                  >
-                    {PURSUIT_STATUS_LABELS[status]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <PursuitStatusSelect
+              projectId={project.id}
+              value={pursuitStatus}
+              onChange={setPursuitStatus}
+            />
 
             {project.source_url && (
               <Button
