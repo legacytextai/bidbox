@@ -269,7 +269,11 @@ const Projects = () => {
                 onClick={() => setActiveTab(tab.key)}
                 className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
                   activeTab === tab.key
-                    ? "border-foreground text-foreground"
+                    ? tab.status
+                      ? PURSUIT_TAB_ACTIVE_CLASSES[tab.status]
+                      : "border-foreground text-foreground"
+                    : tab.status
+                    ? PURSUIT_TAB_INACTIVE_CLASSES[tab.status]
                     : "border-transparent text-muted-foreground hover:text-foreground"
                 }`}
               >
@@ -319,21 +323,12 @@ const Projects = () => {
                       </span>
                     </div>
                     {(() => {
-                      const status = project.pursuit_status ?? "";
-                      const label = status.charAt(0).toUpperCase() + status.slice(1);
-                      const className =
-                        status === "pursuing"
-                          ? "bg-green-500/10 text-green-600"
-                          : status === "passed"
-                          ? "bg-destructive/10 text-destructive"
-                          : status === "reviewing"
-                          ? "bg-gray-500/10 text-gray-600"
-                          : status === "submitted"
-                          ? "bg-blue-500/10 text-blue-600"
-                          : "bg-gray-500/10 text-gray-600";
+                      const status = normalizePursuitStatus(project.pursuit_status);
                       return (
-                        <span className={`shrink-0 whitespace-nowrap px-2 py-1 text-xs font-medium rounded ${className}`}>
-                          {label || "—"}
+                        <span
+                          className={`shrink-0 whitespace-nowrap px-2 py-1 text-xs font-medium rounded ${PURSUIT_STATUS_STYLES[status]}`}
+                        >
+                          {PURSUIT_STATUS_LABELS[status]}
                         </span>
                       );
                     })()}
