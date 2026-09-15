@@ -207,6 +207,12 @@ All colors MUST be HSL.
     break-inside: avoid;
   }
 
+  /* Scroll containers must render fully when printing */
+  .calendar-scroll-area {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
   /* Remove cursor pointer style */
   .print-calendar-grid button {
     cursor: default !important;
