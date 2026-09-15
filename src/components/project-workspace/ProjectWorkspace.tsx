@@ -37,19 +37,11 @@ import { StubTab, type StubTabKey } from "./tabs/StubTab";
 
 import type { PursuitStatus, WorkspaceProject, WorkspaceProjectFile, WorkspaceProjectTrade, WorkspaceProjectSubmission } from "@/lib/opportunityView";
 
-const PURSUIT_STATUS_LABELS: Record<PursuitStatus, string> = {
-  reviewing: "Reviewing",
-  pursuing: "Pursuing",
-  passed: "Passed",
-  submitted: "Submitted",
-};
-
-const PURSUIT_STATUS_STYLES: Record<PursuitStatus, string> = {
-  reviewing: "bg-gray-500/10 text-gray-600",
-  pursuing: "bg-green-500/10 text-green-600",
-  passed: "bg-red-500/10 text-red-600",
-  submitted: "bg-blue-500/10 text-blue-600",
-};
+import {
+  PURSUIT_STATUS_LABELS,
+  PURSUIT_STATUS_STYLES,
+  normalizePursuitStatus,
+} from "@/lib/pursuitStatus";
 
 type TabKey =
   | "overview"
