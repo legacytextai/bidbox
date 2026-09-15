@@ -26,13 +26,14 @@ interface Project {
 }
 
 
-type TabKey = "all" | "live" | "submitted" | "passed";
+type TabKey = "all" | "pursuing" | "live" | "submitted" | "passed";
 
-const TABS: { key: TabKey; label: string }[] = [
+const TABS: { key: TabKey; label: string; status?: PursuitStatusKey }[] = [
   { key: "all", label: "All" },
+  { key: "pursuing", label: "Pursuing", status: "pursuing" },
   { key: "live", label: "Live" },
-  { key: "submitted", label: "Submitted" },
-  { key: "passed", label: "Passed" },
+  { key: "submitted", label: "Submitted", status: "submitted" },
+  { key: "passed", label: "Passed", status: "passed" },
 ];
 
 function formatBidDateParts(iso: string | null, timezone: string): { date: string; time: string } | null {
