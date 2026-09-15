@@ -38,8 +38,8 @@ type TabKey = "all" | "pursuing" | "live" | "submitted" | "passed";
 
 const TABS: { key: TabKey; label: string; status?: PursuitStatusKey }[] = [
   { key: "all", label: "All" },
-  { key: "pursuing", label: "Pursuing", status: "pursuing" },
   { key: "live", label: "Live" },
+  { key: "pursuing", label: "Pursuing", status: "pursuing" },
   { key: "submitted", label: "Submitted", status: "submitted" },
   { key: "passed", label: "Passed", status: "passed" },
 ];
