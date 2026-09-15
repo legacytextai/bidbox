@@ -60,7 +60,7 @@ const CalendarDashboard = () => {
 
   return (
     <Layout showSidebar>
-      <div className="flex flex-col h-[calc(100vh-2rem)] p-4 calendar-container">
+      <div className="flex flex-col h-[calc(100dvh-4rem)] min-h-0 p-4 calendar-container">
         {/* Top Metrics Row */}
         <div className="flex justify-center print:hidden flex-shrink-0 mb-4">
           <div className="flex items-center justify-center gap-6 max-w-4xl w-full">

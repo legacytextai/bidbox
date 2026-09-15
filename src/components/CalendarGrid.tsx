@@ -174,12 +174,12 @@ const CalendarGrid = ({ projects }: CalendarGridProps) => {
             ))}
           </div>
 
-          {/* Calendar Grid - fills remaining space */}
-          <div className="border border-border rounded-lg overflow-hidden print-calendar-grid flex-1 flex flex-col min-h-0">
+          {/* Calendar Grid - fills remaining space, scrolls if the month needs more room */}
+          <div className="border border-border rounded-lg print-calendar-grid flex-1 flex flex-col min-h-0 overflow-y-auto calendar-scroll-area">
             {weeks.map((week, weekIndex) => (
               <div
                 key={weekIndex}
-                className="grid grid-cols-5 divide-x divide-border border-b last:border-b-0 border-border flex-1"
+                className="grid grid-cols-5 divide-x divide-border border-b last:border-b-0 border-border flex-1 min-h-[7.5rem]"
               >
                 {week.map((day) => {
                   const dayEvents = eventsForDay(day);
