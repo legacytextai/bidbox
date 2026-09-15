@@ -9,6 +9,14 @@ import { formatInProjectTimezone } from "@/lib/timezoneUtils";
 import { useSubscription } from "@/hooks/useSubscription";
 import { ENFORCE_FREE_PROJECT_LIMIT, FREE_PROJECT_LIMIT } from "@/lib/featureFlags";
 import { resolveEstimatedValue, resolveEstimatedValueRaw } from "@/lib/opportunityDomain";
+import {
+  PURSUIT_STATUS_LABELS,
+  PURSUIT_STATUS_STYLES,
+  PURSUIT_TAB_ACTIVE_CLASSES,
+  PURSUIT_TAB_INACTIVE_CLASSES,
+  normalizePursuitStatus,
+  type PursuitStatusKey,
+} from "@/lib/pursuitStatus";
 
 
 interface Project {
@@ -77,6 +85,8 @@ const Projects = () => {
       return !Number.isNaN(t) && t < now;
     };
     if (activeTab === "all") return projects;
+    if (activeTab === "pursuing")
+      return projects.filter((p) => p.pursuit_status === "pursuing" && !isPastDue(p));
     if (activeTab === "submitted") return projects.filter((p) => p.pursuit_status === "submitted");
     if (activeTab === "passed") {
       // Explicitly passed OR past bid due and never marked submitted
