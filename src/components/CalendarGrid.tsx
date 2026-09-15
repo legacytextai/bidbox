@@ -112,9 +112,17 @@ const CalendarGrid = ({ projects }: CalendarGridProps) => {
     weeks.push(weekdays.slice(i, i + 5));
   }
 
-  // Get events for a specific day
+  // Get events for a specific day — "pursuing" projects always listed first,
+  // then by time within each group
   const eventsForDay = (day: Date) =>
-    calendarEvents.filter((e) => isSameDay(new Date(e.datetime), day));
+    calendarEvents
+      .filter((e) => isSameDay(new Date(e.datetime), day))
+      .sort((a, b) => {
+        const aPursuing = a.pursuitStatus === "pursuing" ? 0 : 1;
+        const bPursuing = b.pursuitStatus === "pursuing" ? 0 : 1;
+        if (aPursuing !== bPursuing) return aPursuing - bPursuing;
+        return new Date(a.datetime).getTime() - new Date(b.datetime).getTime();
+      });
 
   const handleEventClick = (projectId: string) => {
     navigate(`/projects/${projectId}`);

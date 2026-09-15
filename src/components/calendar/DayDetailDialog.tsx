@@ -18,9 +18,13 @@ interface DayDetailDialogProps {
 const DayDetailDialog = ({ day, events, onClose }: DayDetailDialogProps) => {
   const navigate = useNavigate();
 
-  const sortedEvents = [...events].sort(
-    (a, b) => new Date(a.datetime).getTime() - new Date(b.datetime).getTime()
-  );
+  // "pursuing" projects always listed first, then by time within each group
+  const sortedEvents = [...events].sort((a, b) => {
+    const aPursuing = a.pursuitStatus === "pursuing" ? 0 : 1;
+    const bPursuing = b.pursuitStatus === "pursuing" ? 0 : 1;
+    if (aPursuing !== bPursuing) return aPursuing - bPursuing;
+    return new Date(a.datetime).getTime() - new Date(b.datetime).getTime();
+  });
 
   const handleEventClick = (projectId: string) => {
     onClose();
