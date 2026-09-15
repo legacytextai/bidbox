@@ -2461,4 +2461,11 @@ Keep this broad product task list focused on app-wide implementation history and
 
 ---
 
+## ✅ Calendar: Pursuing projects first in day lists (Completed 2026-09-15)
+- [x] Pursuing-status events sort to the top of each day cell on /calendar, then by time
+- [x] Same ordering applied in the day-detail dialog (click a day)
+- Files: `src/components/CalendarGrid.tsx`, `src/components/calendar/DayDetailDialog.tsx`
+
+---
+
 **End of tasks.md**
