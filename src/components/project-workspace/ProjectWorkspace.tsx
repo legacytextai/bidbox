@@ -152,7 +152,7 @@ export function ProjectWorkspace({
 
   const bidRoomUrl = `${window.location.origin}/bid/${project.public_token}`;
   const ps: PursuitStatus = normalizePursuitStatus(pursuitStatus) as PursuitStatus;
-      : "reviewing";
+      
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
