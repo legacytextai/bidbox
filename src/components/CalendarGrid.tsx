@@ -174,12 +174,12 @@ const CalendarGrid = ({ projects }: CalendarGridProps) => {
             ))}
           </div>
 
-          {/* Calendar Grid - fills remaining space */}
-          <div className="border border-border rounded-lg overflow-hidden print-calendar-grid flex-1 flex flex-col min-h-0">
+          {/* Calendar Grid - fills remaining space, scrolls if the month needs more room */}
+          <div className="border border-border rounded-lg print-calendar-grid flex-1 flex flex-col min-h-0 overflow-y-auto calendar-scroll-area">
             {weeks.map((week, weekIndex) => (
               <div
                 key={weekIndex}
-                className="grid grid-cols-5 divide-x divide-border border-b last:border-b-0 border-border flex-1"
+                className="grid grid-cols-5 divide-x divide-border border-b last:border-b-0 border-border flex-1 min-h-[7.5rem]"
               >
                 {week.map((day) => {
                   const dayEvents = eventsForDay(day);
@@ -189,11 +189,11 @@ const CalendarGrid = ({ projects }: CalendarGridProps) => {
                   return (
                     <div
                       key={day.toISOString()}
-                      className={`p-2 overflow-hidden ${isCurrentMonth ? "bg-background" : "bg-muted/30"}`}
+                      className={`p-2 flex flex-col min-h-0 overflow-hidden ${isCurrentMonth ? "bg-background" : "bg-muted/30"}`}
                     >
                       {/* Date Number */}
                       <div
-                        className={`text-sm font-medium mb-1 w-6 h-6 flex items-center justify-center rounded-full ${
+                        className={`text-sm font-medium mb-1 w-6 h-6 flex-shrink-0 flex items-center justify-center rounded-full ${
                           isTodayDate
                             ? "bg-primary text-primary-foreground"
                             : isCurrentMonth
@@ -205,7 +205,7 @@ const CalendarGrid = ({ projects }: CalendarGridProps) => {
                       </div>
 
                       {/* Events */}
-                      <div className="space-y-1 overflow-y-auto max-h-[calc(100%-32px)]">
+                      <div className="space-y-1 flex-1 min-h-0 overflow-y-auto pr-0.5 calendar-scroll-area">
                         {dayEvents.map((event) => {
                           const isBidDue = event.type === "bid_due";
                           const label = isBidDue ? "Bid Due" : "Job Walk";
