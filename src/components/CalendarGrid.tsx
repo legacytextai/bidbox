@@ -235,7 +235,10 @@ const CalendarGrid = ({ projects }: CalendarGridProps) => {
                           return (
                             <button
                               key={event.id}
-                              onClick={() => handleEventClick(event.projectId)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEventClick(event.projectId);
+                              }}
                               title={isBidDue 
                                 ? (event.isReadyToBid ? "Ready to bid" : "Not ready to bid - checklist incomplete")
                                 : "Job Walk"}
@@ -269,6 +272,12 @@ const CalendarGrid = ({ projects }: CalendarGridProps) => {
           </div>
         </div>
       </div>
+
+      <DayDetailDialog
+        day={selectedDay}
+        events={selectedDay ? eventsForDay(selectedDay) : []}
+        onClose={() => setSelectedDay(null)}
+      />
     </div>
   );
 };
