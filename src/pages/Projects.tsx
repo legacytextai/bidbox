@@ -9,6 +9,14 @@ import { formatInProjectTimezone } from "@/lib/timezoneUtils";
 import { useSubscription } from "@/hooks/useSubscription";
 import { ENFORCE_FREE_PROJECT_LIMIT, FREE_PROJECT_LIMIT } from "@/lib/featureFlags";
 import { resolveEstimatedValue, resolveEstimatedValueRaw } from "@/lib/opportunityDomain";
+import {
+  PURSUIT_STATUS_LABELS,
+  PURSUIT_STATUS_STYLES,
+  PURSUIT_TAB_ACTIVE_CLASSES,
+  PURSUIT_TAB_INACTIVE_CLASSES,
+  normalizePursuitStatus,
+  type PursuitStatusKey,
+} from "@/lib/pursuitStatus";
 
 
 interface Project {
@@ -26,13 +34,14 @@ interface Project {
 }
 
 
-type TabKey = "all" | "live" | "submitted" | "passed";
+type TabKey = "all" | "pursuing" | "live" | "submitted" | "passed";
 
-const TABS: { key: TabKey; label: string }[] = [
+const TABS: { key: TabKey; label: string; status?: PursuitStatusKey }[] = [
   { key: "all", label: "All" },
+  { key: "pursuing", label: "Pursuing", status: "pursuing" },
   { key: "live", label: "Live" },
-  { key: "submitted", label: "Submitted" },
-  { key: "passed", label: "Passed" },
+  { key: "submitted", label: "Submitted", status: "submitted" },
+  { key: "passed", label: "Passed", status: "passed" },
 ];
 
 function formatBidDateParts(iso: string | null, timezone: string): { date: string; time: string } | null {
@@ -76,6 +85,8 @@ const Projects = () => {
       return !Number.isNaN(t) && t < now;
     };
     if (activeTab === "all") return projects;
+    if (activeTab === "pursuing")
+      return projects.filter((p) => p.pursuit_status === "pursuing" && !isPastDue(p));
     if (activeTab === "submitted") return projects.filter((p) => p.pursuit_status === "submitted");
     if (activeTab === "passed") {
       // Explicitly passed OR past bid due and never marked submitted
@@ -258,7 +269,11 @@ const Projects = () => {
                 onClick={() => setActiveTab(tab.key)}
                 className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
                   activeTab === tab.key
-                    ? "border-foreground text-foreground"
+                    ? tab.status
+                      ? PURSUIT_TAB_ACTIVE_CLASSES[tab.status]
+                      : "border-foreground text-foreground"
+                    : tab.status
+                    ? PURSUIT_TAB_INACTIVE_CLASSES[tab.status]
                     : "border-transparent text-muted-foreground hover:text-foreground"
                 }`}
               >
@@ -308,21 +323,12 @@ const Projects = () => {
                       </span>
                     </div>
                     {(() => {
-                      const status = project.pursuit_status ?? "";
-                      const label = status.charAt(0).toUpperCase() + status.slice(1);
-                      const className =
-                        status === "pursuing"
-                          ? "bg-green-500/10 text-green-600"
-                          : status === "passed"
-                          ? "bg-destructive/10 text-destructive"
-                          : status === "reviewing"
-                          ? "bg-gray-500/10 text-gray-600"
-                          : status === "submitted"
-                          ? "bg-blue-500/10 text-blue-600"
-                          : "bg-gray-500/10 text-gray-600";
+                      const status = normalizePursuitStatus(project.pursuit_status);
                       return (
-                        <span className={`shrink-0 whitespace-nowrap px-2 py-1 text-xs font-medium rounded ${className}`}>
-                          {label || "—"}
+                        <span
+                          className={`shrink-0 whitespace-nowrap px-2 py-1 text-xs font-medium rounded ${PURSUIT_STATUS_STYLES[status]}`}
+                        >
+                          {PURSUIT_STATUS_LABELS[status]}
                         </span>
                       );
                     })()}

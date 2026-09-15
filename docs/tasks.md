@@ -2451,4 +2451,14 @@ Keep this broad product task list focused on app-wide implementation history and
 
 ---
 
+## Project Pursuit Status — Pursuing tab + unified colors (2026-09-15) — COMPLETE
+
+- [x] "Pursuing" tab added to /projects, left of "Live" (open bid dates, status = Pursuing)
+- [x] Shared status color language: Reviewing gray, Pursuing green, Passed red, Submitted blue
+- [x] Workspace status dropdown tints every option; tab labels and card badges use the same map
+- [x] Manual / One Link projects get the status dropdown in their header (legacy editable page retained)
+- Files: `src/lib/pursuitStatus.ts` (new), `src/components/project-workspace/PursuitStatusSelect.tsx` (new), `src/components/project-workspace/ProjectWorkspace.tsx`, `src/pages/Projects.tsx`, `src/pages/ProjectDetail.tsx`
+
+---
+
 **End of tasks.md**

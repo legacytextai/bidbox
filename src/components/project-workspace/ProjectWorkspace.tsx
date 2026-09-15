@@ -10,18 +10,11 @@
 
 import { useState, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
 import { useOpportunityDossier } from "@/hooks/useOpportunityDossier";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { PursuitStatusSelect } from "./PursuitStatusSelect";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -44,19 +37,11 @@ import { StubTab, type StubTabKey } from "./tabs/StubTab";
 
 import type { PursuitStatus, WorkspaceProject, WorkspaceProjectFile, WorkspaceProjectTrade, WorkspaceProjectSubmission } from "@/lib/opportunityView";
 
-const PURSUIT_STATUS_LABELS: Record<PursuitStatus, string> = {
-  reviewing: "Reviewing",
-  pursuing: "Pursuing",
-  passed: "Passed",
-  submitted: "Submitted",
-};
-
-const PURSUIT_STATUS_STYLES: Record<PursuitStatus, string> = {
-  reviewing: "bg-gray-500/10 text-gray-600",
-  pursuing: "bg-green-500/10 text-green-600",
-  passed: "bg-red-500/10 text-red-600",
-  submitted: "bg-blue-500/10 text-blue-600",
-};
+import {
+  PURSUIT_STATUS_LABELS,
+  PURSUIT_STATUS_STYLES,
+  normalizePursuitStatus,
+} from "@/lib/pursuitStatus";
 
 type TabKey =
   | "overview"
@@ -127,7 +112,7 @@ export function ProjectWorkspace({
   const [pursuitStatus, setPursuitStatus] = useState<string>(
     project.pursuit_status ?? "reviewing",
   );
-  const [savingPursuit, setSavingPursuit] = useState(false);
+  
   const [deletingProject, setDeletingProject] = useState(false);
 
   const candidateId = project.source_opportunity_candidate_id ?? undefined;
@@ -156,28 +141,6 @@ export function ProjectWorkspace({
     [setSearchParams],
   );
 
-  const handlePursuitStatusChange = async (value: string) => {
-    setSavingPursuit(true);
-    const prev = pursuitStatus;
-    setPursuitStatus(value);
-    try {
-      const { error } = await supabase
-        .from("projects")
-        .update({
-          pursuit_status: value,
-          pursuit_status_updated_at: new Date().toISOString(),
-        } as never)
-        .eq("id", project.id);
-      if (error) throw error;
-    } catch (e: unknown) {
-      setPursuitStatus(prev);
-      const message = e instanceof Error ? e.message : String(e);
-      toast({ title: "Failed to update pursuit status", description: message, variant: "destructive" });
-    } finally {
-      setSavingPursuit(false);
-    }
-  };
-
   const handleDeleteProject = async () => {
     setDeletingProject(true);
     try {
@@ -188,10 +151,8 @@ export function ProjectWorkspace({
   };
 
   const bidRoomUrl = `${window.location.origin}/bid/${project.public_token}`;
-  const ps: PursuitStatus =
-    (pursuitStatus as PursuitStatus) in PURSUIT_STATUS_LABELS
-      ? (pursuitStatus as PursuitStatus)
-      : "reviewing";
+  const ps: PursuitStatus = normalizePursuitStatus(pursuitStatus) as PursuitStatus;
+      
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
@@ -217,22 +178,11 @@ export function ProjectWorkspace({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <Select value={pursuitStatus} onValueChange={handlePursuitStatusChange} disabled={savingPursuit}>
-              <SelectTrigger className={`w-36 h-9 text-sm ${PURSUIT_STATUS_STYLES[ps]}`}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {(["reviewing", "pursuing", "passed", "submitted"] as PursuitStatus[]).map((status) => (
-                  <SelectItem
-                    key={status}
-                    value={status}
-                    className={status === ps ? PURSUIT_STATUS_STYLES[status] : undefined}
-                  >
-                    {PURSUIT_STATUS_LABELS[status]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <PursuitStatusSelect
+              projectId={project.id}
+              value={pursuitStatus}
+              onChange={setPursuitStatus}
+            />
 
             {project.source_url && (
               <Button
