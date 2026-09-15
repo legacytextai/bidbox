@@ -25,6 +25,7 @@ import { HighSignalPanel } from "@/components/HighSignalPanel";
 import { BidReadinessChecklist } from "@/components/BidReadinessChecklist";
 import { OpportunityIntelligenceWorkspace } from "@/components/project-workspace/OpportunityIntelligenceWorkspace";
 import { ProjectWorkspace } from "@/components/project-workspace/ProjectWorkspace";
+import { PursuitStatusSelect } from "@/components/project-workspace/PursuitStatusSelect";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -809,10 +810,18 @@ const ProjectDetail = () => {
   }
   return <Layout showSidebar={true}>
       <div className="p-4">
-          <Button variant="ghost" onClick={() => navigate("/projects")} className="mb-2">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Projects
-          </Button>
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <Button variant="ghost" onClick={() => navigate("/projects")}>
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to Projects
+            </Button>
+            <PursuitStatusSelect
+              projectId={project.id}
+              value={project.pursuit_status}
+              onChange={(value) => setProject((prev: any) => prev ? { ...prev, pursuit_status: value } : prev)}
+            />
+          </div>
+
 
           {/* Project Signals from One Link crawl */}
           <ProjectSignals project={project} className="mb-4" onRefresh={isOneLinkProject && project.source_url ? handleReCrawl : undefined} isRefreshing={isRecrawling} />
