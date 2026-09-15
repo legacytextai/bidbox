@@ -18,6 +18,7 @@ import { ChevronLeft, ChevronRight, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { printCalendarViaIframe } from "@/lib/calendarPrint";
 import { formatProjectDateTime } from "@/lib/timezoneUtils";
+import DayDetailDialog from "@/components/calendar/DayDetailDialog";
 
 interface Project {
   id: string;
@@ -190,7 +191,8 @@ const CalendarGrid = ({ projects }: CalendarGridProps) => {
                   return (
                     <div
                       key={day.toISOString()}
-                      className={`p-2 flex flex-col min-h-0 overflow-hidden ${isCurrentMonth ? "bg-background" : "bg-muted/30"}`}
+                      onClick={() => isCurrentMonth && setSelectedDay(day)}
+                      className={`p-2 flex flex-col min-h-0 overflow-hidden ${isCurrentMonth ? "bg-background cursor-pointer hover:bg-muted/50 transition-colors" : "bg-muted/30"}`}
                     >
                       {/* Date Number */}
                       <div
