@@ -10,18 +10,11 @@
 
 import { useState, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
 import { useOpportunityDossier } from "@/hooks/useOpportunityDossier";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { PursuitStatusSelect } from "./PursuitStatusSelect";
 import {
   AlertDialog,
   AlertDialogAction,
