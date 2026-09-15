@@ -18,6 +18,7 @@ import { ChevronLeft, ChevronRight, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { printCalendarViaIframe } from "@/lib/calendarPrint";
 import { formatProjectDateTime } from "@/lib/timezoneUtils";
+import DayDetailDialog from "@/components/calendar/DayDetailDialog";
 
 interface Project {
   id: string;
@@ -29,7 +30,7 @@ interface Project {
   pursuit_status?: string | null;
 }
 
-interface CalendarEvent {
+export interface CalendarEvent {
   id: string;
   projectId: string;
   projectName: string;
@@ -46,6 +47,7 @@ interface CalendarGridProps {
 
 const CalendarGrid = ({ projects }: CalendarGridProps) => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const navigate = useNavigate();
 
   const handlePrevMonth = () => setCurrentMonth(subMonths(currentMonth, 1));
@@ -189,7 +191,8 @@ const CalendarGrid = ({ projects }: CalendarGridProps) => {
                   return (
                     <div
                       key={day.toISOString()}
-                      className={`p-2 flex flex-col min-h-0 overflow-hidden ${isCurrentMonth ? "bg-background" : "bg-muted/30"}`}
+                      onClick={() => isCurrentMonth && setSelectedDay(day)}
+                      className={`p-2 flex flex-col min-h-0 overflow-hidden ${isCurrentMonth ? "bg-background cursor-pointer hover:bg-muted/50 transition-colors" : "bg-muted/30"}`}
                     >
                       {/* Date Number */}
                       <div
@@ -232,7 +235,10 @@ const CalendarGrid = ({ projects }: CalendarGridProps) => {
                           return (
                             <button
                               key={event.id}
-                              onClick={() => handleEventClick(event.projectId)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEventClick(event.projectId);
+                              }}
                               title={isBidDue 
                                 ? (event.isReadyToBid ? "Ready to bid" : "Not ready to bid - checklist incomplete")
                                 : "Job Walk"}
@@ -266,6 +272,12 @@ const CalendarGrid = ({ projects }: CalendarGridProps) => {
           </div>
         </div>
       </div>
+
+      <DayDetailDialog
+        day={selectedDay}
+        events={selectedDay ? eventsForDay(selectedDay) : []}
+        onClose={() => setSelectedDay(null)}
+      />
     </div>
   );
 };
