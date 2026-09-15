@@ -2440,4 +2440,15 @@ Keep this broad product task list focused on app-wide implementation history and
 
 ---
 
+---
+
+## ✅ Calendar: Day Detail Dialog (Completed 2026-09-15)
+
+- [x] Clicking any current-month day cell on /calendar opens a dialog listing every event that day (Bid Due + Job Walk), sorted by time, with type/status badges, agency, and timezone-correct times
+- [x] Dialog rows navigate to the project; clicking an event chip directly still navigates without opening the dialog (stopPropagation)
+- [x] Print/PDF output unaffected (`print:hidden` on dialog)
+- Files: `src/components/calendar/DayDetailDialog.tsx` (new), `src/components/CalendarGrid.tsx`
+
+---
+
 **End of tasks.md**
