@@ -2468,4 +2468,10 @@ Keep this broad product task list focused on app-wide implementation history and
 
 ---
 
+## ✅ Tab Order: Pursuing moved right of Live (Completed 2026-09-15)
+
+- [x] Reorder /projects tabs to All - Live - Pursuing - Submitted - Passed
+- Files: `src/pages/Projects.tsx` (TABS array order)
+- Verified: `tsgo` clean; Playwright screenshot confirms order and colors unchanged.
+
 **End of tasks.md**
