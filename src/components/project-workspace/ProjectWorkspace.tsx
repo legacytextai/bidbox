@@ -112,7 +112,7 @@ export function ProjectWorkspace({
   const [pursuitStatus, setPursuitStatus] = useState<string>(
     project.pursuit_status ?? "reviewing",
   );
-  const [savingPursuit, setSavingPursuit] = useState(false);
+  
   const [deletingProject, setDeletingProject] = useState(false);
 
   const candidateId = project.source_opportunity_candidate_id ?? undefined;
@@ -151,9 +151,7 @@ export function ProjectWorkspace({
   };
 
   const bidRoomUrl = `${window.location.origin}/bid/${project.public_token}`;
-  const ps: PursuitStatus =
-    (pursuitStatus as PursuitStatus) in PURSUIT_STATUS_LABELS
-      ? (pursuitStatus as PursuitStatus)
+  const ps: PursuitStatus = normalizePursuitStatus(pursuitStatus) as PursuitStatus;
       : "reviewing";
 
   return (
